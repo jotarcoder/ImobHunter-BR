@@ -3,6 +3,16 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
+@dataclass(frozen=True)
+class NormalizedAddress:
+    original: str
+    normalized: str
+    number: str | None = None
+    neighborhood: str | None = None
+    city: str | None = None
+    state: str | None = None
+    postal_code: str | None = None
+
 class SourceStatus(str, Enum):
     AVAILABLE = "available"
     UNAVAILABLE = "unavailable"
