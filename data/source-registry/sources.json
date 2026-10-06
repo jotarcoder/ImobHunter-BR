@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "sources": [
+    {"id":"ibge_cnefe","name":"IBGE / CNEFE","category":"address","tier":"public","status":"planned"},
+    {"id":"sinter_cib","name":"SINTER / CIB","category":"national_cadastre","tier":"conditional","status":"planned"},
+    {"id":"municipal","name":"Municipal geoservices","category":"municipal","tier":"mixed","status":"framework"},
+    {"id":"geosampa","name":"GeoSampa","category":"municipal","tier":"public","status":"next"},
+    {"id":"cnpj","name":"Receita Federal / CNPJ","category":"company","tier":"mixed","status":"planned"},
+    {"id":"sncr","name":"INCRA / SNCR","category":"rural","tier":"conditional","status":"planned"},
+    {"id":"sicar","name":"SICAR / CAR","category":"environmental","tier":"conditional","status":"planned"},
+    {"id":"sigef","name":"SIGEF","category":"rural","tier":"conditional","status":"planned"},
+    {"id":"inde","name":"INDE","category":"geospatial","tier":"public","status":"planned"},
+    {"id":"icmbio","name":"ICMBio","category":"environmental","tier":"public","status":"planned"},
+    {"id":"iphan","name":"IPHAN","category":"heritage","tier":"public","status":"planned"},
+    {"id":"osm","name":"OpenStreetMap","category":"geospatial","tier":"policy","status":"planned"}
+  ]
+}
