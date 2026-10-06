@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from imobhunter.application.address import normalize_request
 from imobhunter.domain.models import SearchRequest
 from imobhunter.infrastructure.local_db import LocalDatabase
 from imobhunter.sources.registry import SourceRegistry
@@ -8,11 +8,11 @@ class SearchService:
         self.registry, self.database = registry, database
 
     def search(self, request: SearchRequest):
-        _ = datetime.now(timezone.utc)
+        normalized = normalize_request(request)
         results = []
         for source in self.registry.all():
             try:
                 results.extend(source.search(request))
             except Exception:
                 continue
-        return results
+        return normalized, results
