@@ -47,7 +47,7 @@ def test_inde_reads_csv_keywords(tmp_path):
     path = tmp_path / "catalog.csv"
     path.write_text(
         "service_id,title,provider,service_type,url,layer,keywords,state,city\n"
-        "1,Cadastro,Prefeitura,WFS,https://example.test,wfs:lotes,lotes\, cadastro,SP,Santos\n",
+        '1,Cadastro,Prefeitura,WFS,https://example.test,wfs:lotes,"lotes, cadastro",SP,Santos\n',
         encoding="utf-8",
     )
 
