@@ -1,6 +1,6 @@
 def main() -> None:
     try:
-        from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QVBoxLayout, QWidget
+        from PySide6.QtWidgets import QApplication
     except ImportError as exc:
         raise RuntimeError(
             "A interface desktop requer a instalação do extra 'desktop': "
@@ -10,25 +10,17 @@ def main() -> None:
     from .application.search import SearchService
     from .infrastructure.local_db import LocalDatabase
     from .sources.registry import build_default_registry
+    from .ui import apply_style, build_window, coverage_from_project_root
 
     app = QApplication([])
+    apply_style(app)
+
     registry = build_default_registry()
     database = LocalDatabase.default()
-    SearchService(registry, database)
+    service = SearchService(registry, database)
+    coverage = coverage_from_project_root()
 
-    window = QMainWindow()
-    window.setWindowTitle("ImobHunter-BR")
-    window.resize(1180, 760)
-
-    root = QWidget()
-    layout = QVBoxLayout(root)
-    title = QLabel("ImobHunter-BR")
-    title.setStyleSheet("font-size: 28px; font-weight: 700;")
-    layout.addWidget(title)
-    layout.addWidget(QLabel("Inteligência imobiliária local-first"))
-    layout.addStretch()
-
-    window.setCentralWidget(root)
+    window = build_window(service, coverage)
     window.show()
     app.exec()
 
