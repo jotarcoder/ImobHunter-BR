@@ -48,7 +48,9 @@ jobs:
           cp -r dist/ImobHunter-BR AppDir/usr/bin/
           cp packaging/linux/AppRun AppDir/AppRun
           cp packaging/linux/imobhunter.desktop AppDir/usr/share/applications/imobhunter.desktop
+          cp packaging/linux/imobhunter.desktop AppDir/imobhunter.desktop
           cp imobhunter/assets/logo.svg AppDir/usr/share/icons/hicolor/scalable/apps/imobhunter.svg
+          cp imobhunter/assets/logo.svg AppDir/imobhunter.svg
           chmod +x AppDir/AppRun
           wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
           chmod +x appimagetool
