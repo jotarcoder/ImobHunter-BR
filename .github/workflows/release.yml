@@ -61,7 +61,7 @@ jobs:
           path: ImobHunter-BR-Linux.AppImage
 
   macos-intel:
-    runs-on: macos-13
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -76,7 +76,7 @@ jobs:
           path: ImobHunter-BR-macOS-Intel.dmg
 
   macos-arm:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
