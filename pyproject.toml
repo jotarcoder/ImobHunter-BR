@@ -20,6 +20,9 @@ imobhunter = "imobhunter.app:main"
 [tool.setuptools.packages.find]
 include = ["imobhunter*"]
 
+[tool.setuptools.package-data]
+imobhunter = ["assets/*.svg"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
