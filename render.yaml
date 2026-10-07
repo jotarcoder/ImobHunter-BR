@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: imobhunter-br-backend
+    runtime: python
+    plan: free
+    branch: main
+    buildCommand: pip install -e ".[server]"
+    startCommand: uvicorn imobhunter.server.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    autoDeploy: true

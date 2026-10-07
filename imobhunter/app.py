@@ -1,10 +1,16 @@
-from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QVBoxLayout, QWidget
-
-from .application.search import SearchService
-from .infrastructure.local_db import LocalDatabase
-from .sources.registry import build_default_registry
-
 def main() -> None:
+    try:
+        from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QVBoxLayout, QWidget
+    except ImportError as exc:
+        raise RuntimeError(
+            "A interface desktop requer a instalação do extra 'desktop': "
+            "pip install -e '.[desktop]'"
+        ) from exc
+
+    from .application.search import SearchService
+    from .infrastructure.local_db import LocalDatabase
+    from .sources.registry import build_default_registry
+
     app = QApplication([])
     registry = build_default_registry()
     database = LocalDatabase.default()
@@ -25,3 +31,7 @@ def main() -> None:
     window.setCentralWidget(root)
     window.show()
     app.exec()
+
+
+if __name__ == "__main__":
+    main()
