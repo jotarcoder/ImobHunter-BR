@@ -169,12 +169,16 @@ class OSMAdapter(SourceAdapter):
         longitude = OSMAdapter._number(row.get("longitude") or row.get("lon"))
         geometry = row.get("geometry")
 
-        if latitude is None and longitude is None and isinstance(geometry, dict):
-            if geometry.get("type") == "Point":
-                coordinates = geometry.get("coordinates")
-                if isinstance(coordinates, list) and len(coordinates) >= 2:
-                    longitude = OSMAdapter._number(coordinates[0])
-                    latitude = OSMAdapter._number(coordinates[1])
+        if (
+            latitude is None
+            and longitude is None
+            and isinstance(geometry, dict)
+            and geometry.get("type") == "Point"
+        ):
+            coordinates = geometry.get("coordinates")
+            if isinstance(coordinates, list) and len(coordinates) >= 2:
+                longitude = OSMAdapter._number(coordinates[0])
+                latitude = OSMAdapter._number(coordinates[1])
 
         attributes = {
             key: row.get(key)
