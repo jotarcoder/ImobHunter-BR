@@ -51,6 +51,7 @@ def test_cnir_geojson_preserves_geometry(tmp_path) -> None:
                         "type": "Feature",
                         "properties": {
                             "cib": "987",
+                            "endereco": "Fazenda Exemplo 10",
                             "municipio": "Uberaba",
                             "uf": "MG",
                             "area_total": "2",
