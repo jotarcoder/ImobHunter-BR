@@ -31,7 +31,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ImobHunter-BR-Windows
-          path: Output/ImobHunter-BR-Setup-Windows.exe
+          path: packaging/windows/Output/ImobHunter-BR-Setup-Windows.exe
+          if-no-files-found: error
 
   linux:
     runs-on: ubuntu-latest
