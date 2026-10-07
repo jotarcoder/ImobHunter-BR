@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from .base import SourceAdapter
 from .cnefe import CNEFEAdapter
 from .geosampa import GeoSampaAdapter
+from .sinter import SINTERAdapter
 from .stub import ConfiguredSourceStub
 
 
@@ -26,9 +27,9 @@ def build_default_registry() -> SourceRegistry:
     registry = SourceRegistry({})
     registry.register(GeoSampaAdapter())
     registry.register(CNEFEAdapter())
+    registry.register(SINTERAdapter())
 
     sources = [
-        ("sinter_cib", "SINTER / CIB", "national_cadastre"),
         ("municipal", "Municipal geoservices", "municipal"),
         ("cnpj", "Receita Federal / CNPJ", "company"),
         ("sncr", "INCRA / SNCR", "rural"),
