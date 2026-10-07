@@ -50,7 +50,7 @@ def test_geosampa_search_builds_filtered_wfs_request() -> None:
     assert records[0].lot == "0030"
     assert records[0].area_m2 == 420.5
     assert records[0].attributes["sql"] == "010.020.0030-1"
-    assert "geoportal:lote_cidadao" in str(captured["url"])
+    assert "typeName=geoportal%3Alote_cidadao" in str(captured["url"])
     assert "cd_numero_porta" in str(captured["url"])
 
 
