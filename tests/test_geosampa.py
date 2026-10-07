@@ -6,7 +6,7 @@ from imobhunter.domain.models import SearchRequest
 from imobhunter.sources.geosampa import GeoSampaAdapter
 
 
-def test_geosampa_search_builds_filtered_wfs_request() -> None:
+def test_geosampa_search_builds_filtered_wfs_request_and_parses_current_fields() -> None:
     captured: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -17,16 +17,35 @@ def test_geosampa_search_builds_filtered_wfs_request() -> None:
                 "features": [
                     {
                         "type": "Feature",
-                        "geometry": {"type": "Point", "coordinates": [-46.65, -23.57]},
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [
+                                [
+                                    [-46.65, -23.57],
+                                    [-46.649, -23.57],
+                                    [-46.649, -23.569],
+                                    [-46.65, -23.569],
+                                    [-46.65, -23.57],
+                                ]
+                            ],
+                        },
                         "properties": {
+                            "cd_identificador": "123456",
                             "cd_setor_fiscal": "010",
                             "cd_quadra_fiscal": "020",
                             "cd_lote": "0030",
                             "cd_digito_sql": "1",
-                            "cd_contribuinte": "010.020.0030-1",
+                            "nr_contribuinte": "010.020.0030-1",
+                            "cd_cib": "ABC123",
                             "nm_logradouro_completo": "R PAMPLONA",
                             "cd_numero_porta": "1578",
                             "qt_area_terreno": "420.5",
+                            "qt_area_construida": "210.25",
+                            "cd_logradouro": "12345",
+                            "cd_condominio": "00",
+                            "tx_complemento_endereco": "FUNDOS",
+                            "tx_tipo_lote": "FISCAL",
+                            "tx_situ_lote": "ATIVO",
                         },
                     }
                 ]
@@ -38,7 +57,7 @@ def test_geosampa_search_builds_filtered_wfs_request() -> None:
 
     records = adapter.search(
         SearchRequest(
-            address="R Pamplona",
+            address="Rua Pamplona",
             number="1578",
             city="São Paulo",
             state="SP",
@@ -50,16 +69,26 @@ def test_geosampa_search_builds_filtered_wfs_request() -> None:
     assert records[0].state == "SP"
     assert records[0].block == "020"
     assert records[0].lot == "0030"
+    assert records[0].cib == "ABC123"
     assert records[0].area_m2 == 420.5
+    assert records[0].latitude == -23.5696
+    assert records[0].longitude == -46.6496
     assert records[0].attributes["sql"] == "010.020.0030-1"
+    assert records[0].attributes["built_area_m2"] == 210.25
+    assert records[0].attributes["lot_status"] == "ATIVO"
     assert "typeName=geoportal%3Alote_cidadao" in str(captured["url"])
+    assert "nm_logradouro_completo+ILIKE" in str(captured["url"])
     assert "cd_numero_porta" in str(captured["url"])
 
 
 def test_geosampa_ignores_non_sao_paulo_states() -> None:
-    adapter = GeoSampaAdapter(client=httpx.Client(transport=httpx.MockTransport(
-        lambda request: httpx.Response(200, json={"features": []})
-    )))
+    adapter = GeoSampaAdapter(
+        client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(200, json={"features": []})
+            )
+        )
+    )
 
     records = adapter.search(
         SearchRequest(address="Rua Pamplona", number="1578", state="RJ")
