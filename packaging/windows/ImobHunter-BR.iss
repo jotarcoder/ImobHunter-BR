@@ -1,11 +1,11 @@
 ; ImobHunter-BR Windows installer
 #define MyAppName "ImobHunter-BR"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.1.1"
 #define MyAppPublisher "ImobHunter-BR"
 #define MyAppExeName "ImobHunter-BR.exe"
 
 [Setup]
-AppId={{8A1C8C1E-6A25-4B54-9E0E-IMOBHUNTERBR}}
+AppId={{8A1C8C1E-6A25-4B54-9E0E-7A6B2C9F31D4}}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
