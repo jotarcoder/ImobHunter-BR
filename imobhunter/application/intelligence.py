@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-
 from imobhunter.domain.models import PropertyRecord, Provenance
 
 
