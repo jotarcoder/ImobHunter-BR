@@ -97,8 +97,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: release
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
+          tag_name: v0.1.1
+          fail_on_unmatched_files: true
           files: |
             release/ImobHunter-BR-Windows/*
             release/ImobHunter-BR-Linux/*
