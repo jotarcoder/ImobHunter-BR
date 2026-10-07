@@ -22,3 +22,37 @@ def test_normalize_request_rejects_invalid_state() -> None:
         assert "invalid Brazilian state" in str(exc)
     else:
         raise AssertionError("invalid state was accepted")
+
+
+def test_geosampa_street_type_and_name_are_separated() -> None:
+    result = normalize_request(
+        SearchRequest(address="Rua Pamplona", number="1578", city="São Paulo", state="SP")
+    )
+    assert result.street_type == "R"
+    assert result.street_title is None
+    assert result.street_name == "PAMPLONA"
+    assert result.number == "1578"
+
+
+def test_geosampa_accepts_abbreviated_street_type() -> None:
+    result = normalize_request(
+        SearchRequest(address="R Pamplona", number="1578", city="São Paulo", state="SP")
+    )
+    assert result.street_type == "R"
+    assert result.street_name == "PAMPLONA"
+
+
+def test_geosampa_separates_street_title() -> None:
+    result = normalize_request(
+        SearchRequest(address="Avenida Padre Anchieta", number="100", state="SP")
+    )
+    assert result.street_type == "AV"
+    assert result.street_title == "PADRE"
+    assert result.street_name == "ANCHIETA"
+
+
+def test_geosampa_preserves_untyped_street_name() -> None:
+    result = normalize_request(SearchRequest(address="PAMPLONA", number="1578"))
+    assert result.street_type is None
+    assert result.street_title is None
+    assert result.street_name == "PAMPLONA"
