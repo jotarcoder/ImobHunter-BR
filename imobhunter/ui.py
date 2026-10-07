@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 
 from PySide6.QtCore import QThreadPool, QObject, QRunnable, QUrl, Qt, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QFont, QIcon, QPixmap
@@ -339,9 +340,15 @@ def build_window(service: SearchService, coverage: DDDCoverageRegistry) -> MainW
     return MainWindow(service, coverage)
 
 
+def resource_path(relative: str) -> Path:
+    bundle_root = getattr(sys, "_MEIPASS", None)
+    if bundle_root:
+        return Path(bundle_root) / relative
+    return Path(__file__).resolve().parents[1] / relative
+
+
 def coverage_from_project_root() -> DDDCoverageRegistry:
-    root = Path(__file__).resolve().parents[1]
-    return load_ddd_coverage(root / "data" / "coverage" / "ddd.json")
+    return load_ddd_coverage(resource_path("data/coverage/ddd.json"))
 
 
 def apply_style(app: QApplication) -> None:
