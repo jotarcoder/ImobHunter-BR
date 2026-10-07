@@ -60,7 +60,7 @@ class CNPJAdapter(SourceAdapter):
             row_address = self._normalize_text(
                 " ".join(
                     str(row.get(key) or "")
-                    for key in ("logradouro", "tipo_logradouro", "numero", "complemento")
+                    for key in ("tipo_logradouro", "logradouro", "numero", "complemento")
                 )
             )
             row_city = self._normalize_text(
@@ -104,7 +104,9 @@ class CNPJAdapter(SourceAdapter):
     def _normalize_text(value: str) -> str:
         text = unicodedata.normalize("NFKD", value)
         text = "".join(char for char in text if not unicodedata.combining(char))
-        return re.sub(r"\s+", " ", re.sub(r"[^A-Z0-9]+", " ", text.upper())).strip()
+        text = text.upper()
+        text = re.sub(r"[^A-Z0-9]+", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
 
     @staticmethod
     def _to_record(row: dict[str, Any]) -> PropertyRecord:
@@ -178,8 +180,8 @@ class CNPJAdapter(SourceAdapter):
             area_m2=area_m2,
             owner_name=company_name,
             owner_document=cnpj,
+            attributes=attributes,
             latitude=float(row["latitude"]) if row.get("latitude") not in (None, "") else None,
             longitude=float(row["longitude"]) if row.get("longitude") not in (None, "") else None,
-            attributes=attributes,
             provenance=(Provenance(source_id="cnpj", confidence=0.95),),
         )
