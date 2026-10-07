@@ -56,6 +56,7 @@ class SNCRAdapter(SourceAdapter):
         for row in rows:
             location = str(
                 row.get("localizacao_imovel_rural")
+                or row.get("localizacaoImovelRural")
                 or row.get("localizacao")
                 or row.get("address")
                 or ""
@@ -96,36 +97,46 @@ class SNCRAdapter(SourceAdapter):
     def _to_record(row: dict[str, Any]) -> PropertyRecord:
         area = row.get("area_total") or row.get("areaTotal")
         area_m2 = float(area) * 10000 if area not in (None, "") else None
-        code = str(
-            row.get("codigo_imovel")
-            or row.get("codigoImovel")
-            or ""
-        ) or None
+        code = str(row.get("codigo_imovel") or row.get("codigoImovel") or "") or None
+        location = (
+            row.get("localizacao_imovel_rural")
+            or row.get("localizacaoImovelRural")
+            or row.get("localizacao")
+            or row.get("address")
+        )
 
         attributes = {
             key: row.get(key)
             for key in (
                 "nome_imovel_rural",
+                "nomeImovelRural",
                 "situacao_imovel",
+                "situacaoImovel",
                 "motivo_cancelamento",
+                "motivoCancelamento",
                 "data_cancelamento",
+                "dataCancelamento",
                 "qtd_area_modulos_fiscais",
+                "qtdAraeModulosFiscais",
                 "inibicao",
                 "data_inibicao",
+                "dataInibicao",
                 "codigo_certificacao_snci",
+                "codigoCertificacaoSnci",
                 "data_ultima_atualizacao_cadastral",
+                "dataUltimaAtualizacaoCadastral",
             )
             if row.get(key) not in (None, "")
         }
 
         return PropertyRecord(
             property_id=code,
-            address=row.get("localizacao_imovel_rural") or row.get("localizacao") or row.get("address"),
+            address=location,
             city=row.get("city") or row.get("municipio"),
             state=row.get("state") or row.get("uf"),
             area_m2=area_m2,
-            owner_name=row.get("nome_titular") or row.get("titular"),
-            owner_document=row.get("cpf_cnpj") or row.get("documento_titular"),
+            owner_name=row.get("nome_titular") or row.get("nomeTitular") or row.get("titular"),
+            owner_document=row.get("cpf_cnpj") or row.get("cpfCnpj") or row.get("documento_titular"),
             attributes=attributes,
             provenance=(Provenance(source_id="sncr", confidence=0.95),),
         )
