@@ -4,6 +4,7 @@ from .base import SourceAdapter
 from .cnefe import CNEFEAdapter
 from .cnir import CNIRAdapter
 from .cnpj import CNPJAdapter
+from .icmbio import ICMBioAdapter
 from .geosampa import GeoSampaAdapter
 from .sicar import SICARAdapter
 from .sigef import SIGEFAdapter
@@ -38,11 +39,11 @@ def build_default_registry() -> SourceRegistry:
     registry.register(SIGEFAdapter())
     registry.register(CNIRAdapter())
     registry.register(CNPJAdapter())
+    registry.register(ICMBioAdapter())
 
     sources = [
         ("municipal", "Municipal geoservices", "municipal"),
         ("inde", "INDE", "geospatial"),
-        ("icmbio", "ICMBio", "environmental"),
         ("iphan", "IPHAN", "heritage"),
         ("osm", "OpenStreetMap", "geospatial"),
     ]
