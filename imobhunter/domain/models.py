@@ -28,12 +28,26 @@ class SearchRequest:
     city: str | None = None
     state: str | None = None
 
+    def validate(self):
+        if not any((self.address, self.block, self.lot)):
+            raise ValueError("search request cannot be empty")
+        if self.number and not self.address:
+            raise ValueError("number requires address")
+        if bool(self.block) != bool(self.lot):
+            raise ValueError("block and lot must be provided together")
+        if not self.address and not (self.block and self.lot):
+            raise ValueError("address or block+lot is required")
+
 @dataclass(frozen=True)
 class Provenance:
     source_id: str
     retrieved_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     confidence: float = 0.0
     reference: str | None = None
+
+    def __post_init__(self):
+        if not 0 <= self.confidence <= 1:
+            raise ValueError("confidence must be between 0 and 1")
 
 @dataclass
 class PropertyRecord:
