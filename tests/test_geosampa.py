@@ -96,3 +96,48 @@ def test_geosampa_ignores_non_sao_paulo_states() -> None:
     )
 
     assert records == []
+
+
+
+def test_geosampa_surfaces_http_failures() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, request=request, text="unavailable")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = GeoSampaAdapter(client=client)
+
+    try:
+        adapter.search(
+            SearchRequest(
+                address="Rua Pamplona",
+                number="1578",
+                city="São Paulo",
+                state="SP",
+            )
+        )
+    except RuntimeError as exc:
+        assert "GeoSampa request failed" in str(exc)
+    else:
+        raise AssertionError("expected GeoSampa HTTP failure")
+
+
+def test_geosampa_surfaces_invalid_json() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, request=request, text="not-json")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = GeoSampaAdapter(client=client)
+
+    try:
+        adapter.search(
+            SearchRequest(
+                address="Rua Pamplona",
+                number="1578",
+                city="São Paulo",
+                state="SP",
+            )
+        )
+    except RuntimeError as exc:
+        assert str(exc) == "GeoSampa returned invalid JSON"
+    else:
+        raise AssertionError("expected GeoSampa JSON failure")
