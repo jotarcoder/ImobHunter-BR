@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from imobhunter.application.coverage import DDDCoverageRegistry, load_ddd_coverage
+from imobhunter.application.coverage import load_ddd_coverage
 from imobhunter.domain.models import CoverageProject
 
 
