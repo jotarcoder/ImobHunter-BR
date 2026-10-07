@@ -88,7 +88,7 @@ class INDECatalog:
         payload = json.loads(self.data_path.read_text(encoding="utf-8"))
         rows: Any = payload.get("services", payload) if isinstance(payload, dict) else payload
         if not isinstance(rows, list):
-            raise ValueError("INDE JSON catalog must contain a list of services")
+            raise TypeError("INDE JSON catalog must contain a list of services")
         return [self._from_mapping(row) for row in rows]
 
     @staticmethod
