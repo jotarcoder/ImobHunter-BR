@@ -10,6 +10,9 @@ class NormalizedAddress:
     number: str | None = None
     city: str | None = None
     state: str | None = None
+    street_type: str | None = None
+    street_title: str | None = None
+    street_name: str | None = None
 
 
 @dataclass(frozen=True)
