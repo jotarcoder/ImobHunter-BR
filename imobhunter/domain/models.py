@@ -64,6 +64,16 @@ class Provenance:
 
 
 @dataclass(frozen=True)
+class TaxDebt:
+    status: str
+    tax_type: str = "IPTU"
+    year: int | None = None
+    amount: float | None = None
+    due_date: str | None = None
+    description: str | None = None
+
+
+@dataclass(frozen=True)
 class PropertyRecord:
     property_id: str | None = None
     cib: str | None = None
@@ -78,4 +88,5 @@ class PropertyRecord:
     owner_name: str | None = None
     owner_document: str | None = None
     attributes: dict[str, Any] = field(default_factory=dict)
+    tax_debts: tuple[TaxDebt, ...] = ()
     provenance: tuple[Provenance, ...] = ()
