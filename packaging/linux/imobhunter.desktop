@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=ImobHunter-BR
+Comment=Inteligência imobiliária local-first
+Exec=ImobHunter-BR
+Icon=imobhunter
+Categories=Office;Utility;
+Terminal=false

@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "ImobHunter-BR | Central",
+  "version": "0.1.0",
+  "description": "Conheça o ImobHunter-BR, suas fontes, políticas e downloads oficiais.",
+  "action": {"default_title":"ImobHunter-BR","default_popup":"popup.html"},
+  "icons": {"128":"icon.svg"}
+}

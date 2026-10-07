@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, Signal, Slot
-from PySide6.QtGui import QFont
+from PySide6.QtCore import QThreadPool, QObject, QRunnable, QUrl, Qt, Signal, Slot
+from PySide6.QtGui import QDesktopServices, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -111,6 +111,8 @@ class MainWindow(QMainWindow):
         self.coverage = coverage
         self.thread_pool = QThreadPool.globalInstance()
         self.setWindowTitle("ImobHunter-BR")
+        logo_path = Path(__file__).resolve().parent / "assets" / "logo.svg"
+        self.setWindowIcon(QIcon(str(logo_path)))
         self.resize(1280, 820)
         self.setMinimumSize(1050, 700)
         self._build()
@@ -129,9 +131,15 @@ class MainWindow(QMainWindow):
         side.setContentsMargins(18, 22, 18, 18)
         side.setSpacing(8)
 
+        brand_row = QHBoxLayout()
+        brand_icon = QLabel()
+        brand_icon.setPixmap(QPixmap(str(Path(__file__).resolve().parent / "assets" / "logo.svg")).scaled(34, 34, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        brand_row.addWidget(brand_icon)
         brand = QLabel("ImobHunter")
         brand.setObjectName("brand")
-        side.addWidget(brand)
+        brand_row.addWidget(brand)
+        brand_row.addStretch()
+        side.addLayout(brand_row)
         subtitle = QLabel("Inteligência imobiliária")
         subtitle.setObjectName("muted")
         side.addWidget(subtitle)
@@ -140,6 +148,10 @@ class MainWindow(QMainWindow):
             button = QPushButton(text)
             button.setObjectName("nav")
             side.addWidget(button)
+        downloads = QPushButton("↓  Downloads e políticas")
+        downloads.setObjectName("nav")
+        downloads.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/jotarcoder/ImobHunter-BR/releases")))
+        side.addWidget(downloads)
         side.addStretch()
         local = QLabel("●  Processamento local")
         local.setStyleSheet("color:#72d49a;font-size:12px;font-weight:650;")
