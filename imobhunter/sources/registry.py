@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from .base import SourceAdapter
+from .cnefe import CNEFEAdapter
 from .geosampa import GeoSampaAdapter
 from .stub import ConfiguredSourceStub
 
@@ -24,9 +25,9 @@ class SourceRegistry:
 def build_default_registry() -> SourceRegistry:
     registry = SourceRegistry({})
     registry.register(GeoSampaAdapter())
+    registry.register(CNEFEAdapter())
 
     sources = [
-        ("ibge_cnefe", "IBGE / CNEFE", "address"),
         ("sinter_cib", "SINTER / CIB", "national_cadastre"),
         ("municipal", "Municipal geoservices", "municipal"),
         ("cnpj", "Receita Federal / CNPJ", "company"),
