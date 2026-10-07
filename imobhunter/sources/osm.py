@@ -76,6 +76,9 @@ class OSMAdapter(SourceAdapter):
                     or ""
                 )
             )
+            row_number = str(row.get("numero") or row.get("addr:housenumber") or "").strip()
+            if row_number and row_address:
+                row_address = self._normalize_text(f"{row_address} {row_number}")
             if query_address and row_address:
                 if query_address not in row_address:
                     continue
