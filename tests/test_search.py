@@ -1,5 +1,4 @@
 from pathlib import Path
-
 from imobhunter.application.search import SearchService
 from imobhunter.domain.models import SearchRequest
 from imobhunter.infrastructure.local_db import LocalDatabase
