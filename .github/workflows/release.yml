@@ -18,9 +18,15 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m pip install -e ".[desktop]" pyinstaller
-      - run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets;imobhunter/assets" imobhunter/__main__.py
+      - run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets;imobhunter/assets" packaging/entrypoint.py
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
+      - name: Generate Windows icon
+        shell: powershell
+        run: magick imobhunter/assets/logo.svg -background none -define icon:auto-resize=256,128,64,48,32,16 packaging/windows/logo.ico
+      - name: Build executable
+        shell: powershell
+        run: python -m PyInstaller --noconfirm --windowed --icon packaging/windows/logo.ico --name ImobHunter-BR --add-data "imobhunter/assets;imobhunter/assets" packaging/entrypoint.py
       - name: Build installer
         shell: powershell
         run: iscc packaging/windows/ImobHunter-BR.iss
@@ -40,8 +46,12 @@ jobs:
       - run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets:imobhunter/assets" imobhunter/__main__.py
       - name: Build AppImage
         run: |
-          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/scalable/apps
           cp -r dist/ImobHunter-BR AppDir/usr/bin/
+          cp packaging/linux/AppRun AppDir/AppRun
+          cp packaging/linux/imobhunter.desktop AppDir/usr/share/applications/imobhunter.desktop
+          cp imobhunter/assets/logo.svg AppDir/usr/share/icons/hicolor/scalable/apps/imobhunter.svg
+          chmod +x AppDir/AppRun
           wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
           chmod +x appimagetool
           ./appimagetool AppDir ImobHunter-BR-Linux.AppImage
