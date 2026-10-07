@@ -14,7 +14,7 @@ def test_landing_page_is_public_and_has_no_search_form() -> None:
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "ImobHunter-BR" in response.text
-    assert "Central de Downloads" in response.text
+    assert "CENTRAL DE DOWNLOADS" in response.text
     assert "<form" not in response.text.lower()
 
 
