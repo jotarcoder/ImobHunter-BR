@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+
 from imobhunter.domain.models import PropertyRecord, SearchRequest, SourceStatus
 
 class SourceAdapter(ABC):

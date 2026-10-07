@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from imobhunter.domain.models import PropertyRecord, Provenance
 
 SOURCE_PRIORITY = {
-    "sinter": 100,
+    "sinter_cib": 100,
     "geosampa": 95,
     "ibge_cnefe": 90,
     "municipal": 90,
@@ -11,6 +11,7 @@ SOURCE_PRIORITY = {
     "sicar": 85,
     "sigef": 85,
     "cnir": 85,
+    "cnpj": 75,
     "receita_cnpj": 75,
     "osm": 50,
 }
@@ -53,19 +54,22 @@ def _fields(record: PropertyRecord) -> dict[str, object]:
         **{f"attribute:{key}": value for key, value in record.attributes.items()},
     }
 
-def build_dossier(identity: str, records: tuple[PropertyRecord, ...]) -> PropertyDossier:
+def build_dossier(
+    identity: str, records: tuple[PropertyRecord, ...]
+) -> PropertyDossier:
     candidates: dict[str, list[PropertyFact]] = {}
     for record in records:
-        provenance = max(
-            record.provenance,
-            key=lambda item: (item.confidence, _priority(item.source_id)),
-            default=Provenance("unknown"),
-        )
         for field, value in _fields(record).items():
-            if value is not None and value != "":
-                candidates.setdefault(field, []).append(
-                    PropertyFact(field, value, provenance, _priority(provenance.source_id))
-                )
+            if value is None or value == "":
+                continue
+            provenance = max(
+                record.provenance,
+                key=lambda item: (item.confidence, _priority(item.source_id)),
+                default=Provenance("unknown"),
+            )
+            candidates.setdefault(field, []).append(
+                PropertyFact(field, value, provenance, _priority(provenance.source_id))
+            )
 
     chosen: list[PropertyFact] = []
     conflicts: list[PropertyConflict] = []
@@ -80,7 +84,7 @@ def build_dossier(identity: str, records: tuple[PropertyRecord, ...]) -> Propert
             reverse=True,
         )
         chosen.append(ranked[0])
-        values = []
+        values: list[object] = []
         for fact in ranked:
             if fact.value not in values:
                 values.append(fact.value)
@@ -89,11 +93,11 @@ def build_dossier(identity: str, records: tuple[PropertyRecord, ...]) -> Propert
 
     score, reasons = opportunity_score(tuple(chosen), tuple(conflicts))
     return PropertyDossier(
-        identity,
-        tuple(sorted(chosen, key=lambda fact: fact.field)),
-        tuple(sorted(conflicts, key=lambda conflict: conflict.field)),
-        score,
-        reasons,
+        identity=identity,
+        facts=tuple(sorted(chosen, key=lambda fact: fact.field)),
+        conflicts=tuple(sorted(conflicts, key=lambda conflict: conflict.field)),
+        score=score,
+        score_reasons=reasons,
     )
 
 def opportunity_score(

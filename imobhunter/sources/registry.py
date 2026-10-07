@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+
 from .base import SourceAdapter
 from .stub import ConfiguredSourceStub
 
@@ -7,6 +8,8 @@ class SourceRegistry:
     _sources: dict[str, SourceAdapter]
 
     def register(self, source: SourceAdapter) -> None:
+        if source.source_id in self._sources:
+            raise ValueError(f"source already registered: {source.source_id}")
         self._sources[source.source_id] = source
 
     def get(self, source_id: str) -> SourceAdapter | None:

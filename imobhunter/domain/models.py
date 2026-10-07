@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -28,7 +28,7 @@ class SearchRequest:
     city: str | None = None
     state: str | None = None
 
-    def validate(self):
+    def validate(self) -> None:
         if not any((self.address, self.block, self.lot)):
             raise ValueError("search request cannot be empty")
         if self.number and not self.address:
@@ -41,11 +41,11 @@ class SearchRequest:
 @dataclass(frozen=True)
 class Provenance:
     source_id: str
-    retrieved_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    retrieved_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     confidence: float = 0.0
     reference: str | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not 0 <= self.confidence <= 1:
             raise ValueError("confidence must be between 0 and 1")
 
