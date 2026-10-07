@@ -18,6 +18,7 @@ def test_default_registry_contains_core_sources() -> None:
         "icmbio",
         "iphan",
         "osm",
+        "municipal_iptu",
     } <= ids
 
 
