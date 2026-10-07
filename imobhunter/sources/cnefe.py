@@ -3,7 +3,8 @@ import json
 import os
 import unicodedata
 from pathlib import Path
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from imobhunter.application.address import normalize_request, normalize_text
 from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest, SourceStatus
