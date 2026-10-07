@@ -128,6 +128,8 @@ class GeoSampaAdapter(SourceAdapter):
                         "nm_logradouro_completo",
                         "nm_logradouro",
                     ),
+                    city="SAO PAULO",
+                    state="SP",
                     block=quadra,
                     lot=lote,
                     area_m2=_float(

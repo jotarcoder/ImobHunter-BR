@@ -68,6 +68,8 @@ class PropertyRecord:
     property_id: str | None = None
     cib: str | None = None
     address: str | None = None
+    city: str | None = None
+    state: str | None = None
     block: str | None = None
     lot: str | None = None
     area_m2: float | None = None
