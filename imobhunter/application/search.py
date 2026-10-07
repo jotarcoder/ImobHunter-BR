@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from imobhunter.application.address import normalize_request
 from imobhunter.application.intelligence import PropertyDossier, build_dossier
 from imobhunter.application.reconcile import reconcile
-from imobhunter.domain.models import NormalizedAddress, PropertyRecord, SearchRequest, SourceStatus
+from imobhunter.domain.models import NormalizedAddress, PropertyRecord, SearchRequest
 from imobhunter.infrastructure.local_db import LocalDatabase
 from imobhunter.sources.registry import SourceRegistry
 
@@ -52,7 +52,7 @@ class SearchService:
 
             try:
                 source_records = source.search(request)
-            except Exception as exc:
+            except (RuntimeError, ValueError) as exc:
                 source_results.append(
                     SourceSearchResult(
                         source_id=source.source_id,
