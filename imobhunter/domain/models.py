@@ -90,3 +90,18 @@ class PropertyRecord:
     attributes: dict[str, Any] = field(default_factory=dict)
     tax_debts: tuple[TaxDebt, ...] = ()
     provenance: tuple[Provenance, ...] = ()
+
+
+@dataclass(frozen=True)
+class CoverageProject:
+    ddd: str
+    states: tuple[str, ...]
+    label: str
+    municipalities: tuple[str, ...] = ()
+    source_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if len(self.ddd) != 2 or not self.ddd.isdigit():
+            raise ValueError("DDD must contain exactly two digits")
+        if not self.states:
+            raise ValueError("coverage project requires at least one state")
