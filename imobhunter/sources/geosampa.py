@@ -36,6 +36,39 @@ def _escape_cql(value: str) -> str:
     return value.replace("'", "''")
 
 
+def _representative_point(geometry: dict[str, Any]) -> tuple[float | None, float | None]:
+    geometry_type = geometry.get("type")
+    coordinates = geometry.get("coordinates")
+
+    if geometry_type == "Point" and isinstance(coordinates, list) and len(coordinates) >= 2:
+        return float(coordinates[1]), float(coordinates[0])
+
+    rings: list[list[list[float]]] = []
+    if geometry_type == "Polygon" and isinstance(coordinates, list):
+        rings = [ring for ring in coordinates if isinstance(ring, list)]
+    elif geometry_type == "MultiPolygon" and isinstance(coordinates, list):
+        rings = [
+            ring
+            for polygon in coordinates
+            if isinstance(polygon, list)
+            for ring in polygon
+            if isinstance(ring, list)
+        ]
+
+    points = [
+        (float(point[1]), float(point[0]))
+        for ring in rings
+        for point in ring
+        if isinstance(point, list) and len(point) >= 2
+    ]
+    if not points:
+        return None, None
+
+    latitude = sum(point[0] for point in points) / len(points)
+    longitude = sum(point[1] for point in points) / len(points)
+    return latitude, longitude
+
+
 class GeoSampaAdapter(SourceAdapter):
     source_id = "geosampa"
     name = "GeoSampa"
@@ -75,7 +108,7 @@ class GeoSampaAdapter(SourceAdapter):
             return []
 
         filters = [
-            f"strToUpperCase(nm_logradouro_completo) LIKE '%{_escape_cql(normalized.street_name)}%'",
+            f"nm_logradouro_completo ILIKE '%{_escape_cql(normalized.street_name)}%'",
             f"cd_numero_porta='{_escape_cql(normalized.number)}'",
         ]
         cql_filter = " AND ".join(filters)
@@ -108,21 +141,29 @@ class GeoSampaAdapter(SourceAdapter):
         for feature in payload.get("features", []):
             properties = feature.get("properties") or {}
             geometry = feature.get("geometry") or {}
-            coordinates = geometry.get("coordinates") or []
-            latitude = longitude = None
-            if geometry.get("type") == "Point" and len(coordinates) >= 2:
-                longitude, latitude = float(coordinates[0]), float(coordinates[1])
+            latitude, longitude = _representative_point(geometry)
 
             setor = _text(properties, "cd_setor_fiscal", "setor")
             quadra = _text(properties, "cd_quadra_fiscal", "quadra")
             lote = _text(properties, "cd_lote", "lote")
             digito = _text(properties, "cd_digito_sql", "digito_sql")
-            sql = f"{setor}.{quadra}.{lote}-{digito}" if setor and quadra and lote and digito else None
-            property_id = _text(properties, "cd_contribuinte", "codigo_contribuinte")
+            sql = _text(properties, "nr_contribuinte")
+            if not sql and setor and quadra and lote and digito:
+                sql = f"{setor}.{quadra}.{lote}-{digito}"
+            property_id = _text(
+                properties,
+                "cd_identificador",
+                "cd_identificador_original_lote",
+                "nr_contribuinte",
+                "cd_contribuinte",
+                "codigo_contribuinte",
+            )
+            cib = _text(properties, "cd_cib")
 
             records.append(
                 PropertyRecord(
                     property_id=property_id,
+                    cib=cib,
                     address=_text(
                         properties,
                         "nm_logradouro_completo",
@@ -143,6 +184,11 @@ class GeoSampaAdapter(SourceAdapter):
                         "source": self.source_id,
                         "sector": setor,
                         "sql": sql,
+                        "cib": cib,
+                        "built_area_m2": _float(properties, "qt_area_construida"),
+                        "street_code": _text(properties, "cd_logradouro"),
+                        "condominium": _text(properties, "cd_condominio"),
+                        "complement": _text(properties, "tx_complemento_endereco"),
                         "door_number": _text(
                             properties,
                             "cd_numero_porta",
