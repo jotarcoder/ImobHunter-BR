@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from .base import SourceAdapter
 from .cnefe import CNEFEAdapter
 from .cnir import CNIRAdapter
+from .cnpj import CNPJAdapter
 from .geosampa import GeoSampaAdapter
 from .sicar import SICARAdapter
 from .sigef import SIGEFAdapter
@@ -36,10 +37,10 @@ def build_default_registry() -> SourceRegistry:
     registry.register(SICARAdapter())
     registry.register(SIGEFAdapter())
     registry.register(CNIRAdapter())
+    registry.register(CNPJAdapter())
 
     sources = [
         ("municipal", "Municipal geoservices", "municipal"),
-        ("cnpj", "Receita Federal / CNPJ", "company"),
         ("inde", "INDE", "geospatial"),
         ("icmbio", "ICMBio", "environmental"),
         ("iphan", "IPHAN", "heritage"),
