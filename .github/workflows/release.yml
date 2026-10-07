@@ -1,0 +1,97 @@
+name: Release installers
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e ".[desktop]" pyinstaller
+      - run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets;imobhunter/assets" imobhunter/__main__.py
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+      - name: Build installer
+        shell: powershell
+        run: iscc packaging/windows/ImobHunter-BR.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-Windows
+          path: Output/ImobHunter-BR-Setup-Windows.exe
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e ".[desktop]" pyinstaller
+      - run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets:imobhunter/assets" imobhunter/__main__.py
+      - name: Build AppImage
+        run: |
+          mkdir -p AppDir/usr/bin
+          cp -r dist/ImobHunter-BR AppDir/usr/bin/
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
+          chmod +x appimagetool
+          ./appimagetool AppDir ImobHunter-BR-Linux.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-Linux
+          path: ImobHunter-BR-Linux.AppImage
+
+  macos-intel:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e ".[desktop]" pyinstaller
+      - run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets:imobhunter/assets" imobhunter/__main__.py
+      - run: hdiutil create -volname ImobHunter-BR -srcfolder dist/ImobHunter-BR.app -ov -format UDZO ImobHunter-BR-macOS-Intel.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-macOS-Intel
+          path: ImobHunter-BR-macOS-Intel.dmg
+
+  macos-arm:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e ".[desktop]" pyinstaller
+      - run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets:imobhunter/assets" imobhunter/__main__.py
+      - run: hdiutil create -volname ImobHunter-BR -srcfolder dist/ImobHunter-BR.app -ov -format UDZO ImobHunter-BR-macOS-AppleSilicon.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-macOS-AppleSilicon
+          path: ImobHunter-BR-macOS-AppleSilicon.dmg
+
+  publish:
+    needs: [windows, linux, macos-intel, macos-arm]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/ImobHunter-BR-Windows/*
+            release/ImobHunter-BR-Linux/*
+            release/ImobHunter-BR-macOS-Intel/*
+            release/ImobHunter-BR-macOS-AppleSilicon/*
+          generate_release_notes: true
