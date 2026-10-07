@@ -124,10 +124,10 @@ class ICMBioAdapter(SourceAdapter):
     @staticmethod
     def _flatten_feature(feature: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(feature, dict):
-            raise ValueError("ICMBio GeoJSON feature must be an object")
+            raise TypeError("ICMBio GeoJSON feature must be an object")
         properties = feature.get("properties") or {}
         if not isinstance(properties, dict):
-            raise ValueError("ICMBio feature properties must be an object")
+            raise TypeError("ICMBio feature properties must be an object")
         row = dict(properties)
         geometry = feature.get("geometry")
         if geometry is not None:
