@@ -7,11 +7,13 @@ from imobhunter.domain.models import NormalizedAddress, PropertyRecord, SearchRe
 from imobhunter.infrastructure.local_db import LocalDatabase
 from imobhunter.sources.registry import SourceRegistry
 
+
 @dataclass(frozen=True)
 class SearchResult:
     normalized: NormalizedAddress
     records: tuple[PropertyRecord, ...]
     dossiers: tuple[PropertyDossier, ...]
+
 
 class SearchService:
     def __init__(self, registry: SourceRegistry, database: LocalDatabase) -> None:
