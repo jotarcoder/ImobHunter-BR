@@ -4,6 +4,7 @@ from .base import SourceAdapter
 from .cnefe import CNEFEAdapter
 from .geosampa import GeoSampaAdapter
 from .sicar import SICARAdapter
+from .sigef import SIGEFAdapter
 from .sinter import SINTERAdapter
 from .sncr import SNCRAdapter
 from .stub import ConfiguredSourceStub
@@ -32,11 +33,11 @@ def build_default_registry() -> SourceRegistry:
     registry.register(SINTERAdapter())
     registry.register(SNCRAdapter())
     registry.register(SICARAdapter())
+    registry.register(SIGEFAdapter())
 
     sources = [
         ("municipal", "Municipal geoservices", "municipal"),
         ("cnpj", "Receita Federal / CNPJ", "company"),
-        ("sigef", "SIGEF", "rural"),
         ("inde", "INDE", "geospatial"),
         ("icmbio", "ICMBio", "environmental"),
         ("iphan", "IPHAN", "heritage"),
