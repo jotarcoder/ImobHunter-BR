@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, Signal, Slot
-from PySide6.QtGui import QFont, QIcon, QPixmap
+from PySide6.QtGui import QDesktopServices, QFont, QIcon, QPixmap
+from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -148,6 +149,10 @@ class MainWindow(QMainWindow):
             button = QPushButton(text)
             button.setObjectName("nav")
             side.addWidget(button)
+        downloads = QPushButton("↓  Downloads e políticas")
+        downloads.setObjectName("nav")
+        downloads.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/jotarcoder/ImobHunter-BR/releases")))
+        side.addWidget(downloads)
         side.addStretch()
         local = QLabel("●  Processamento local")
         local.setStyleSheet("color:#72d49a;font-size:12px;font-weight:650;")
