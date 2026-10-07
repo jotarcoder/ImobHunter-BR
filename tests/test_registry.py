@@ -16,6 +16,7 @@ def test_default_registry_contains_core_sources() -> None:
         "cnir",
         "cnpj",
         "icmbio",
+        "iphan",
         "osm",
     } <= ids
 
