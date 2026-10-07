@@ -1,5 +1,7 @@
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
+
 
 class LocalDatabase:
     def __init__(self, path: Path) -> None:
@@ -22,8 +24,6 @@ class LocalDatabase:
             conn.commit()
 
     def record_search(self, query: str) -> None:
-        from datetime import UTC, datetime
-
         with sqlite3.connect(self.path) as conn:
             conn.execute(
                 "INSERT INTO searches(query, created_at) VALUES (?, ?)",

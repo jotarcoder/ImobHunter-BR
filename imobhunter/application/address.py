@@ -6,16 +6,20 @@ from imobhunter.domain.models import NormalizedAddress, SearchRequest
 _SPACES = re.compile(r"\s+")
 _PUNCT = re.compile(r"[,.;:]+")
 _VALID_UFS = frozenset(
-    "AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO".split()
+    ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
+     "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"]
 )
+
 
 def normalize_text(value: str | None) -> str | None:
     if value is None:
         return None
     value = unicodedata.normalize("NFKD", value)
-    value = "".join(ch for ch in value if not unicodedata.combining(ch))
-    value = _PUNCT.sub(" ", value.upper())
-    return _SPACES.sub(" ", value).strip() or None
+    value = "".join(char for char in value if not unicodedata.combining(char))
+    value = _PUNCT.sub(" ", value)
+    value = _SPACES.sub(" ", value).strip().upper()
+    return value or None
+
 
 def normalize_request(request: SearchRequest) -> NormalizedAddress:
     address = normalize_text(request.address) or ""

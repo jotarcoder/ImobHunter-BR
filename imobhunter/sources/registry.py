@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from .base import SourceAdapter
 from .stub import ConfiguredSourceStub
 
+
 @dataclass
 class SourceRegistry:
     _sources: dict[str, SourceAdapter]
@@ -17,6 +18,7 @@ class SourceRegistry:
 
     def all(self) -> list[SourceAdapter]:
         return list(self._sources.values())
+
 
 def build_default_registry() -> SourceRegistry:
     registry = SourceRegistry({})

@@ -1,42 +1,52 @@
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
 from typing import Any
+
 
 @dataclass(frozen=True)
 class NormalizedAddress:
     original: str
     normalized: str
     number: str | None = None
-    neighborhood: str | None = None
     city: str | None = None
     state: str | None = None
-    postal_code: str | None = None
 
-class SourceStatus(str, Enum):
-    AVAILABLE = "available"
-    UNAVAILABLE = "unavailable"
-    REQUIRES_AUTH = "requires_auth"
-    NOT_CONFIGURED = "not_configured"
 
 @dataclass(frozen=True)
+class SourceStatus:
+    source_id: str
+    name: str
+    status: str
+    message: str | None = None
+
+
 class SearchRequest:
-    address: str | None = None
-    number: str | None = None
-    block: str | None = None
-    lot: str | None = None
-    city: str | None = None
-    state: str | None = None
+    def __init__(
+        self,
+        address: str | None = None,
+        number: str | None = None,
+        city: str | None = None,
+        state: str | None = None,
+        block: str | None = None,
+        lot: str | None = None,
+    ) -> None:
+        self.address = address
+        self.number = number
+        self.city = city
+        self.state = state
+        self.block = block
+        self.lot = lot
 
     def validate(self) -> None:
         if not any((self.address, self.block, self.lot)):
             raise ValueError("search request cannot be empty")
         if self.number and not self.address:
-            raise ValueError("number requires address")
-        if bool(self.block) != bool(self.lot):
+            raise ValueError("number requires an address")
+        if (self.block and not self.lot) or (self.lot and not self.block):
             raise ValueError("block and lot must be provided together")
         if not self.address and not (self.block and self.lot):
             raise ValueError("address or block+lot is required")
+
 
 @dataclass(frozen=True)
 class Provenance:
@@ -49,18 +59,18 @@ class Provenance:
         if not 0 <= self.confidence <= 1:
             raise ValueError("confidence must be between 0 and 1")
 
-@dataclass
+
+@dataclass(frozen=True)
 class PropertyRecord:
     property_id: str | None = None
+    cib: str | None = None
     address: str | None = None
-    city: str | None = None
-    state: str | None = None
-    postal_code: str | None = None
     block: str | None = None
     lot: str | None = None
-    cib: str | None = None
     area_m2: float | None = None
     latitude: float | None = None
     longitude: float | None = None
+    owner_name: str | None = None
+    owner_document: str | None = None
     attributes: dict[str, Any] = field(default_factory=dict)
-    provenance: list[Provenance] = field(default_factory=list)
+    provenance: tuple[Provenance, ...] = ()

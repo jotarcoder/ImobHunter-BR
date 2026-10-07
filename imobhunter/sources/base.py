@@ -2,9 +2,11 @@ from abc import ABC, abstractmethod
 
 from imobhunter.domain.models import PropertyRecord, SearchRequest, SourceStatus
 
+
 class SourceAdapter(ABC):
     source_id: str
     name: str
+    category: str
 
     @abstractmethod
     def status(self) -> SourceStatus:

@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-
 from imobhunter.domain.models import PropertyRecord, Provenance
 
 
@@ -48,12 +47,10 @@ def _priority(source_id: str) -> int:
 def _fields(record: PropertyRecord) -> dict[str, object]:
     return {
         "address": record.address,
-        "city": record.city,
-        "state": record.state,
-        "postal_code": record.postal_code,
+        "cib": record.cib,
+        "property_id": record.property_id,
         "block": record.block,
         "lot": record.lot,
-        "cib": record.cib,
         "area_m2": record.area_m2,
         "latitude": record.latitude,
         "longitude": record.longitude,
@@ -112,28 +109,27 @@ def opportunity_score(
     facts: tuple[PropertyFact, ...],
     conflicts: tuple[PropertyConflict, ...],
 ) -> tuple[float, tuple[str, ...]]:
-    score = 0
-    reasons: list[str] = []
     fields = {fact.field for fact in facts}
+    score = 0.0
+    reasons: list[str] = []
 
-    if "cib" in fields:
-        score += 25
-        reasons.append("identificador cadastral nacional presente")
-    if "block" in fields and "lot" in fields:
-        score += 20
-        reasons.append("quadra e lote identificados")
-    if "area_m2" in fields:
-        score += 15
-        reasons.append("área do terreno disponível")
-    if "latitude" in fields and "longitude" in fields:
-        score += 15
-        reasons.append("localização geográfica resolvida")
-    if "address" in fields:
-        score += 10
-        reasons.append("endereço identificado")
-    if conflicts:
-        penalty = min(20, len(conflicts) * 5)
+    checks = (
+        ("cib", 25.0, "CIB identificado"),
+        ("block", 20.0, "Quadra identificada"),
+        ("lot", 20.0, "Lote identificado"),
+        ("area_m2", 15.0, "Área identificada"),
+        ("latitude", 7.5, "Latitude identificada"),
+        ("longitude", 7.5, "Longitude identificada"),
+        ("address", 10.0, "Endereço identificado"),
+    )
+    for field, points, reason in checks:
+        if field in fields:
+            score += points
+            reasons.append(reason)
+
+    penalty = min(20.0, sum(2.5 for _ in conflicts))
+    if penalty:
         score -= penalty
-        reasons.append(f"{len(conflicts)} conflito(s) entre fontes")
+        reasons.append(f"{len(conflicts)} conflito(s) reduzem a confiança")
 
-    return max(0, min(100, float(score))), tuple(reasons)
+    return max(0.0, min(100.0, score)), tuple(reasons)
