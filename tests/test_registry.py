@@ -6,7 +6,7 @@ from imobhunter.sources.stub import ConfiguredSourceStub
 
 def test_default_registry_contains_core_sources() -> None:
     ids = {source.source_id for source in build_default_registry().all()}
-    assert {"ibge_cnefe", "sinter_cib", "geosampa", "sicar", "osm"} <= ids
+    assert {"ibge_cnefe", "sinter_cib", "geosampa", "sncr", "sicar", "osm"} <= ids
 
 
 def test_registry_rejects_duplicate_source() -> None:
