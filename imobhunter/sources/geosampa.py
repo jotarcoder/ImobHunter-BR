@@ -128,8 +128,10 @@ class GeoSampaAdapter(SourceAdapter):
             response = client.get(self.endpoint, params=params)
             response.raise_for_status()
             payload = response.json()
-        except (httpx.HTTPError, ValueError):
-            return []
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"GeoSampa request failed: {exc}") from exc
+        except ValueError as exc:
+            raise RuntimeError("GeoSampa returned invalid JSON") from exc
         finally:
             if close_client:
                 client.close()
