@@ -14,6 +14,7 @@ def test_default_registry_contains_core_sources() -> None:
         "sicar",
         "sigef",
         "cnir",
+        "cnpj",
         "osm",
     } <= ids
 
