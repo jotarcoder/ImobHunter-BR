@@ -214,14 +214,23 @@ class ICMBioAdapter(SourceAdapter):
         if management:
             attributes["management"] = management
 
+        latitude = float(row["latitude"]) if row.get("latitude") not in (None, "") else None
+        longitude = float(row["longitude"]) if row.get("longitude") not in (None, "") else None
+        geometry = row.get("geometry")
+        if latitude is None and longitude is None and isinstance(geometry, dict) and geometry.get("type") == "Point":
+            coordinates = geometry.get("coordinates")
+            if isinstance(coordinates, list) and len(coordinates) >= 2:
+                longitude = float(coordinates[0])
+                latitude = float(coordinates[1])
+
         return PropertyRecord(
             property_id=unit_id,
             address=row.get("endereco") or row.get("address") or row.get("localizacao"),
             city=row.get("municipio") or row.get("city") or row.get("municipality"),
             state=row.get("uf") or row.get("state"),
             area_m2=area,
-            latitude=float(row["latitude"]) if row.get("latitude") not in (None, "") else None,
-            longitude=float(row["longitude"]) if row.get("longitude") not in (None, "") else None,
+            latitude=latitude,
+            longitude=longitude,
             attributes=attributes,
             provenance=(Provenance(source_id="icmbio", confidence=0.95),),
         )
