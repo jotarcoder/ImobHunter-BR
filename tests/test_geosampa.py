@@ -46,6 +46,8 @@ def test_geosampa_search_builds_filtered_wfs_request() -> None:
     )
 
     assert len(records) == 1
+    assert records[0].city == "SAO PAULO"
+    assert records[0].state == "SP"
     assert records[0].block == "020"
     assert records[0].lot == "0030"
     assert records[0].area_m2 == 420.5
