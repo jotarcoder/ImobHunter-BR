@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from .base import SourceAdapter
 from .cnefe import CNEFEAdapter
+from .cnir import CNIRAdapter
 from .geosampa import GeoSampaAdapter
 from .sicar import SICARAdapter
 from .sigef import SIGEFAdapter
@@ -34,6 +35,7 @@ def build_default_registry() -> SourceRegistry:
     registry.register(SNCRAdapter())
     registry.register(SICARAdapter())
     registry.register(SIGEFAdapter())
+    registry.register(CNIRAdapter())
 
     sources = [
         ("municipal", "Municipal geoservices", "municipal"),
