@@ -61,7 +61,7 @@ class MunicipalIPTUAdapter(SourceAdapter):
         if isinstance(payload, dict):
             payload = payload.get("data", payload.get("items", payload))
         if not isinstance(payload, list):
-            raise ValueError("IPTU JSON must contain a list or data/items list")
+            raise TypeError("IPTU JSON must contain a list or data/items list")
         return payload
 
     @staticmethod
