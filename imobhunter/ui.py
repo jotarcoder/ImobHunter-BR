@@ -25,44 +25,33 @@ from .domain.models import SearchRequest
 
 
 APP_STYLE = """
-QMainWindow, QWidget { background: #0b0f17; color: #e7edf7; font-family: "Segoe UI"; }
-QFrame#sidebar { background: #0f1520; border-right: 1px solid #202938; }
-QFrame#card { background: #111925; border: 1px solid #202b3b; border-radius: 16px; }
-QFrame#hero { background: #111a29; border: 1px solid #26344a; border-radius: 20px; }
-QLabel#brand { font-size: 22px; font-weight: 800; color: #f6f8fc; }
-QLabel#muted { color: #8e9bb0; font-size: 12px; }
-QLabel#title { font-size: 30px; font-weight: 800; color: #f6f8fc; }
-QLabel#section { font-size: 14px; font-weight: 700; color: #dbe4f3; }
-QLabel#metric { font-size: 25px; font-weight: 800; color: #f6f8fc; }
-QLineEdit {
-    background: #0b111c; border: 1px solid #29364a; border-radius: 11px;
-    padding: 11px 13px; color: #f6f8fc; selection-background-color: #315b9b;
-}
-QLineEdit:focus { border: 1px solid #5b8def; }
-QPushButton {
-    background: #182235; border: 1px solid #2a3950; border-radius: 10px;
-    padding: 9px 13px; color: #e9eff9; font-weight: 650;
-}
-QPushButton:hover { background: #21304a; border-color: #3e587e; }
-QPushButton:pressed { background: #162035; }
-QPushButton#primary {
-    background: #4f7cff; border: 1px solid #5e88ff; color: white;
-    padding: 11px 18px; border-radius: 11px;
-}
-QPushButton#primary:hover { background: #628cff; }
-QPushButton#nav {
-    text-align: left; padding: 10px 12px; border: 0; background: transparent;
-    color: #9ca9bc; border-radius: 9px;
-}
-QPushButton#nav:hover { background: #182233; color: #eef4ff; }
-QPushButton#ddd {
-    padding: 7px 12px; border-radius: 9px; background: #131d2c;
-    border: 1px solid #26354b; min-width: 64px;
-}
-QPushButton#ddd:hover { background: #1b2a41; border-color: #4f7cff; }
-QScrollArea { border: 0; background: transparent; }
-QProgressBar { background: #182233; border: 0; border-radius: 4px; height: 7px; }
-QProgressBar::chunk { background: #4f7cff; border-radius: 4px; }
+QMainWindow, QWidget { background:#07111b; color:#eaf2f7; font-family:"Segoe UI"; }
+QFrame#sidebar { background:#091722; border-right:1px solid #183044; }
+QFrame#card { background:#0c1926; border:1px solid #1b3348; border-radius:16px; }
+QFrame#hero { background:linear-gradient(145deg,#0d1d2d,#0a1724); border:1px solid #214058; border-radius:20px; }
+QLabel#brand { font-size:20px; font-weight:800; color:#f4f8fb; }
+QLabel#muted { color:#7f96a9; font-size:12px; }
+QLabel#title { font-size:31px; font-weight:800; color:#f4f8fb; }
+QLabel#section { font-size:14px; font-weight:750; color:#dce8ef; }
+QLabel#metric { font-size:24px; font-weight:800; color:#f4f8fb; }
+QLabel#resultTitle { font-size:18px; font-weight:800; color:#f4f8fb; }
+QLineEdit { background:#07131f; border:1px solid #20384d; border-radius:11px; padding:11px 13px; color:#f4f8fb; selection-background-color:#236a47; }
+QLineEdit:hover { border-color:#31536d; }
+QLineEdit:focus { border:1px solid #35ff77; background:#081622; }
+QPushButton { background:#101f2e; border:1px solid #234057; border-radius:10px; padding:9px 13px; color:#e9f1f5; font-weight:650; }
+QPushButton:hover { background:#162b3d; border-color:#37627c; }
+QPushButton:pressed { background:#0d1b28; }
+QPushButton:disabled { color:#536a7b; background:#0d1822; border-color:#182b3a; }
+QPushButton#primary { background:#35ff77; border:1px solid #35ff77; color:#04110a; padding:11px 18px; border-radius:11px; font-weight:800; }
+QPushButton#primary:hover { background:#5aff91; }
+QPushButton#nav { text-align:left; padding:11px 12px; border:0; background:transparent; color:#8da2b2; border-radius:9px; }
+QPushButton#nav:hover { background:#102332; color:#f1f7fa; }
+QPushButton#nav:checked { background:#123325; color:#65ff98; border-left:2px solid #35ff77; }
+QPushButton#ddd { padding:7px 12px; border-radius:9px; background:#0c1a27; border:1px solid #1d354a; min-width:72px; }
+QPushButton#ddd:hover { background:#13283a; border-color:#35ff77; color:#f4fff7; }
+QScrollArea { border:0; background:transparent; }
+QProgressBar { background:#17293a; border:0; border-radius:4px; height:7px; }
+QProgressBar::chunk { background:#35ff77; border-radius:4px; }
 """
 
 
@@ -114,8 +103,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("ImobHunter-BR")
         logo_path = Path(__file__).resolve().parent / "assets" / "logo.svg"
         self.setWindowIcon(QIcon(str(logo_path)))
-        self.resize(1280, 820)
-        self.setMinimumSize(1050, 700)
+        self.resize(1320, 820)
+        self.setMinimumSize(980, 680)
         self._build()
         self._populate_coverage()
 
@@ -144,18 +133,36 @@ class MainWindow(QMainWindow):
         subtitle = QLabel("Inteligência imobiliária")
         subtitle.setObjectName("muted")
         side.addWidget(subtitle)
-        side.addSpacing(24)
-        for text in ("⌕  Prospecção", "▦  Cobertura", "◈  Fontes", "⚙  Configurações"):
-            button = QPushButton(text)
-            button.setObjectName("nav")
-            side.addWidget(button)
+        side.addSpacing(20)
+        self.nav_prospect = QPushButton("⌕  Prospecção")
+        self.nav_prospect.setObjectName("nav")
+        self.nav_prospect.setCheckable(True)
+        self.nav_prospect.setChecked(True)
+        self.nav_prospect.clicked.connect(lambda: self.address.setFocus())
+        side.addWidget(self.nav_prospect)
+
+        self.nav_coverage = QPushButton("▦  Cobertura")
+        self.nav_coverage.setObjectName("nav")
+        self.nav_coverage.clicked.connect(lambda: self.coverage_scroll.setFocus())
+        side.addWidget(self.nav_coverage)
+
+        self.nav_sources = QPushButton("◈  Fontes")
+        self.nav_sources.setObjectName("nav")
+        self.nav_sources.clicked.connect(self._show_sources)
+        side.addWidget(self.nav_sources)
+
+        self.nav_settings = QPushButton("⚙  Configurações")
+        self.nav_settings.setObjectName("nav")
+        self.nav_settings.clicked.connect(self._show_settings)
+        side.addWidget(self.nav_settings)
+
         downloads = QPushButton("↓  Downloads e políticas")
         downloads.setObjectName("nav")
         downloads.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/jotarcoder/ImobHunter-BR/releases")))
         side.addWidget(downloads)
         side.addStretch()
-        local = QLabel("●  Processamento local")
-        local.setStyleSheet("color:#72d49a;font-size:12px;font-weight:650;")
+        local = QLabel("●  Processamento local\n   Dados pesados permanecem no PC")
+        local.setStyleSheet("color:#6ee89a;font-size:11px;font-weight:650;")
         side.addWidget(local)
         shell.addWidget(sidebar)
 
@@ -257,6 +264,7 @@ class MainWindow(QMainWindow):
         results_layout = QVBoxLayout(results)
         results_layout.setContentsMargins(18, 16, 18, 16)
         results_title = QLabel("Resultado da pesquisa")
+        results_title.setObjectName("resultTitle")
         results_title.setObjectName("section")
         results_layout.addWidget(results_title)
         self.result_text = QLabel(
@@ -271,6 +279,22 @@ class MainWindow(QMainWindow):
         root.setLayout(shell)
         shell.addWidget(content, 1)
         self.setCentralWidget(root)
+
+    def _show_sources(self) -> None:
+        QMessageBox.information(
+            self,
+            "Fontes",
+            "O ImobHunter consulta apenas fontes configuradas e autorizadas. "
+            "A tela de resultados informa as fontes utilizadas e o nível de confiança."
+        )
+
+    def _show_settings(self) -> None:
+        QMessageBox.information(
+            self,
+            "Configurações",
+            "A configuração avançada será liberada conforme os módulos do sistema forem ativados. "
+            "Por enquanto, o aplicativo mantém o processamento local e o banco de pesquisa no computador."
+        )
 
     def _populate_coverage(self) -> None:
         for project in self.coverage.all():
