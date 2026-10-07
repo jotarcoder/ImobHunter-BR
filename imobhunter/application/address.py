@@ -61,7 +61,6 @@ _STREET_TYPES = {
     "PCA": "PCA",
     "PC": "PCA",
     "PRACA": "PCA",
-    "PRACA": "PCA",
     "LGO": "LGO",
     "LARGO": "LGO",
     "BECO": "BC",
