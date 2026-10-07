@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from imobhunter.domain.models import PropertyRecord, Provenance
 
+
 SOURCE_PRIORITY = {
     "sinter_cib": 100,
     "geosampa": 95,
@@ -16,6 +17,7 @@ SOURCE_PRIORITY = {
     "osm": 50,
 }
 
+
 @dataclass(frozen=True)
 class PropertyFact:
     field: str
@@ -23,10 +25,12 @@ class PropertyFact:
     provenance: Provenance
     source_priority: int
 
+
 @dataclass(frozen=True)
 class PropertyConflict:
     field: str
     values: tuple[object, ...]
+
 
 @dataclass(frozen=True)
 class PropertyDossier:
@@ -36,8 +40,10 @@ class PropertyDossier:
     score: float
     score_reasons: tuple[str, ...]
 
+
 def _priority(source_id: str) -> int:
     return SOURCE_PRIORITY.get(source_id, 40)
+
 
 def _fields(record: PropertyRecord) -> dict[str, object]:
     return {
@@ -53,6 +59,7 @@ def _fields(record: PropertyRecord) -> dict[str, object]:
         "longitude": record.longitude,
         **{f"attribute:{key}": value for key, value in record.attributes.items()},
     }
+
 
 def build_dossier(
     identity: str, records: tuple[PropertyRecord, ...]
@@ -99,6 +106,7 @@ def build_dossier(
         score=score,
         score_reasons=reasons,
     )
+
 
 def opportunity_score(
     facts: tuple[PropertyFact, ...],

@@ -4,16 +4,21 @@ from dataclasses import dataclass
 from imobhunter.domain.identity import identity_keys
 from imobhunter.domain.models import PropertyRecord
 
+
 @dataclass(frozen=True)
 class PropertyCluster:
     identity: str
     records: tuple[PropertyRecord, ...]
     identity_keys: frozenset[str]
 
-def reconcile(records: tuple[PropertyRecord, ...] | list[PropertyRecord]) -> tuple[PropertyCluster, ...]:
+
+def reconcile(
+    records: tuple[PropertyRecord, ...] | list[PropertyRecord],
+) -> tuple[PropertyCluster, ...]:
     records = tuple(records)
     if not records:
         return ()
+
     parent = list(range(len(records)))
 
     def find(index: int) -> int:

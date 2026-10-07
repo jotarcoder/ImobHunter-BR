@@ -3,10 +3,12 @@ from datetime import UTC, datetime
 from imobhunter.application.intelligence import build_dossier
 from imobhunter.domain.models import PropertyRecord, Provenance
 
+
 def provenance(source_id: str, confidence: float) -> Provenance:
     return Provenance(source_id, datetime.now(UTC), confidence)
 
-def test_dossier_prefers_high_confidence_and_keeps_conflict():
+
+def test_dossier_prefers_high_confidence_and_keeps_conflict() -> None:
     first = PropertyRecord(
         cib="ABC1234-5",
         address="Rua A",
