@@ -6,6 +6,7 @@ from .cnir import CNIRAdapter
 from .cnpj import CNPJAdapter
 from .icmbio import ICMBioAdapter
 from .iphan import IPHANAdapter
+from .municipal_iptu import MunicipalIPTUAdapter
 from .osm import OSMAdapter
 from .geosampa import GeoSampaAdapter
 from .sicar import SICARAdapter
@@ -44,6 +45,7 @@ def build_default_registry() -> SourceRegistry:
     registry.register(ICMBioAdapter())
     registry.register(IPHANAdapter())
     registry.register(OSMAdapter())
+    registry.register(MunicipalIPTUAdapter())
 
     sources = [
         ("municipal", "Municipal geoservices", "municipal"),
