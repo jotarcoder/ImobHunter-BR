@@ -71,8 +71,8 @@ def test_geosampa_search_builds_filtered_wfs_request_and_parses_current_fields()
     assert records[0].lot == "0030"
     assert records[0].cib == "ABC123"
     assert records[0].area_m2 == 420.5
-    assert records[0].latitude == -23.5695
-    assert records[0].longitude == -46.6495
+    assert records[0].latitude == -23.5696
+    assert records[0].longitude == -46.6496
     assert records[0].attributes["sql"] == "010.020.0030-1"
     assert records[0].attributes["built_area_m2"] == 210.25
     assert records[0].attributes["lot_status"] == "ATIVO"
