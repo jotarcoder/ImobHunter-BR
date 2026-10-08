@@ -93,7 +93,7 @@ class License(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     user: Mapped[User] = relationship(back_populates="licenses")
-    devices: Mapped[list["Device"]] = relationship(back_populates="license", cascade="all, delete-orphan")
+    devices: Mapped[list[Device]] = relationship(back_populates="license", cascade="all, delete-orphan")
 
 
 class Device(Base):
