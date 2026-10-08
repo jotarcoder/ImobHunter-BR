@@ -104,7 +104,7 @@ def test_cnefe_zip_search(tmp_path) -> None:
 
 
 def test_cnefe_remote_resolves_municipality_and_uses_cache(tmp_path, monkeypatch) -> None:
-    import imobhunter.sources.cnefe as cnefe
+    from imobhunter.sources import cnefe
 
     source_zip = tmp_path / "3550308_SAO_PAULO.zip"
     csv_content = (
