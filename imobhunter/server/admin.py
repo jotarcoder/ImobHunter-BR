@@ -307,12 +307,12 @@ def admin_logout(request: Request, response: Response):
 
 
 @router.get("/api/admin/me")
-def admin_me(admin_user: Admin = Depends(require_admin)):
+def admin_me(admin_user: Admin = REQUIRE_ADMIN):
     return {"email": admin_user.email, "role": admin_user.role}
 
 
 @router.get("/api/admin/dashboard")
-def dashboard(admin_user: Admin = Depends(require_admin)):
+def dashboard(admin_user: Admin = REQUIRE_ADMIN):
     with db() as session:
         return {
             "users": session.scalar(select(func.count()).select_from(User)) or 0,
@@ -325,7 +325,7 @@ def dashboard(admin_user: Admin = Depends(require_admin)):
 
 
 @router.get("/api/admin/users")
-def users(admin_user: Admin = Depends(require_admin)):
+def users(admin_user: Admin = REQUIRE_ADMIN):
     with db() as session:
         return [{"id": u.id, "public_id": u.public_id, "name": u.name, "email": u.email, "status": u.status,
                  "created_at": u.created_at.isoformat(), "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None}
@@ -333,7 +333,7 @@ def users(admin_user: Admin = Depends(require_admin)):
 
 
 @router.post("/api/admin/users")
-def create_user(payload: NewUser, request: Request, admin_user: Admin = Depends(require_admin)):
+def create_user(payload: NewUser, request: Request, admin_user: Admin = REQUIRE_ADMIN):
     with db() as session:
         email = payload.email.lower().strip()
         if session.scalar(select(User).where(User.email == email)):
@@ -348,7 +348,7 @@ def create_user(payload: NewUser, request: Request, admin_user: Admin = Depends(
 
 
 @router.patch("/api/admin/users/{user_id}")
-def patch_user(user_id: int, payload: UserPatch, request: Request, admin_user: Admin = Depends(require_admin)):
+def patch_user(user_id: int, payload: UserPatch, request: Request, admin_user: Admin = REQUIRE_ADMIN):
     if payload.status not in {None, "active", "suspended", "blocked"}:
         raise HTTPException(400, "status inválido")
     with db() as session:
@@ -365,7 +365,7 @@ def patch_user(user_id: int, payload: UserPatch, request: Request, admin_user: A
 
 
 @router.get("/api/admin/licenses")
-def licenses(admin_user: Admin = Depends(require_admin)):
+def licenses(admin_user: Admin = REQUIRE_ADMIN):
     with db() as session:
         rows = session.scalars(select(License).order_by(License.created_at.desc())).all()
         return [{"id": x.id, "public_id": x.public_id, "user_id": x.user_id, "user": x.user.name,
@@ -375,7 +375,7 @@ def licenses(admin_user: Admin = Depends(require_admin)):
 
 
 @router.post("/api/admin/licenses")
-def create_license(payload: NewLicense, request: Request, admin_user: Admin = Depends(require_admin)):
+def create_license(payload: NewLicense, request: Request, admin_user: Admin = REQUIRE_ADMIN):
     with db() as session:
         user = session.get(User, payload.user_id)
         if not user:
@@ -391,7 +391,7 @@ def create_license(payload: NewLicense, request: Request, admin_user: Admin = De
 
 
 @router.post("/api/admin/licenses/{license_id}/revoke")
-def revoke_license(license_id: int, request: Request, admin_user: Admin = Depends(require_admin)):
+def revoke_license(license_id: int, request: Request, admin_user: Admin = REQUIRE_ADMIN):
     with db() as session:
         obj = session.get(License, license_id)
         if not obj:
@@ -403,7 +403,7 @@ def revoke_license(license_id: int, request: Request, admin_user: Admin = Depend
 
 
 @router.post("/api/admin/licenses/{license_id}/extend")
-def extend_license(license_id: int, payload: Extend, request: Request, admin_user: Admin = Depends(require_admin)):
+def extend_license(license_id: int, payload: Extend, request: Request, admin_user: Admin = REQUIRE_ADMIN):
     with db() as session:
         obj = session.get(License, license_id)
         if not obj:
@@ -416,7 +416,7 @@ def extend_license(license_id: int, payload: Extend, request: Request, admin_use
 
 
 @router.get("/api/admin/devices")
-def devices(admin_user: Admin = Depends(require_admin)):
+def devices(admin_user: Admin = REQUIRE_ADMIN):
     with db() as session:
         rows = session.scalars(select(Device).order_by(Device.last_seen_at.desc())).all()
         return [{"id": x.id, "user": x.user.name, "user_id": x.user.public_id, "platform": x.platform,
@@ -425,7 +425,7 @@ def devices(admin_user: Admin = Depends(require_admin)):
 
 
 @router.post("/api/admin/devices/{device_id}/revoke")
-def revoke_device(device_id: int, request: Request, admin_user: Admin = Depends(require_admin)):
+def revoke_device(device_id: int, request: Request, admin_user: Admin = REQUIRE_ADMIN):
     with db() as session:
         obj = session.get(Device, device_id)
         if not obj:
@@ -437,7 +437,7 @@ def revoke_device(device_id: int, request: Request, admin_user: Admin = Depends(
 
 
 @router.get("/api/admin/audit")
-def audit_list(admin_user: Admin = Depends(require_admin)):
+def audit_list(admin_user: Admin = REQUIRE_ADMIN):
     with db() as session:
         rows = session.scalars(select(AuditLog).order_by(AuditLog.created_at.desc()).limit(200)).all()
         return [{"event": x.event, "actor_type": x.actor_type, "actor_id": x.actor_id, "details": x.details or "",
@@ -489,7 +489,7 @@ def activate(payload: Activate, request: Request):
 
 
 @router.post("/api/v1/heartbeat")
-def heartbeat(payload: Heartbeat, credentials: HTTPAuthorizationCredentials | None = Depends(BEARER), request: Request = None):
+def heartbeat(payload: Heartbeat, request: Request, credentials: HTTPAuthorizationCredentials | None = BEARER):
     with db() as session:
         user, client_session = client(credentials, session)
         lic = session.get(License, client_session.license_id)
