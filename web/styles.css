@@ -551,3 +551,128 @@ footer span:hover{
   .button,.legalbuttons .button{transform:none!important}
   .button:after{display:none}
 }
+
+
+/* =========================================================
+   3D FIELD PASS — every visible card is a layered object
+   ========================================================= */
+.cards article,
+.download,
+.sourcegrid .source-card{
+  position:relative;
+  transform-style:preserve-3d;
+  backface-visibility:hidden;
+  overflow:hidden;
+  transition:
+    transform .22s cubic-bezier(.2,.8,.2,1),
+    border-color .22s ease,
+    box-shadow .22s ease,
+    background .22s ease;
+}
+.cards article:before,
+.download:before,
+.sourcegrid .source-card:before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  z-index:0;
+  border-radius:inherit;
+  background:
+    radial-gradient(circle at var(--field-x,50%) var(--field-y,20%),rgba(53,255,119,.16),transparent 34%),
+    linear-gradient(135deg,rgba(255,255,255,.07),transparent 28%,transparent 72%,rgba(53,255,119,.055));
+  opacity:.7;
+  transform:translateZ(1px);
+  transition:opacity .22s ease;
+}
+.cards article:hover:before,
+.download:hover:before,
+.sourcegrid .source-card:hover:before{opacity:1}
+
+.cards article > *,
+.download > *,
+.sourcegrid .source-card > *{
+  position:relative;
+  z-index:4;
+}
+.cards article b{
+  display:block;
+  font-size:18px;
+  text-shadow:0 2px 0 rgba(0,0,0,.28);
+  transform:translateZ(28px);
+}
+.cards article p{
+  transform:translateZ(18px);
+}
+.cards article .card-index{
+  transform:translateZ(32px);
+}
+
+.download strong{
+  display:block;
+  transform:translateZ(32px);
+  text-shadow:0 3px 0 rgba(0,0,0,.28);
+}
+.download span{
+  transform:translateZ(23px);
+}
+.download small{
+  transform:translateZ(16px);
+}
+
+.sourcegrid .source-card{
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  min-height:168px;
+}
+.sourcegrid .source-card strong{
+  display:block;
+  font-size:16px;
+  letter-spacing:-.01em;
+  transform:translateZ(30px);
+  text-shadow:0 2px 0 rgba(0,0,0,.3);
+}
+.sourcegrid .source-card small{
+  display:block;
+  line-height:1.45;
+  transform:translateZ(18px);
+}
+.sourcegrid .source-card .source-index{
+  transform:translateZ(36px);
+}
+.sourcegrid .source-card:hover{
+  transform:perspective(900px) rotateX(var(--rx)) rotateY(var(--ry)) translateZ(calc(var(--tz) + 5px)) translateY(-4px);
+  box-shadow:
+    0 30px 70px rgba(0,0,0,.38),
+    0 0 30px rgba(53,255,119,.055),
+    inset 0 1px rgba(255,255,255,.07);
+}
+.cards article:hover{
+  transform:perspective(900px) rotateX(var(--rx)) rotateY(var(--ry)) translateZ(calc(var(--tz) + 5px)) translateY(-4px);
+}
+.download:hover{
+  transform:perspective(900px) rotateX(var(--rx)) rotateY(var(--ry)) translateZ(calc(var(--tz) + 6px)) translateY(-5px);
+}
+.cards article:active,
+.download:active,
+.sourcegrid .source-card:active{
+  transform:perspective(900px) rotateX(var(--rx)) rotateY(var(--ry)) translateZ(-2px) scale(.992);
+}
+@media(max-width:700px){
+  .cards article,
+  .download,
+  .sourcegrid .source-card{
+    transform:none!important;
+  }
+  .cards article:hover,
+  .download:hover,
+  .sourcegrid .source-card:hover{
+    transform:translateY(-2px)!important;
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  .cards article,
+  .download,
+  .sourcegrid .source-card{transition:none}
+}
