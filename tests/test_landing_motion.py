@@ -23,6 +23,9 @@ def test_landing_is_institutional_only():
     assert "translateZ(var(--button-z))" in css
     assert "--button-rx" in motion
     assert ".hero-copy{\n  text-align:center" in css
+    assert "#plataforma,\n#downloads,\n#fontes,\n#privacidade{\n  text-align:center;" in css
+    assert "#fontes > .textlink" in css
+    assert ".legalbuttons{\n  justify-content:center;" in css
 
 
 def test_after_effects_motion_package_exists():
