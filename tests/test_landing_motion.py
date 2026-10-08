@@ -26,6 +26,12 @@ def test_landing_is_institutional_only():
     assert "#plataforma,\n#downloads,\n#fontes,\n#privacidade{\n  text-align:center;" in css
     assert "#fontes > .textlink" in css
     assert ".legalbuttons{\n  justify-content:center;" in css
+    assert ".sourcegrid .source-card strong" in css
+    assert "translateZ(30px)" in css
+    assert "--field-x" in css
+    assert "--field-x" in motion
+    assert '<strong>GeoSampa</strong>' in html
+    assert '<strong>OpenStreetMap</strong>' in html
 
 
 def test_after_effects_motion_package_exists():
