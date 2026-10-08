@@ -64,11 +64,15 @@
       el.style.setProperty('--rx', (-y * 4.2).toFixed(2) + 'deg');
       el.style.setProperty('--ry', (x * 5.2).toFixed(2) + 'deg');
       el.style.setProperty('--tz', depth + 'px');
+      el.style.setProperty('--field-x', (x * 100 + 50).toFixed(1) + '%');
+      el.style.setProperty('--field-y', (y * 100 + 50).toFixed(1) + '%');
     }, { passive: true });
     el.addEventListener('pointerleave', () => {
       el.style.setProperty('--rx', '0deg');
       el.style.setProperty('--ry', '0deg');
       el.style.setProperty('--tz', '0px');
+      el.style.setProperty('--field-x', '50%');
+      el.style.setProperty('--field-y', '50%');
     }, { passive: true });
   });
 
