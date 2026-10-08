@@ -37,7 +37,6 @@ def _seed() -> tuple[User, str]:
                 key_prefix=key[:16],
                 starts_at=datetime.now(UTC),
                 expires_at=datetime.now(UTC) + timedelta(days=365),
-                max_devices=1,
                 plan="annual",
             )
         )
