@@ -28,11 +28,6 @@ def landing_styles() -> FileResponse:
     return FileResponse(WEB_DIR / "styles.css", media_type="text/css")
 
 
-@app.get("/app.js", include_in_schema=False)
-def landing_script() -> FileResponse:
-    return FileResponse(WEB_DIR / "app.js", media_type="text/javascript")
-
-
 @app.get("/healthz", tags=["system"])
 def healthz() -> dict[str, str]:
     return {"status": "ok", "service": "imobhunter-backend"}
