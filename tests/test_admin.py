@@ -1,12 +1,15 @@
 import os
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 os.environ["DATABASE_URL"] = "sqlite:///./test-imobhunter-admin.db"
 
 from fastapi.testclient import TestClient
+from sqlalchemy import inspect, select, text
 
-from imobhunter.server.admin import Base, ENGINE, SessionLocal, User, License, sha
+from imobhunter.server.admin import Admin, Base, ENGINE, License, SessionLocal, SessionToken, User, license_key, public_id, sha
 from imobhunter.server.main import app
+
 
 Base.metadata.drop_all(ENGINE)
 Base.metadata.create_all(ENGINE)
@@ -14,37 +17,189 @@ Base.metadata.create_all(ENGINE)
 
 def _seed() -> tuple[User, str]:
     from argon2 import PasswordHasher
-    from imobhunter.server.admin import license_key, public_id
 
     ph = PasswordHasher()
     key = license_key()
+    suffix = uuid4().hex[:8]
     with SessionLocal() as db:
-        user = User(public_id=public_id("IMH-U"), name="Teste", email="teste@example.com", password_hash=ph.hash("senha-segura-123"))
+        user = User(
+            public_id=public_id("IMH-U"),
+            name="Teste",
+            email=f"teste-{suffix}@example.com",
+            password_hash=ph.hash("senha-segura-123"),
+        )
         db.add(user)
         db.flush()
-        db.add(License(public_id=public_id("IMH-L"), user_id=user.id, key_hash=sha(key), key_prefix=key[:16],
-                       starts_at=datetime.now(UTC), expires_at=datetime.now(UTC)+timedelta(days=365),
-                       max_devices=1, plan="annual"))
+        db.add(
+            License(
+                public_id=public_id("IMH-L"),
+                user_id=user.id,
+                key_hash=sha(key),
+                key_prefix=key[:16],
+                starts_at=datetime.now(UTC),
+                expires_at=datetime.now(UTC) + timedelta(days=365),
+                plan="annual",
+            )
+        )
         db.commit()
         return user, key
 
 
-def test_activation_and_device_limit():
+def _activate(client: TestClient, user: User, key: str, device_id: str):
+    return client.post(
+        "/api/v1/activate",
+        json={
+            "user_id": user.public_id,
+            "password": "senha-segura-123",
+            "license_key": key,
+            "device_id": device_id,
+            "platform": "windows",
+            "app_version": "0.1.3",
+        },
+    )
+
+
+def test_activation_allows_only_one_device_per_license():
     user, key = _seed()
     client = TestClient(app)
-    payload={"user_id":user.public_id,"password":"senha-segura-123","license_key":key,"device_id":"device-1234567890123456","platform":"windows","app_version":"0.1.3"}
-    r=client.post("/api/v1/activate",json=payload)
-    assert r.status_code==200
-    r2=client.post("/api/v1/activate",json={**payload,"device_id":"device-abcdefghijklmnop"})
-    assert r2.status_code==409
+
+    first = _activate(client, user, key, "device-1234567890123456")
+    assert first.status_code == 200
+
+    same_device = _activate(client, user, key, "device-1234567890123456")
+    assert same_device.status_code == 200
+    token = same_device.json()["access_token"]
+    heartbeat = client.post(
+        "/api/v1/heartbeat",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"device_id": "device-1234567890123456", "app_version": "0.1.3"},
+    )
+    assert heartbeat.status_code == 200
+    assert "license_expires_at" in heartbeat.json()
+    wrong_device_heartbeat = client.post(
+        "/api/v1/heartbeat",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"device_id": "device-wrong-1234567", "app_version": "0.1.3"},
+    )
+    assert wrong_device_heartbeat.status_code == 403
+
+    second_device = _activate(client, user, key, "device-abcdefghijklmnop")
+    assert second_device.status_code == 409
+
+
+
+def test_different_licenses_can_bind_different_devices():
+    user, key_one = _seed()
+    key_two = license_key()
+    with SessionLocal() as db:
+        db.add(
+            License(
+                public_id=public_id("IMH-L"),
+                user_id=user.id,
+                key_hash=sha(key_two),
+                key_prefix=key_two[:16],
+                starts_at=datetime.now(UTC),
+                expires_at=datetime.now(UTC) + timedelta(days=365),
+                max_devices=1,
+                plan="annual",
+            )
+        )
+        db.commit()
+
+    client = TestClient(app)
+    assert _activate(client, user, key_one, "device-first-123456").status_code == 200
+    assert _activate(client, user, key_two, "device-second-123456").status_code == 200
 
 
 def test_expired_license_is_rejected():
     user, key = _seed()
     with SessionLocal() as db:
-        lic=db.query(License).filter(License.user_id==user.id).first()
-        lic.expires_at=datetime.now(UTC)-timedelta(seconds=1)
+        lic = db.query(License).filter(License.user_id == user.id).first()
+        lic.expires_at = datetime.now(UTC) - timedelta(seconds=1)
         db.commit()
-    client=TestClient(app)
-    r=client.post("/api/v1/activate",json={"user_id":user.public_id,"password":"senha-segura-123","license_key":key,"device_id":"device-expired-123456","platform":"linux","app_version":"0.1.3"})
-    assert r.status_code==403
+
+    client = TestClient(app)
+    response = _activate(client, user, key, "device-expired-123456")
+    assert response.status_code == 403
+
+
+def test_legacy_schema_migration_adds_license_columns(tmp_path) -> None:
+    from sqlalchemy import create_engine
+    from imobhunter.server.admin import _migrate_legacy_schema
+
+    legacy = create_engine(f"sqlite:///{tmp_path / 'legacy.db'}")
+    with legacy.begin() as connection:
+        connection.execute(text("CREATE TABLE devices (id INTEGER PRIMARY KEY, user_id INTEGER)"))
+        connection.execute(text("CREATE TABLE sessions (id INTEGER PRIMARY KEY, token_hash VARCHAR(64))"))
+
+    _migrate_legacy_schema(legacy)
+    _migrate_legacy_schema(legacy)
+
+    assert "license_id" in {c["name"] for c in inspect(legacy).get_columns("devices")}
+    session_columns = {c["name"] for c in inspect(legacy).get_columns("sessions")}
+    assert {"license_id", "device_id"} <= session_columns
+    indexes = {index["name"] for index in inspect(legacy).get_indexes("devices")}
+    assert "uq_device_license" in indexes
+
+
+def _admin_login(client: TestClient):
+    from argon2 import PasswordHasher
+
+    ph = PasswordHasher()
+    email = f"admin-{uuid4().hex[:8]}@example.com"
+    with SessionLocal() as db:
+        db.add(Admin(email=email, password_hash=ph.hash("admin-seguro-123")))
+        db.commit()
+    response = client.post(
+        "/api/admin/auth/login",
+        json={"email": email, "password": "admin-seguro-123"},
+    )
+    assert response.status_code == 200
+    return response.json()["csrf"]
+
+
+def test_admin_logout_requires_csrf_and_revokes_session():
+    client = TestClient(app, base_url="https://testserver")
+    csrf = _admin_login(client)
+
+    blocked = client.post("/api/admin/auth/logout")
+    assert blocked.status_code == 403
+
+    ok = client.post("/api/admin/auth/logout", headers={"x-csrf-token": csrf})
+    assert ok.status_code == 200
+    assert client.get("/api/admin/me").status_code == 401
+
+
+def test_revoking_license_invalidates_existing_client_session():
+    user, key = _seed()
+    client = TestClient(app)
+    activated = _activate(client, user, key, "device-revoke-123456")
+    assert activated.status_code == 200
+    access_token = activated.json()["access_token"]
+
+    with SessionLocal() as db:
+        lic = db.scalar(select(License).where(License.user_id == user.id))
+        license_id = lic.id
+
+    admin_client = TestClient(app, base_url="https://testserver")
+    csrf = _admin_login(admin_client)
+    revoked = admin_client.post(
+        f"/api/admin/licenses/{license_id}/revoke",
+        headers={"x-csrf-token": csrf},
+    )
+    assert revoked.status_code == 200
+
+    with SessionLocal() as db:
+        session = db.scalar(
+            select(SessionToken).where(
+                SessionToken.token_hash == sha(access_token)
+            )
+        )
+        assert session.revoked_at is not None
+
+    heartbeat = client.post(
+        "/api/v1/heartbeat",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={"device_id": "device-revoke-123456", "app_version": "0.1.3"},
+    )
+    assert heartbeat.status_code == 401

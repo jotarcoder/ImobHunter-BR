@@ -91,23 +91,8 @@ jobs:
           name: ImobHunter-BR-macOS-AppleSilicon
           path: ImobHunter-BR-macOS-AppleSilicon.dmg
 
-  extension:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Package Chrome / Edge extension
-        run: |
-          mkdir -p extension-dist
-          cd extension
-          zip -r ../extension-dist/ImobHunter-BR-Web-Extension.zip manifest.json popup.html popup.css icon.svg
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ImobHunter-BR-Web-Extension
-          path: extension-dist/ImobHunter-BR-Web-Extension.zip
-          if-no-files-found: error
-
   publish:
-    needs: [windows, linux, macos-intel, macos-arm, extension]
+    needs: [windows, linux, macos-intel, macos-arm]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -122,5 +107,4 @@ jobs:
             release/ImobHunter-BR-Linux/*
             release/ImobHunter-BR-macOS-Intel/*
             release/ImobHunter-BR-macOS-AppleSilicon/*
-            release/ImobHunter-BR-Web-Extension/*
           generate_release_notes: true

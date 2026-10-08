@@ -7,11 +7,27 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from argon2 import PasswordHasher
+from argon2.exceptions import VerificationError, VerifyMismatchError
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, create_engine, func, select
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    create_engine,
+    func,
+    inspect,
+    select,
+    text,
+
+)
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
 PH = PasswordHasher()
@@ -26,6 +42,12 @@ def now() -> datetime:
 
 def sha(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def token() -> str:
@@ -67,8 +89,8 @@ class User(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    licenses: Mapped[list["License"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    devices: Mapped[list["Device"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    licenses: Mapped[list[License]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    devices: Mapped[list[Device]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class License(Base):
@@ -86,12 +108,15 @@ class License(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     user: Mapped[User] = relationship(back_populates="licenses")
+    devices: Mapped[list[Device]] = relationship(back_populates="license", cascade="all, delete-orphan")
 
 
 class Device(Base):
     __tablename__ = "devices"
+    __table_args__ = (UniqueConstraint("license_id", name="uq_device_license"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    license_id: Mapped[int | None] = mapped_column(ForeignKey("licenses.id"), index=True, nullable=True)
     device_hash: Mapped[str] = mapped_column(String(64), index=True)
     platform: Mapped[str] = mapped_column(String(30))
     app_version: Mapped[str] = mapped_column(String(40))
@@ -100,6 +125,7 @@ class Device(Base):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     last_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     user: Mapped[User] = relationship(back_populates="devices")
+    license: Mapped[License] = relationship(back_populates="devices")
 
 
 class SessionToken(Base):
@@ -109,6 +135,8 @@ class SessionToken(Base):
     kind: Mapped[str] = mapped_column(String(20), index=True)
     admin_id: Mapped[int | None] = mapped_column(ForeignKey("admins.id"), nullable=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    license_id: Mapped[int | None] = mapped_column(ForeignKey("licenses.id"), nullable=True)
+    device_id: Mapped[int | None] = mapped_column(ForeignKey("devices.id"), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -139,8 +167,40 @@ ENGINE = engine()
 SessionLocal = sessionmaker(bind=ENGINE, autoflush=False, expire_on_commit=False)
 
 
+def _migrate_legacy_schema(db_engine=ENGINE) -> None:
+    """Apply idempotent, additive migrations for databases from older releases."""
+    inspector = inspect(db_engine)
+    tables = set(inspector.get_table_names())
+
+    def add_column(table: str, column: str, definition: str) -> None:
+        if table not in tables:
+            return
+        columns = {item["name"] for item in inspector.get_columns(table)}
+        if column not in columns:
+            with db_engine.begin() as connection:
+                connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
+
+    add_column("devices", "license_id", "INTEGER")
+    add_column("sessions", "license_id", "INTEGER")
+    add_column("sessions", "device_id", "INTEGER")
+
+    if "devices" in tables:
+        with db_engine.begin() as connection:
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_device_license "
+                    "ON devices (license_id)"
+                )
+            )
+
+    if "licenses" in tables:
+        with db_engine.begin() as connection:
+            connection.execute(text("UPDATE licenses SET max_devices = 1 WHERE max_devices <> 1"))
+
+
 def init_db() -> None:
     Base.metadata.create_all(ENGINE)
+    _migrate_legacy_schema(ENGINE)
     email = os.getenv("IMOBHUNTER_ADMIN_EMAIL")
     password = os.getenv("IMOBHUNTER_ADMIN_PASSWORD")
     if not email or not password:
@@ -165,7 +225,7 @@ def admin(request: Request, db: Session) -> Admin:
     if not raw:
         raise HTTPException(401, "admin authentication required")
     s = db.scalar(select(SessionToken).where(SessionToken.token_hash == sha(raw), SessionToken.kind == "admin"))
-    if not s or s.revoked_at or s.expires_at <= now() or not s.admin_id:
+    if not s or s.revoked_at or as_utc(s.expires_at) <= now() or not s.admin_id:
         raise HTTPException(401, "admin session expired")
     obj = db.get(Admin, s.admin_id)
     if not obj or not obj.active:
@@ -178,26 +238,17 @@ def admin(request: Request, db: Session) -> Admin:
     return obj
 
 
-def client(credentials: HTTPAuthorizationCredentials | None, db: Session) -> User:
+def client(credentials: HTTPAuthorizationCredentials | None, db: Session) -> tuple[User, SessionToken]:
     if not credentials or credentials.scheme.lower() != "bearer":
         raise HTTPException(401, "authentication required")
     s = db.scalar(select(SessionToken).where(SessionToken.token_hash == sha(credentials.credentials), SessionToken.kind == "client"))
-    if not s or s.revoked_at or s.expires_at <= now() or not s.user_id:
+    if not s or s.revoked_at or as_utc(s.expires_at) <= now() or not s.user_id or not s.license_id or not s.device_id:
         raise HTTPException(401, "session expired")
     obj = db.get(User, s.user_id)
     if not obj or obj.status != "active":
         raise HTTPException(403, "user disabled")
-    return obj
+    return obj, s
 
-
-def current_license(db: Session, user_id: int) -> License | None:
-    lic = db.scalar(select(License).where(License.user_id == user_id, License.status == "active").order_by(License.expires_at.desc()))
-    if lic and lic.starts_at <= now() < lic.expires_at:
-        return lic
-    if lic and lic.expires_at <= now():
-        lic.status = "expired"
-        db.commit()
-    return None
 
 
 class Login(BaseModel):
@@ -220,7 +271,6 @@ class UserPatch(BaseModel):
 class NewLicense(BaseModel):
     user_id: int
     days: int = Field(default=365, ge=1, le=3650)
-    max_devices: int = Field(default=1, ge=1, le=20)
     plan: str = Field(default="annual", min_length=2, max_length=40)
 
 
@@ -249,6 +299,10 @@ def require_admin(request: Request) -> Admin:
         return obj
 
 
+REQUIRE_ADMIN = Depends(require_admin)
+REQUIRE_BEARER = Depends(BEARER)
+
+
 @router.get("/admin", include_in_schema=False)
 def admin_page():
     return FileResponse(ADMIN_DIR / "index.html", media_type="text/html")
@@ -267,13 +321,29 @@ def admin_css():
 @router.post("/api/admin/auth/login")
 def admin_login(payload: Login, request: Request, response: Response):
     with db() as session:
-        obj = session.scalar(select(Admin).where(Admin.email == payload.email.lower().strip()))
+        email = payload.email.lower().strip()
+        cutoff = now() - timedelta(minutes=15)
+        failed = session.scalar(
+            select(func.count())
+            .select_from(AuditLog)
+            .where(
+                AuditLog.event == "admin.login_failed",
+                AuditLog.ip == (request.client.host if request.client else None),
+                AuditLog.created_at >= cutoff,
+            )
+        ) or 0
+        if failed >= 10:
+            raise HTTPException(429, "muitas tentativas; tente novamente mais tarde")
+
+        obj = session.scalar(select(Admin).where(Admin.email == email))
         if not obj or not obj.active:
+            audit(session, "system", "0", "admin.login_failed", request, email[:255])
+            session.commit()
             raise HTTPException(401, "credenciais inválidas")
         try:
             PH.verify(obj.password_hash, payload.password)
-        except Exception:
-            audit(session, "system", "0", "admin.login_failed", request)
+        except (VerificationError, VerifyMismatchError):
+            audit(session, "system", "0", "admin.login_failed", request, email[:255])
             session.commit()
             raise HTTPException(401, "credenciais inválidas")
         raw, csrf = token(), token()
@@ -287,11 +357,17 @@ def admin_login(payload: Login, request: Request, response: Response):
 
 
 @router.post("/api/admin/auth/logout")
-def admin_logout(request: Request, response: Response):
+def admin_logout(request: Request, response: Response, admin_user: Admin = REQUIRE_ADMIN):
     raw = request.cookies.get("imh_admin_session")
     with db() as session:
         if raw:
-            s = session.scalar(select(SessionToken).where(SessionToken.token_hash == sha(raw), SessionToken.kind == "admin"))
+            s = session.scalar(
+                select(SessionToken).where(
+                    SessionToken.token_hash == sha(raw),
+                    SessionToken.kind == "admin",
+                    SessionToken.admin_id == admin_user.id,
+                )
+            )
             if s:
                 s.revoked_at = now()
                 session.commit()
@@ -301,17 +377,23 @@ def admin_logout(request: Request, response: Response):
 
 
 @router.get("/api/admin/me")
-def admin_me(admin_user: Admin = Depends(require_admin)):
+def admin_me(admin_user: Admin = REQUIRE_ADMIN):
     return {"email": admin_user.email, "role": admin_user.role}
 
 
 @router.get("/api/admin/dashboard")
-def dashboard(admin_user: Admin = Depends(require_admin)):
+def dashboard(admin_user: Admin = REQUIRE_ADMIN):
     with db() as session:
         return {
             "users": session.scalar(select(func.count()).select_from(User)) or 0,
             "active_users": session.scalar(select(func.count()).select_from(User).where(User.status == "active")) or 0,
-            "active_licenses": session.scalar(select(func.count()).select_from(License).where(License.status == "active", License.expires_at > now())) or 0,
+            "active_licenses": sum(
+                1
+                for license_obj in session.scalars(
+                    select(License).where(License.status == "active")
+                ).all()
+                if as_utc(license_obj.expires_at) > now()
+            ),
             "active_devices": session.scalar(select(func.count()).select_from(Device).where(Device.status == "active")) or 0,
             "recent_events": [{"event": x.event, "actor": x.actor_id, "created_at": x.created_at.isoformat(), "details": x.details or ""}
                               for x in session.scalars(select(AuditLog).order_by(AuditLog.created_at.desc()).limit(12)).all()],
@@ -319,7 +401,7 @@ def dashboard(admin_user: Admin = Depends(require_admin)):
 
 
 @router.get("/api/admin/users")
-def users(admin_user: Admin = Depends(require_admin)):
+def users(admin_user: Admin = REQUIRE_ADMIN):
     with db() as session:
         return [{"id": u.id, "public_id": u.public_id, "name": u.name, "email": u.email, "status": u.status,
                  "created_at": u.created_at.isoformat(), "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None}
@@ -327,7 +409,7 @@ def users(admin_user: Admin = Depends(require_admin)):
 
 
 @router.post("/api/admin/users")
-def create_user(payload: NewUser, request: Request, admin_user: Admin = Depends(require_admin)):
+def create_user(payload: NewUser, request: Request, admin_user: Admin = REQUIRE_ADMIN):
     with db() as session:
         email = payload.email.lower().strip()
         if session.scalar(select(User).where(User.email == email)):
@@ -342,7 +424,7 @@ def create_user(payload: NewUser, request: Request, admin_user: Admin = Depends(
 
 
 @router.patch("/api/admin/users/{user_id}")
-def patch_user(user_id: int, payload: UserPatch, request: Request, admin_user: Admin = Depends(require_admin)):
+def patch_user(user_id: int, payload: UserPatch, request: Request, admin_user: Admin = REQUIRE_ADMIN):
     if payload.status not in {None, "active", "suspended", "blocked"}:
         raise HTTPException(400, "status inválido")
     with db() as session:
@@ -359,7 +441,7 @@ def patch_user(user_id: int, payload: UserPatch, request: Request, admin_user: A
 
 
 @router.get("/api/admin/licenses")
-def licenses(admin_user: Admin = Depends(require_admin)):
+def licenses(admin_user: Admin = REQUIRE_ADMIN):
     with db() as session:
         rows = session.scalars(select(License).order_by(License.created_at.desc())).all()
         return [{"id": x.id, "public_id": x.public_id, "user_id": x.user_id, "user": x.user.name,
@@ -369,7 +451,7 @@ def licenses(admin_user: Admin = Depends(require_admin)):
 
 
 @router.post("/api/admin/licenses")
-def create_license(payload: NewLicense, request: Request, admin_user: Admin = Depends(require_admin)):
+def create_license(payload: NewLicense, request: Request, admin_user: Admin = REQUIRE_ADMIN):
     with db() as session:
         user = session.get(User, payload.user_id)
         if not user:
@@ -377,7 +459,7 @@ def create_license(payload: NewLicense, request: Request, admin_user: Admin = De
         raw = license_key()
         obj = License(public_id=public_id("IMH-L"), user_id=user.id, key_hash=sha(raw), key_prefix=raw[:16],
                       plan=payload.plan, starts_at=now(), expires_at=now() + timedelta(days=payload.days),
-                      max_devices=payload.max_devices)
+                      max_devices=1)
         session.add(obj)
         audit(session, "admin", str(admin_user.id), "license.created", request, obj.public_id)
         session.commit()
@@ -385,24 +467,34 @@ def create_license(payload: NewLicense, request: Request, admin_user: Admin = De
 
 
 @router.post("/api/admin/licenses/{license_id}/revoke")
-def revoke_license(license_id: int, request: Request, admin_user: Admin = Depends(require_admin)):
+def revoke_license(license_id: int, request: Request, admin_user: Admin = REQUIRE_ADMIN):
     with db() as session:
         obj = session.get(License, license_id)
         if not obj:
             raise HTTPException(404, "licença não encontrada")
         obj.status, obj.revoked_at = "revoked", now()
+        for client_session in session.scalars(
+            select(SessionToken).where(
+                SessionToken.kind == "client",
+                SessionToken.license_id == obj.id,
+                SessionToken.revoked_at.is_(None),
+            )
+        ).all():
+            client_session.revoked_at = now()
         audit(session, "admin", str(admin_user.id), "license.revoked", request, obj.public_id)
         session.commit()
         return {"ok": True}
 
 
 @router.post("/api/admin/licenses/{license_id}/extend")
-def extend_license(license_id: int, payload: Extend, request: Request, admin_user: Admin = Depends(require_admin)):
+def extend_license(license_id: int, payload: Extend, request: Request, admin_user: Admin = REQUIRE_ADMIN):
     with db() as session:
         obj = session.get(License, license_id)
         if not obj:
             raise HTTPException(404, "licença não encontrada")
-        obj.expires_at = max(obj.expires_at, now()) + timedelta(days=payload.days)
+        if obj.status == "revoked":
+            raise HTTPException(409, "licença revogada não pode ser renovada automaticamente")
+        obj.expires_at = max(as_utc(obj.expires_at), now()) + timedelta(days=payload.days)
         obj.status = "active"
         audit(session, "admin", str(admin_user.id), "license.extended", request, f"{obj.public_id}:{payload.days}")
         session.commit()
@@ -410,7 +502,7 @@ def extend_license(license_id: int, payload: Extend, request: Request, admin_use
 
 
 @router.get("/api/admin/devices")
-def devices(admin_user: Admin = Depends(require_admin)):
+def devices(admin_user: Admin = REQUIRE_ADMIN):
     with db() as session:
         rows = session.scalars(select(Device).order_by(Device.last_seen_at.desc())).all()
         return [{"id": x.id, "user": x.user.name, "user_id": x.user.public_id, "platform": x.platform,
@@ -419,7 +511,7 @@ def devices(admin_user: Admin = Depends(require_admin)):
 
 
 @router.post("/api/admin/devices/{device_id}/revoke")
-def revoke_device(device_id: int, request: Request, admin_user: Admin = Depends(require_admin)):
+def revoke_device(device_id: int, request: Request, admin_user: Admin = REQUIRE_ADMIN):
     with db() as session:
         obj = session.get(Device, device_id)
         if not obj:
@@ -431,7 +523,7 @@ def revoke_device(device_id: int, request: Request, admin_user: Admin = Depends(
 
 
 @router.get("/api/admin/audit")
-def audit_list(admin_user: Admin = Depends(require_admin)):
+def audit_list(admin_user: Admin = REQUIRE_ADMIN):
     with db() as session:
         rows = session.scalars(select(AuditLog).order_by(AuditLog.created_at.desc()).limit(200)).all()
         return [{"event": x.event, "actor_type": x.actor_type, "actor_id": x.actor_id, "details": x.details or "",
@@ -446,31 +538,46 @@ def activate(payload: Activate, request: Request):
             raise HTTPException(401, "credenciais inválidas")
         try:
             PH.verify(user.password_hash, payload.password)
-        except Exception:
+        except (VerificationError, VerifyMismatchError):
             audit(session, "user", user.public_id, "client.login_failed", request)
             session.commit()
             raise HTTPException(401, "credenciais inválidas")
-        lic = current_license(session, user.id)
-        if not lic or not secrets.compare_digest(lic.key_hash, sha(payload.license_key.strip().upper())):
+        license_hash = sha(payload.license_key.strip().upper())
+        lic = session.scalar(select(License).where(License.user_id == user.id, License.key_hash == license_hash))
+        if not lic or lic.status != "active" or not (as_utc(lic.starts_at) <= now() < as_utc(lic.expires_at)):
+            if lic and as_utc(lic.expires_at) <= now() and lic.status == "active":
+                lic.status = "expired"
             audit(session, "user", user.public_id, "license.activation_denied", request)
             session.commit()
             raise HTTPException(403, "licença inválida ou expirada")
         device_hash = sha(payload.device_id)
-        device = session.scalar(select(Device).where(Device.user_id == user.id, Device.device_hash == device_hash))
-        count = session.scalar(select(func.count()).select_from(Device).where(Device.user_id == user.id, Device.status == "active")) or 0
-        if not device and count >= lic.max_devices:
-            raise HTTPException(409, "limite de dispositivos atingido")
+        device = session.scalar(select(Device).where(Device.license_id == lic.id))
+        if device and device.device_hash != device_hash and device.status == "active":
+            raise HTTPException(409, "esta licença já está vinculada a outro dispositivo")
         if device and device.status == "revoked":
             raise HTTPException(403, "dispositivo revogado")
         if not device:
-            device = Device(user_id=user.id, device_hash=device_hash, platform=payload.platform, app_version=payload.app_version)
+            device = Device(user_id=user.id, license_id=lic.id, device_hash=device_hash,
+                            platform=payload.platform, app_version=payload.app_version)
             session.add(device)
+            try:
+                session.flush()
+            except IntegrityError:
+                session.rollback()
+                device = session.scalar(select(Device).where(Device.license_id == lic.id))
+                if not device:
+                    raise HTTPException(409, "conflito ao vincular o dispositivo")
+                if device.status == "revoked":
+                    raise HTTPException(403, "dispositivo revogado")
+                if device.device_hash != device_hash:
+                    raise HTTPException(409, "esta licença já está vinculada a outro dispositivo")
         device.status, device.platform, device.app_version, device.last_seen_at = "active", payload.platform, payload.app_version, now()
         device.last_ip = request.client.host if request.client else None
         user.last_login_at = now()
         access = token()
         expires = now() + timedelta(hours=12)
-        session.add(SessionToken(token_hash=sha(access), kind="client", user_id=user.id, expires_at=expires))
+        session.add(SessionToken(token_hash=sha(access), kind="client", user_id=user.id,
+                                 license_id=lic.id, device_id=device.id, expires_at=expires))
         audit(session, "user", user.public_id, "client.activated", request, f"{payload.platform}:{payload.app_version}")
         session.commit()
         return {"access_token": access, "expires_at": expires.isoformat(), "user_id": user.public_id,
@@ -478,13 +585,17 @@ def activate(payload: Activate, request: Request):
 
 
 @router.post("/api/v1/heartbeat")
-def heartbeat(payload: Heartbeat, credentials: HTTPAuthorizationCredentials | None = Depends(BEARER), request: Request = None):
+def heartbeat(payload: Heartbeat, request: Request, credentials: HTTPAuthorizationCredentials | None = REQUIRE_BEARER):
     with db() as session:
-        user = client(credentials, session)
-        lic = current_license(session, user.id)
-        if not lic:
+        user, client_session = client(credentials, session)
+        lic = session.get(License, client_session.license_id)
+        if not lic or lic.user_id != user.id or lic.status != "active" or not (as_utc(lic.starts_at) <= now() < as_utc(lic.expires_at)):
             raise HTTPException(403, "licença expirada ou revogada")
-        device = session.scalar(select(Device).where(Device.user_id == user.id, Device.device_hash == sha(payload.device_id), Device.status == "active"))
+        device = session.scalar(select(Device).where(Device.id == client_session.device_id,
+                                                       Device.user_id == user.id,
+                                                       Device.license_id == lic.id,
+                                                       Device.device_hash == sha(payload.device_id),
+                                                       Device.status == "active"))
         if not device:
             raise HTTPException(403, "dispositivo não autorizado")
         device.app_version, device.last_seen_at = payload.app_version, now()
