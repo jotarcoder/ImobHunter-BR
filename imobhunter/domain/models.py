@@ -32,6 +32,7 @@ class SearchRequest:
         state: str | None = None,
         block: str | None = None,
         lot: str | None = None,
+        cib: str | None = None,
     ) -> None:
         self.address = address
         self.number = number
@@ -39,15 +40,16 @@ class SearchRequest:
         self.state = state
         self.block = block
         self.lot = lot
+        self.cib = cib
 
     def validate(self) -> None:
-        if not any((self.address, self.block, self.lot)):
+        if not any((self.address, self.block, self.lot, self.cib)):
             raise ValueError("search request cannot be empty")
         if self.number and not self.address:
             raise ValueError("number requires an address")
         if (self.block and not self.lot) or (self.lot and not self.block):
             raise ValueError("block and lot must be provided together")
-        if not self.address and not (self.block and self.lot):
+        if not self.address and not (self.block and self.lot) and not self.cib:
             raise ValueError("address or block+lot is required")
 
 
