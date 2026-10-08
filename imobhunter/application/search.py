@@ -52,7 +52,7 @@ class SearchService:
 
             try:
                 source_records = source.search(request)
-            except (RuntimeError, ValueError) as exc:
+            except (OSError, RuntimeError, TypeError, ValueError) as exc:
                 source_results.append(
                     SourceSearchResult(
                         source_id=source.source_id,
