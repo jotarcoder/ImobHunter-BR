@@ -489,7 +489,7 @@ def activate(payload: Activate, request: Request):
 
 
 @router.post("/api/v1/heartbeat")
-def heartbeat(payload: Heartbeat, request: Request, credentials: HTTPAuthorizationCredentials | None = BEARER):
+def heartbeat(payload: Heartbeat, request: Request, credentials: HTTPAuthorizationCredentials | None = Depends(BEARER)):
     with db() as session:
         user, client_session = client(credentials, session)
         lic = session.get(License, client_session.license_id)
