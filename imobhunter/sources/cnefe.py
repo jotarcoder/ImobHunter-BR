@@ -45,6 +45,7 @@ CNEFE_FTP_ROOT = (
 IBGE_MUNICIPALITIES_API = "https://servicodados.ibge.gov.br/api/v1/localidades/municipios"
 USER_AGENT = "ImobHunter-BR/0.1 (official IBGE CNEFE integration)"
 MUNICIPALITY_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
+MAX_CNEFE_DOWNLOAD_BYTES = 512 * 1024 * 1024
 
 
 def _clean_key(value: str) -> str:
@@ -103,8 +104,10 @@ def _rows(path: Path) -> Iterable[dict[str, Any]]:
                     name for name in archive.namelist()
                     if not name.endswith("/") and Path(name).suffix.lower() == ".csv"
                 ]
-                if not csv_names:
-                    raise ValueError("CNEFE ZIP does not contain a CSV file")
+                if len(csv_names) != 1:
+                    raise ValueError("CNEFE ZIP must contain exactly one CSV file")
+                if archive.testzip() is not None:
+                    raise ValueError("CNEFE ZIP contains corrupted data")
                 with archive.open(csv_names[0], "r") as binary:
                     text = io.TextIOWrapper(binary, encoding="utf-8-sig", newline="")
                     yield from csv.DictReader(text, delimiter=";")
@@ -185,21 +188,38 @@ def _download_remote_zip(url: str, cache_dir: Path) -> Path:
     filename = url.rsplit("/", 1)[-1]
     target = cache_dir / filename
     if target.is_file() and target.stat().st_size > 0:
-        return target
+        try:
+            with zipfile.ZipFile(target) as archive:
+                if archive.testzip() is None:
+                    return target
+        except (OSError, zipfile.BadZipFile):
+            target.unlink(missing_ok=True)
+
     temp = target.with_suffix(target.suffix + ".part")
     request = Request(url, headers={"User-Agent": USER_AGENT})
+    downloaded = 0
     try:
         with urlopen(request, timeout=120) as response, temp.open("wb") as handle:
+            content_length = response.headers.get("Content-Length")
+            if content_length and int(content_length) > MAX_CNEFE_DOWNLOAD_BYTES:
+                raise ValueError("CNEFE download exceeds the configured size limit")
             while True:
                 chunk = response.read(1024 * 1024)
                 if not chunk:
                     break
+                downloaded += len(chunk)
+                if downloaded > MAX_CNEFE_DOWNLOAD_BYTES:
+                    raise ValueError("CNEFE download exceeds the configured size limit")
                 handle.write(chunk)
+        with zipfile.ZipFile(temp) as archive:
+            if archive.testzip() is not None:
+                raise ValueError("Downloaded CNEFE ZIP is corrupted")
         temp.replace(target)
     except Exception:
         temp.unlink(missing_ok=True)
         raise
     return target
+
 
 
 class CNEFEAdapter(SourceAdapter):
