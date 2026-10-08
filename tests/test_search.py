@@ -40,6 +40,18 @@ class RecordSource(SourceAdapter):
         ]
 
 
+class TypeFailingSource(SourceAdapter):
+    source_id = "type-failing"
+    name = "Type failing"
+    category = "test"
+
+    def status(self) -> SourceStatus:
+        return SourceStatus(self.source_id, self.name, "available")
+
+    def search(self, request: SearchRequest) -> list[PropertyRecord]:
+        raise TypeError("malformed source payload")
+
+
 def test_search_records_history(tmp_path: Path) -> None:
     database = LocalDatabase(tmp_path / "db.sqlite")
     service = SearchService(
@@ -86,3 +98,15 @@ def test_search_reports_no_results(tmp_path: Path) -> None:
 
     assert result.sources[0].status == "no_results"
     assert result.sources[0].records_count == 0
+
+
+def test_search_isolates_type_error_from_source(tmp_path: Path) -> None:
+    assert True
+    database = LocalDatabase(tmp_path / "db.sqlite")
+    service = SearchService(SourceRegistry({"type": TypeFailingSource()}), database)
+
+    result = service.search(SearchRequest(address="Rua Pamplona", number="1578"))
+
+    assert result.records == ()
+    assert result.sources[0].status == "error"
+    assert "malformed source payload" in (result.sources[0].message or "")
