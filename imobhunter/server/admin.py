@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, create_engine, func, select
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, create_engine, func, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
 PH = PasswordHasher()
@@ -86,12 +86,15 @@ class License(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     user: Mapped[User] = relationship(back_populates="licenses")
+    devices: Mapped[list["Device"]] = relationship(back_populates="license", cascade="all, delete-orphan")
 
 
 class Device(Base):
     __tablename__ = "devices"
+    __table_args__ = (UniqueConstraint("license_id", name="uq_device_license"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    license_id: Mapped[int] = mapped_column(ForeignKey("licenses.id"), index=True)
     device_hash: Mapped[str] = mapped_column(String(64), index=True)
     platform: Mapped[str] = mapped_column(String(30))
     app_version: Mapped[str] = mapped_column(String(40))
@@ -100,6 +103,7 @@ class Device(Base):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     last_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     user: Mapped[User] = relationship(back_populates="devices")
+    license: Mapped[License] = relationship(back_populates="devices")
 
 
 class SessionToken(Base):
@@ -109,6 +113,8 @@ class SessionToken(Base):
     kind: Mapped[str] = mapped_column(String(20), index=True)
     admin_id: Mapped[int | None] = mapped_column(ForeignKey("admins.id"), nullable=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    license_id: Mapped[int | None] = mapped_column(ForeignKey("licenses.id"), nullable=True)
+    device_id: Mapped[int | None] = mapped_column(ForeignKey("devices.id"), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -220,7 +226,7 @@ class UserPatch(BaseModel):
 class NewLicense(BaseModel):
     user_id: int
     days: int = Field(default=365, ge=1, le=3650)
-    max_devices: int = Field(default=1, ge=1, le=20)
+    max_devices: int = Field(default=1, ge=1, le=1)
     plan: str = Field(default="annual", min_length=2, max_length=40)
 
 
@@ -377,7 +383,7 @@ def create_license(payload: NewLicense, request: Request, admin_user: Admin = De
         raw = license_key()
         obj = License(public_id=public_id("IMH-L"), user_id=user.id, key_hash=sha(raw), key_prefix=raw[:16],
                       plan=payload.plan, starts_at=now(), expires_at=now() + timedelta(days=payload.days),
-                      max_devices=payload.max_devices)
+                      max_devices=1)
         session.add(obj)
         audit(session, "admin", str(admin_user.id), "license.created", request, obj.public_id)
         session.commit()
@@ -456,21 +462,23 @@ def activate(payload: Activate, request: Request):
             session.commit()
             raise HTTPException(403, "licença inválida ou expirada")
         device_hash = sha(payload.device_id)
-        device = session.scalar(select(Device).where(Device.user_id == user.id, Device.device_hash == device_hash))
-        count = session.scalar(select(func.count()).select_from(Device).where(Device.user_id == user.id, Device.status == "active")) or 0
-        if not device and count >= lic.max_devices:
-            raise HTTPException(409, "limite de dispositivos atingido")
+        device = session.scalar(select(Device).where(Device.license_id == lic.id))
+        if device and device.device_hash != device_hash and device.status == "active":
+            raise HTTPException(409, "esta licença já está vinculada a outro dispositivo")
         if device and device.status == "revoked":
             raise HTTPException(403, "dispositivo revogado")
         if not device:
-            device = Device(user_id=user.id, device_hash=device_hash, platform=payload.platform, app_version=payload.app_version)
+            device = Device(user_id=user.id, license_id=lic.id, device_hash=device_hash,
+                            platform=payload.platform, app_version=payload.app_version)
             session.add(device)
+            session.flush()
         device.status, device.platform, device.app_version, device.last_seen_at = "active", payload.platform, payload.app_version, now()
         device.last_ip = request.client.host if request.client else None
         user.last_login_at = now()
         access = token()
         expires = now() + timedelta(hours=12)
-        session.add(SessionToken(token_hash=sha(access), kind="client", user_id=user.id, expires_at=expires))
+        session.add(SessionToken(token_hash=sha(access), kind="client", user_id=user.id,
+                                 license_id=lic.id, device_id=device.id, expires_at=expires))
         audit(session, "user", user.public_id, "client.activated", request, f"{payload.platform}:{payload.app_version}")
         session.commit()
         return {"access_token": access, "expires_at": expires.isoformat(), "user_id": user.public_id,
@@ -484,7 +492,10 @@ def heartbeat(payload: Heartbeat, credentials: HTTPAuthorizationCredentials | No
         lic = current_license(session, user.id)
         if not lic:
             raise HTTPException(403, "licença expirada ou revogada")
-        device = session.scalar(select(Device).where(Device.user_id == user.id, Device.device_hash == sha(payload.device_id), Device.status == "active"))
+        device = session.scalar(select(Device).where(Device.user_id == user.id,
+                                                       Device.license_id == lic.id,
+                                                       Device.device_hash == sha(payload.device_id),
+                                                       Device.status == "active"))
         if not device:
             raise HTTPException(403, "dispositivo não autorizado")
         device.app_version, device.last_seen_at = payload.app_version, now()
