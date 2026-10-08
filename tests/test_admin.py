@@ -1,5 +1,6 @@
 import os
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 os.environ["DATABASE_URL"] = "sqlite:///./test-imobhunter-admin.db"
 
@@ -19,7 +20,7 @@ def _seed() -> tuple[User, str]:
     ph = PasswordHasher()
     key = license_key()
     with SessionLocal() as db:
-        user = User(public_id=public_id("IMH-U"), name="Teste", email="teste@example.com", password_hash=ph.hash("senha-segura-123"))
+        user = User(public_id=public_id("IMH-U"), name="Teste", email=f"teste-{uuid4().hex[:8]}@example.com", password_hash=ph.hash("senha-segura-123"))
         db.add(user)
         db.flush()
         db.add(License(public_id=public_id("IMH-L"), user_id=user.id, key_hash=sha(key), key_prefix=key[:16],
