@@ -165,7 +165,7 @@ class SINTERAdapter(SourceAdapter):
         except (httpx.HTTPError, ValueError) as exc:
             raise RuntimeError(f"SINTER API request failed: {exc}") from exc
         if not isinstance(payload, dict):
-            raise RuntimeError("SINTER API returned an invalid payload")
+            raise TypeError("SINTER API returned an invalid payload")
         return [_remote_cib_record(payload, self.source_id)]
 
     def search(self, request: SearchRequest) -> list[PropertyRecord]:
