@@ -108,8 +108,8 @@ def test_cnefe_remote_resolves_municipality_and_uses_cache(tmp_path, monkeypatch
 
     source_zip = tmp_path / "3550308_SAO_PAULO.zip"
     csv_content = (
-        "NM_LOGR;NUMERO;NM_MUNICIPIO;SIGLA_UF;COD_UNICO;QUADRA\\n"
-        "PAMPLONA;1578;SAO PAULO;SP;999;77\\n"
+        "NM_LOGR;NUMERO;NM_MUNICIPIO;SIGLA_UF;COD_UNICO;QUADRA\n"
+        "PAMPLONA;1578;SAO PAULO;SP;999;77\n"
     )
     with zipfile.ZipFile(source_zip, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("3550308_SAO_PAULO.csv", csv_content)
