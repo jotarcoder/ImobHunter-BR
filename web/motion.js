@@ -78,8 +78,17 @@
       const rect = el.getBoundingClientRect();
       const x = (event.clientX - rect.left) / rect.width - 0.5;
       const y = (event.clientY - rect.top) / rect.height - 0.5;
-      el.style.transform = 'perspective(700px) rotateX(' + (-y * 2).toFixed(2) + 'deg) rotateY(' + (x * 2.5).toFixed(2) + 'deg) translateY(-3px) translateZ(5px)';
+      el.style.setProperty('--button-rx', (-y * 5).toFixed(2) + 'deg');
+      el.style.setProperty('--button-ry', (x * 7).toFixed(2) + 'deg');
+      el.style.setProperty('--button-z', '9px');
     }, { passive: true });
-    el.addEventListener('pointerleave', () => { el.style.transform = ''; }, { passive: true });
+    el.addEventListener('pointerleave', () => {
+      el.style.setProperty('--button-rx', '0deg');
+      el.style.setProperty('--button-ry', '0deg');
+      el.style.setProperty('--button-z', '0px');
+    }, { passive: true });
+    el.addEventListener('pointerdown', () => {
+      if (!reduce.matches) el.style.setProperty('--button-z', '-2px');
+    }, { passive: true });
   });
 })();
