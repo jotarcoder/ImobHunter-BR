@@ -1,7 +1,9 @@
 import csv
+import io
 import json
 import os
 import unicodedata
+import zipfile
 from pathlib import Path
 from collections.abc import Iterable
 from typing import Any
@@ -87,10 +89,24 @@ def _rows(path: Path) -> Iterable[dict[str, Any]]:
     if path.suffix.lower() == ".csv":
         def read_csv() -> Iterable[dict[str, Any]]:
             with path.open(encoding="utf-8-sig", newline="") as handle:
-                yield from csv.DictReader(handle)
+                yield from csv.DictReader(handle, delimiter=";")
 
         return read_csv()
-    raise ValueError("CNEFE file must be CSV, JSON or GeoJSON")
+    if path.suffix.lower() == ".zip":
+        def read_zip() -> Iterable[dict[str, Any]]:
+            with zipfile.ZipFile(path) as archive:
+                csv_names = [
+                    name for name in archive.namelist()
+                    if not name.endswith("/") and Path(name).suffix.lower() == ".csv"
+                ]
+                if not csv_names:
+                    raise ValueError("CNEFE ZIP does not contain a CSV file")
+                with archive.open(csv_names[0], "r") as binary:
+                    text = io.TextIOWrapper(binary, encoding="utf-8-sig", newline="")
+                    yield from csv.DictReader(text, delimiter=";")
+
+        return read_zip()
+    raise ValueError("CNEFE file must be CSV, JSON, GeoJSON or ZIP")
 
 
 class CNEFEAdapter(SourceAdapter):
@@ -108,7 +124,7 @@ class CNEFEAdapter(SourceAdapter):
                 self.source_id,
                 self.name,
                 "not_configured",
-                "Configure IMOBHUNTER_CNEFE_PATH with a local CNEFE CSV/GeoJSON file.",
+                "Configure IMOBHUNTER_CNEFE_PATH with an official CNEFE CSV, GeoJSON or ZIP file.",
             )
         if not self.data_path.is_file():
             return SourceStatus(
