@@ -1,4 +1,4 @@
-from imobhunter.server.licenses import hash_device_id, hash_license_key, new_license_key, verify_session_marker
+from imobhunter.server.licenses import hash_device_id, hash_license_key, new_license_key
 
 
 def test_license_key_format_and_hashing():
