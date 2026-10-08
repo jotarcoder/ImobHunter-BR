@@ -252,7 +252,7 @@ def require_admin(request: Request) -> Admin:
         return obj
 
 
-REQUIRE_ADMIN = REQUIRE_ADMIN
+REQUIRE_ADMIN = Depends(require_admin)
 
 
 @router.get("/admin", include_in_schema=False)
