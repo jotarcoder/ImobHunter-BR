@@ -74,6 +74,12 @@ def test_activation_allows_only_one_device_per_license():
         json={"device_id": "device-1234567890123456", "app_version": "0.1.3"},
     )
     assert heartbeat.status_code == 200
+    wrong_device_heartbeat = client.post(
+        "/api/v1/heartbeat",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"device_id": "device-wrong-1234567", "app_version": "0.1.3"},
+    )
+    assert wrong_device_heartbeat.status_code == 403
 
     second_device = _activate(client, user, key, "device-abcdefghijklmnop")
     assert second_device.status_code == 409
