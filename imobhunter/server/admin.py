@@ -12,7 +12,20 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, create_engine, func, select
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    create_engine,
+    func,
+    inspect,
+    select,
+    text,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
 PH = PasswordHasher()
@@ -153,23 +166,34 @@ SessionLocal = sessionmaker(bind=ENGINE, autoflush=False, expire_on_commit=False
 
 
 def _migrate_legacy_schema(db_engine=ENGINE) -> None:
-    """Apply additive schema changes needed by releases after the initial schema."""
-    from sqlalchemy import inspect, text
-
+    """Apply idempotent, additive migrations for databases from older releases."""
     inspector = inspect(db_engine)
-    if "devices" in inspector.get_table_names():
-        columns = {column["name"] for column in inspector.get_columns("devices")}
-        if "license_id" not in columns:
-            with db_engine.begin() as connection:
-                connection.execute(text("ALTER TABLE devices ADD COLUMN license_id INTEGER"))
+    tables = set(inspector.get_table_names())
 
-    if "sessions" in inspector.get_table_names():
-        columns = {column["name"] for column in inspector.get_columns("sessions")}
+    def add_column(table: str, column: str, definition: str) -> None:
+        if table not in tables:
+            return
+        columns = {item["name"] for item in inspector.get_columns(table)}
+        if column not in columns:
+            with db_engine.begin() as connection:
+                connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
+
+    add_column("devices", "license_id", "INTEGER")
+    add_column("sessions", "license_id", "INTEGER")
+    add_column("sessions", "device_id", "INTEGER")
+
+    if "devices" in tables:
         with db_engine.begin() as connection:
-            if "license_id" not in columns:
-                connection.execute(text("ALTER TABLE sessions ADD COLUMN license_id INTEGER"))
-            if "device_id" not in columns:
-                connection.execute(text("ALTER TABLE sessions ADD COLUMN device_id INTEGER"))
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_device_license "
+                    "ON devices (license_id)"
+                )
+            )
+
+    if "licenses" in tables:
+        with db_engine.begin() as connection:
+            connection.execute(text("UPDATE licenses SET max_devices = 1 WHERE max_devices <> 1"))
 
 
 def init_db() -> None:
@@ -339,7 +363,13 @@ def dashboard(admin_user: Admin = REQUIRE_ADMIN):
         return {
             "users": session.scalar(select(func.count()).select_from(User)) or 0,
             "active_users": session.scalar(select(func.count()).select_from(User).where(User.status == "active")) or 0,
-            "active_licenses": session.scalar(select(func.count()).select_from(License).where(License.status == "active", License.expires_at > now())) or 0,
+            "active_licenses": sum(
+                1
+                for license_obj in session.scalars(
+                    select(License).where(License.status == "active")
+                ).all()
+                if as_utc(license_obj.expires_at) > now()
+            ),
             "active_devices": session.scalar(select(func.count()).select_from(Device).where(Device.status == "active")) or 0,
             "recent_events": [{"event": x.event, "actor": x.actor_id, "created_at": x.created_at.isoformat(), "details": x.details or ""}
                               for x in session.scalars(select(AuditLog).order_by(AuditLog.created_at.desc()).limit(12)).all()],
