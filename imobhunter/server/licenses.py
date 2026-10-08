@@ -71,14 +71,14 @@ def set_license_status(license_id: str, status: str) -> dict:
     cfg = settings()
     if status not in {"active", "revoked", "expired"}: raise ValueError("Status inválido.")
     patch = {"status": status, "revoked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) if status == "revoked" else None}
-    r = httpx.patch(f"{cfg.url}/rest/v1/licenses?id=eq.{license_id}", headers={**_headers(cfg.service_key), "Prefer": "return=representation"}, json=patch, timeout=10)
+    r = httpx.patch(f"{cfg.url}/rest/v1/licenses?id=eq.{license_id}", headers={**_headers(cfg.secret_key), "Prefer": "return=representation"}, json=patch, timeout=10)
     r.raise_for_status()
     return r.json()[0]
 
 def activate_license(key: str, device_id: str, device_label: str | None = None) -> dict:
     cfg = settings()
     kh = hash_license_key(key)
-    r = httpx.get(f"{cfg.url}/rest/v1/licenses?key_hash=eq.{kh}&select=*", headers=_headers(cfg.service_key), timeout=10)
+    r = httpx.get(f"{cfg.url}/rest/v1/licenses?key_hash=eq.{kh}&select=*", headers=_headers(cfg.secret_key), timeout=10)
     r.raise_for_status()
     rows = r.json()
     if not rows: raise PermissionError("Licença não encontrada.")
@@ -88,17 +88,17 @@ def activate_license(key: str, device_id: str, device_label: str | None = None) 
         set_license_status(lic["id"], "expired")
         raise PermissionError("Licença expirada.")
     dh = hash_device_id(device_id)
-    r = httpx.get(f"{cfg.url}/rest/v1/license_activations?license_id=eq.{lic['id']}&device_hash=eq.{dh}&select=*", headers=_headers(cfg.service_key), timeout=10)
+    r = httpx.get(f"{cfg.url}/rest/v1/license_activations?license_id=eq.{lic['id']}&device_hash=eq.{dh}&select=*", headers=_headers(cfg.secret_key), timeout=10)
     r.raise_for_status()
     if r.json():
         row = r.json()[0]
-        httpx.patch(f"{cfg.url}/rest/v1/license_activations?id=eq.{row['id']}", headers=_headers(cfg.service_key), json={"last_seen_at": "now()", "active": True, "device_label": device_label}, timeout=10)
+        httpx.patch(f"{cfg.url}/rest/v1/license_activations?id=eq.{row['id']}", headers=_headers(cfg.secret_key), json={"last_seen_at": "now()", "active": True, "device_label": device_label}, timeout=10)
         return {"license_id": lic["id"], "status": "active", "message": "Dispositivo já autorizado."}
-    r = httpx.get(f"{cfg.url}/rest/v1/license_activations?license_id=eq.{lic['id']}&active=eq.true&select=id", headers={**_headers(cfg.service_key), "Prefer": "count=exact"}, timeout=10)
+    r = httpx.get(f"{cfg.url}/rest/v1/license_activations?license_id=eq.{lic['id']}&active=eq.true&select=id", headers={**_headers(cfg.secret_key), "Prefer": "count=exact"}, timeout=10)
     r.raise_for_status()
     used = int(r.headers.get("content-range", "*/0").rsplit("/", 1)[-1])
     if used >= int(lic["max_devices"]): raise PermissionError("Limite de dispositivos da licença atingido.")
-    r = httpx.post(f"{cfg.url}/rest/v1/license_activations", headers=_headers(cfg.service_key), json={"license_id": lic["id"], "device_hash": dh, "device_label": device_label}, timeout=10)
+    r = httpx.post(f"{cfg.url}/rest/v1/license_activations", headers=_headers(cfg.secret_key), json={"license_id": lic["id"], "device_hash": dh, "device_label": device_label}, timeout=10)
     r.raise_for_status()
     return {"license_id": lic["id"], "status": "active", "message": "Dispositivo ativado."}
 
@@ -127,7 +127,7 @@ def verify_session_marker(marker: str, device_id: str) -> str:
         raise PermissionError("Assinatura da licença inválida.")
     r = httpx.get(
         f"{cfg.url}/rest/v1/license_activations?license_id=eq.{license_id}&device_hash=eq.{hash_device_id(device_id)}&active=eq.true&select=license_id",
-        headers=_headers(cfg.service_key),
+        headers=_headers(cfg.secret_key),
         timeout=10,
     )
     r.raise_for_status()
