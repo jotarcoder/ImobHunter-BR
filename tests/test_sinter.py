@@ -77,3 +77,53 @@ def test_sinter_is_not_configured_without_path(monkeypatch) -> None:
     status = SINTERAdapter().status()
 
     assert status.status == "not_configured"
+
+
+def test_sinter_authenticated_cib_lookup(monkeypatch) -> None:
+    payload = {
+        "InfoIbge": {"nomeMunicipio": "Belo Horizonte", "siglaUf": "MG", "codigoIbge": 3106200},
+        "Cib": {"valor": "CJNJJ50G", "situacao": "Ativa"},
+        "DadosGeraisImovel": {
+            "inscricaoImobiliaria": "123456",
+            "areaTerreno": 350.75,
+            "areaConstruida": 120.5,
+            "valorVenal": 450000,
+        },
+        "EnderecoImovel": {"nomeLogradouro": "Avenida Brasil", "numeroImovel": "1234", "cep": "70040900"},
+        "Titular": [{"nomeTitular": "JOAO DA SILVA", "niTitular": "12345678901"}],
+    }
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self):
+            return payload
+
+    def fake_get(url, *, headers, timeout):
+        assert url.endswith("/api/v1/ui/CJNJJ50G")
+        assert headers["Authorization"] == "Bearer test-token"
+        assert timeout == 20.0
+        return FakeResponse()
+
+    monkeypatch.setenv("IMOBHUNTER_SINTER_API_BASE_URL", "https://sinter.test")
+    monkeypatch.setenv("IMOBHUNTER_SINTER_API_TOKEN", "test-token")
+    monkeypatch.setattr("imobhunter.sources.sinter.httpx.get", fake_get)
+
+    records = SINTERAdapter().search(SearchRequest(cib="CJNJJ50G"))
+
+    assert len(records) == 1
+    assert records[0].cib == "CJNJJ50G"
+    assert records[0].owner_name == "JOAO DA SILVA"
+    assert records[0].owner_document == "12345678901"
+    assert records[0].area_m2 == 350.75
+    assert records[0].attributes["valor_venal"] == 450000
+
+
+def test_sinter_api_status_requires_both_credentials(monkeypatch) -> None:
+    monkeypatch.setenv("IMOBHUNTER_SINTER_API_BASE_URL", "https://sinter.test")
+    monkeypatch.delenv("IMOBHUNTER_SINTER_API_TOKEN", raising=False)
+
+    status = SINTERAdapter().status()
+
+    assert status.status == "not_configured"

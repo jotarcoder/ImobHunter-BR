@@ -5,6 +5,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from imobhunter.application.address import normalize_request, normalize_text
 from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest, SourceStatus
 from imobhunter.sources.base import SourceAdapter
@@ -77,6 +79,41 @@ def _rows(path: Path) -> Iterable[dict[str, Any]]:
     raise ValueError("SINTER file must be CSV, JSON or GeoJSON")
 
 
+SINTER_API_BASE_ENV = "IMOBHUNTER_SINTER_API_BASE_URL"
+SINTER_API_TOKEN_ENV = "IMOBHUNTER_SINTER_API_TOKEN"
+SINTER_API_TIMEOUT_SECONDS = 20.0
+
+
+def _remote_cib_record(payload: dict[str, Any], source_id: str) -> PropertyRecord:
+    info = payload.get("InfoIbge") or {}
+    cib_data = payload.get("Cib") or {}
+    general = payload.get("DadosGeraisImovel") or {}
+    address = payload.get("EnderecoImovel") or {}
+    holders = payload.get("Titular") or []
+    holder = holders[0] if isinstance(holders, list) and holders else {}
+    cib = cib_data.get("valor")
+    return PropertyRecord(
+        cib=str(cib) if cib else None,
+        address=str(address.get("nomeLogradouro")) if address.get("nomeLogradouro") else None,
+        city=str(info.get("nomeMunicipio")) if info.get("nomeMunicipio") else None,
+        state=str(info.get("siglaUf")) if info.get("siglaUf") else None,
+        area_m2=_float(general.get("areaTerreno")),
+        owner_name=str(holder.get("nomeTitular")) if holder.get("nomeTitular") else None,
+        owner_document=str(holder.get("niTitular")) if holder.get("niTitular") else None,
+        attributes={
+            "source": "SINTER / CIB API",
+            "situacao_cib": cib_data.get("situacao"),
+            "inscricao_imobiliaria": general.get("inscricaoImobiliaria"),
+            "area_construida_m2": general.get("areaConstruida"),
+            "valor_venal": general.get("valorVenal"),
+            "numero_imovel": address.get("numeroImovel"),
+            "cep": address.get("cep"),
+            "complemento": address.get("complEndereco"),
+        },
+        provenance=(Provenance(source_id, confidence=0.99, reference=str(cib) if cib else None),),
+    )
+
+
 class SINTERAdapter(SourceAdapter):
     """Reads an authorized SINTER/CIB export or local cache.
 
@@ -93,8 +130,12 @@ class SINTERAdapter(SourceAdapter):
     def __init__(self, data_path: str | Path | None = None) -> None:
         configured = data_path or os.getenv("IMOBHUNTER_SINTER_CIB_PATH")
         self.data_path = Path(configured).expanduser() if configured else None
+        self.api_base_url = os.getenv(SINTER_API_BASE_ENV, "").strip().rstrip("/")
+        self.api_token = os.getenv(SINTER_API_TOKEN_ENV, "").strip()
 
     def status(self) -> SourceStatus:
+        if self.api_base_url and self.api_token:
+            return SourceStatus(self.source_id, self.name, "available", "SINTER API configured")
         if self.data_path is None:
             return SourceStatus(
                 self.source_id,
@@ -111,8 +152,26 @@ class SINTERAdapter(SourceAdapter):
             )
         return SourceStatus(self.source_id, self.name, "available")
 
+    def _search_remote_cib(self, cib: str) -> list[PropertyRecord]:
+        url = f"{self.api_base_url}/api/v1/ui/{cib}"
+        try:
+            response = httpx.get(
+                url,
+                headers={"Authorization": f"Bearer {self.api_token}", "Accept": "application/json"},
+                timeout=SINTER_API_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise RuntimeError(f"SINTER API request failed: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise TypeError("SINTER API returned an invalid payload")
+        return [_remote_cib_record(payload, self.source_id)]
+
     def search(self, request: SearchRequest) -> list[PropertyRecord]:
         request.validate()
+        if request.cib and self.api_base_url and self.api_token:
+            return self._search_remote_cib(request.cib)
         status = self.status()
         if status.status != "available":
             raise RuntimeError(status.message or "SINTER/CIB source unavailable")
