@@ -105,3 +105,4 @@ def test_cnefe_accepts_list_json(tmp_path) -> None:
 
     assert len(records) == 1
     assert records[0].property_id == "CNEFE-1"
+    assert records[0].address == "PAMPLONA 1578"
