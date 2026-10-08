@@ -7,7 +7,7 @@ os.environ["DATABASE_URL"] = "sqlite:///./test-imobhunter-admin.db"
 from fastapi.testclient import TestClient
 from sqlalchemy import inspect, select, text
 
-from imobhunter.server.admin import Admin, Base, ENGINE, License, SessionLocal, User, license_key, public_id, sha
+from imobhunter.server.admin import Admin, Base, ENGINE, License, SessionLocal, SessionToken, User, license_key, public_id, sha
 from imobhunter.server.main import app
 
 
@@ -178,16 +178,28 @@ def test_revoking_license_invalidates_existing_client_session():
     access_token = activated.json()["access_token"]
 
     with SessionLocal() as db:
-        lic = db.scalar(
-            select(License).where(License.user_id == user.id)
+        lic = db.scalar(select(License).where(License.user_id == user.id))
+        license_id = lic.id
+
+    admin_client = TestClient(app, base_url="https://testserver")
+    csrf = _admin_login(admin_client)
+    revoked = admin_client.post(
+        f"/api/admin/licenses/{license_id}/revoke",
+        headers={"x-csrf-token": csrf},
+    )
+    assert revoked.status_code == 200
+
+    with SessionLocal() as db:
+        session = db.scalar(
+            select(SessionToken).where(
+                SessionToken.token_hash == sha(access_token)
+            )
         )
-        lic.status = "revoked"
-        lic.revoked_at = datetime.now(UTC)
-        db.commit()
+        assert session.revoked_at is not None
 
     heartbeat = client.post(
         "/api/v1/heartbeat",
         headers={"Authorization": f"Bearer {access_token}"},
         json={"device_id": "device-revoke-123456", "app_version": "0.1.3"},
     )
-    assert heartbeat.status_code == 403
+    assert heartbeat.status_code == 401
