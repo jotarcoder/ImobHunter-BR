@@ -19,80 +19,89 @@ A landing continua institucional. O After Effects demonstra capacidade, arquitet
 - Grade editorial: 160 px vertical / 120 px horizontal em 1920x1080.
 - Linguagem: precisão, profundidade, escala, silêncio e microdetalhes.
 
+## Pipeline do After Effects
+
+### 1. Construção
+Executar:
+
+`motion/after-effects/ImobHunter_Cinematic_V2_16s.jsx`
+
+Isso cria a composição `IMOBHUNTER_CINEMATIC_V2_16S`.
+
+### 2. Acabamento cinematográfico
+Com a composição aberta/selecionada, executar:
+
+`motion/after-effects/ImobHunter_Cinematic_V2_Finish.jsx`
+
+Esse segundo script aplica:
+- motion blur com shutter de 180°;
+- depth of field da câmera;
+- foco variável ao longo da narrativa;
+- controle de atmosfera;
+- markers de acabamento.
+
+O Finish Pass é propositalmente separado do construtor para permitir recalibrar o acabamento sem reconstruir a peça inteira.
+
+### 3. Revisão manual
+No After Effects:
+- conferir a fonte Inter instalada;
+- revisar curvas de velocidade;
+- conferir DOF em 100% e 50%;
+- ajustar blur se a máquina tiver comportamento diferente;
+- conferir legibilidade dos textos;
+- revisar o frame final antes do render.
+
 ## Cinematografia V2 — 16 segundos
 
 **0–1,2 s — Atmosfera**
 - câmera começa distante;
 - partículas discretas em diferentes planos Z;
 - grade nasce em baixa intensidade;
-- glow verde e azul muito controlado;
-- uma linha de varredura reforça o eixo editorial.
+- glow verde e azul controlados.
 
 **1,2–1,75 s — Hero**
-- “CAÇANDO OPORTUNIDADES • BRASIL” entra primeiro;
-- “Dados reais.” e “Decisões inteligentes.” entram em stagger;
-- pequeno deslocamento Z e escala, sem bounce;
-- a câmera começa a aproximar.
+- eyebrow;
+- “Dados reais.”;
+- “Decisões inteligentes.”;
+- subtítulo;
+- stagger e profundidade sem bounce.
 
 **1,75–4,05 s — Produto**
-- interface entra como objeto material 3D;
-- barra, campo de busca, badge e cards entram em sequência;
-- cursor de busca funciona como microdetalhe;
-- luz pontual cria sensação de volume;
-- câmera faz push-in e arco lateral.
+- interface como objeto material 3D;
+- barra, busca, badge e cards em sequência;
+- cursor de pesquisa;
+- câmera em push-in/arco.
 
 **4,05–6,2 s — Inteligência**
-- a interface perde protagonismo;
-- fontes surgem como rede de evidências;
-- nós e conexões criam uma constelação documental;
-- o ritmo fica mais preciso e menos publicitário.
+- fontes tornam-se rede de evidências;
+- nós e conexões aparecem progressivamente.
 
 **6,2–10 s — Dossiê**
-- a rede converge para um painel de dossiê;
-- identificação, endereço, área, coordenadas, proveniência e confiança aparecem em camadas;
-- a mensagem visual é: informação dispersa → evidência reconciliada → dossiê.
+- evidências convergem;
+- identificação, endereço, área, coordenadas, proveniência e confiança aparecem em camadas.
 
 **10–14,9 s — Assinatura**
-- a composição simplifica agressivamente;
+- simplificação agressiva;
 - “Caçando oportunidades.”;
 - ImobHunter-BR;
-- CTA visual;
-- marca mínima.
+- CTA.
 
 **14,9–16 s — Outro**
-- câmera respira;
-- elementos recuam em profundidade;
-- fade cinematográfico, sem corte brusco.
+- respiração de câmera;
+- recuo de profundidade;
+- fade cinematográfico.
 
-## Referências corretas de linguagem
+## Referências de linguagem
 
 Usar como referência de **princípios**, não como cópia:
 
-1. **Apple product films** — câmera, luz, escala, materialidade e silêncio visual.
-2. **Linear** — dark UI, tipografia, grid, contraste e microinterações.
-3. **Mapbox** — câmera sobre informação geográfica, escala espacial e dados como ambiente.
-4. **Stripe** — composição editorial, clareza, ritmo e hierarquia.
-5. **Motion editorial contemporâneo** — partículas discretas, transições motivadas pelo conteúdo e uso econômico de efeitos.
+1. **Apple product films** — câmera, luz, escala e materialidade.
+2. **Linear** — dark UI, tipografia, grid e microinterações.
+3. **Mapbox** — câmera sobre informação geográfica e escala espacial.
+4. **Stripe** — composição editorial, clareza e ritmo.
+5. **Motion editorial contemporâneo** — partículas discretas e transições motivadas pelo conteúdo.
 
-A referência deve orientar **fotografia, ritmo, composição, profundidade e comportamento**, nunca copiar layout, texto, identidade ou animação específica.
-
-## Arquivo principal
-
-`motion/after-effects/ImobHunter_Cinematic_V2_16s.jsx`
-
-O script cria uma composição procedural 1920×1080 / 30 fps / 16 s com:
-- câmera 3D;
-- parallax por profundidade;
-- grade editorial;
-- partículas;
-- luz pontual;
-- glows;
-- tipografia;
-- UI material;
-- rede de evidências;
-- dossiê;
-- CTA;
-- marcadores de timeline.
+A referência orienta fotografia, ritmo, composição, profundidade e comportamento; não copia layout, identidade ou animação específica.
 
 ## Render
 
@@ -100,17 +109,14 @@ Master: ProRes 422 HQ, 1920×1080, 30 fps.
 
 Web: H.264, 1920×1080, 15–25 Mbps, AAC 48 kHz.
 
-Versão vertical posterior: 1080×1920, reposicionando a composição e preservando a gramática — não apenas escalando.
+Versão vertical posterior: 1080×1920, reposicionando a composição e preservando a gramática.
 
-## Refinamento final no After Effects
+## Estado
 
-Depois de executar o JSX:
-- revisar a fonte Inter disponível na máquina;
-- ajustar curvas de velocidade individualmente;
-- calibrar motion blur;
-- calibrar profundidade, luz e blur;
-- conferir legibilidade em 100% e 50%;
-- fazer color management e render final;
-- revisar a peça inteira antes de publicar.
+A evolução está organizada em branches para evitar alteração prematura da `main`:
 
-O objetivo do V2 é sair de uma animação “bonita” para uma peça com **sensação de produto real, profundidade e direção cinematográfica**.
+- `main` — base estável.
+- `motion/cinematic-v2` — construtor cinematográfico V2.
+- `motion/cinematic-v2-finish` — construtor + acabamento cinematográfico.
+
+Nenhuma dessas etapas deve ser tratada como definitiva na `main` antes da validação no After Effects e revisão do render.
