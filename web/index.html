@@ -25,7 +25,7 @@
       <h1>Dados reais.<br><em>Decisões inteligentes.</em></h1>
       <p class="lead">Uma central de inteligência imobiliária que pesquisa, cruza e organiza informações com processamento pesado no seu próprio computador.</p>
       <div class="actions">
-        <a class="button primary" href="#downloads">Baixar plataforma</a>
+        <a class="button primary" href="#downloads">Baixar plataforma <span>↗</span></a>
         <a class="button" href="#fontes">Conhecer as fontes</a>
       </div>
       <p class="hero-note">Apresentação institucional • a landing page não executa consultas do sistema.</p>
@@ -33,27 +33,68 @@
 
     <div class="hero-stage" aria-label="Representação visual da plataforma ImobHunter-BR">
       <div class="stage-glow"></div>
+      <div class="scene-grid" aria-hidden="true"></div>
+      <div class="scene-line line-one" aria-hidden="true"></div>
+      <div class="scene-line line-two" aria-hidden="true"></div>
+
       <div class="motion-reels" aria-hidden="true">
-        <div class="motion-reel reel-a"><span>MAPA / 02.4s</span><b>QUADRA</b><i></i></div>
-        <div class="motion-reel reel-b"><span>CAMADA / 03.1s</span><b>LOTE</b><i></i></div>
-        <div class="motion-reel reel-c"><span>DADOS / 02.7s</span><b>ORIGEM</b><i></i></div>
+        <div class="motion-reel reel-a">
+          <span>01 / MAPA</span><b>QUADRA</b>
+          <div class="reel-map"><i></i><i></i><i></i><i></i><strong></strong></div>
+        </div>
+        <div class="motion-reel reel-b">
+          <span>02 / CAMADA</span><b>LOTE</b>
+          <div class="reel-layers"><i></i><i></i><i></i><i></i></div>
+        </div>
+        <div class="motion-reel reel-c">
+          <span>03 / DOSSIÊ</span><b>ORIGEM</b>
+          <div class="reel-signal"><i></i><i></i><i></i><strong>100%</strong></div>
+        </div>
       </div>
-      <div class="drag-hint"><span class="live-dot"></span> 3D MOTION <small>MOVE TO EXPLORE</small></div>
+
+      <div class="scene-status"><span class="live-dot"></span><span>LIVE SCENE</span><small>MOVE TO EXPLORE</small></div>
+
       <div class="floating-app" aria-hidden="true">
         <div class="window-bar">
           <div class="window-title"><span class="window-dot"></span> ImobHunter-BR <span>• Inteligência imobiliária</span></div>
           <div class="window-actions"><i></i><i></i><i></i></div>
         </div>
+
         <div class="demo-body">
-          <div class="demo-search"><span>Pesquisa por endereço, quadra ou lote</span><b>VISUAL <span>↗</span></b></div>
-          <p class="demo-label">CAPACIDADE DA PLATAFORMA</p>
-          <div class="stats">
-            <div class="stat"><small>FONTES</small><strong>15+</strong></div>
-            <div class="stat"><small>COBERTURA</small><strong>BR</strong></div>
-            <div class="stat"><small>PROCESSAMENTO</small><strong>LOCAL</strong></div>
-            <div class="stat"><small>PROVENIÊNCIA</small><strong>100%</strong></div>
+          <div class="demo-command">
+            <div class="command-field"><span class="command-icon">⌕</span><span>Rua Oscar Freire, 1.200 · São Paulo</span><kbd>⌘ K</kbd></div>
+            <button>ANALISAR <span>↗</span></button>
           </div>
-          <div class="demo-footer"><span>Local-first</span><span>Fontes identificadas</span><span>Dados autorizados</span></div>
+
+          <div class="demo-meta">
+            <div><small>CONSULTA</small><strong>ENDEREÇO</strong></div>
+            <div><small>CAMADA</small><strong>QUADRA 018</strong></div>
+            <div><small>STATUS</small><strong><i></i> PROCESSANDO</strong></div>
+          </div>
+
+          <div class="demo-dashboard">
+            <div class="dashboard-map">
+              <div class="map-label">MAPA / PARCELA 018.04</div>
+              <div class="map-roads"><i></i><i></i><i></i><i></i></div>
+              <div class="parcel parcel-a"></div><div class="parcel parcel-b"></div><div class="parcel parcel-c"></div>
+              <div class="map-pulse"></div>
+              <div class="map-pin">⌖</div>
+              <div class="map-coords">23°33'14"S<br>46°40'22"W</div>
+            </div>
+            <aside class="insight-panel">
+              <span class="panel-kicker">DOSSIÊ</span>
+              <strong>Convergência<br>de fontes</strong>
+              <div class="confidence"><span><i></i></span><b>94</b><small>/ 100</small></div>
+              <div class="panel-row"><span>Fontes cruzadas</span><b>15+</b></div>
+              <div class="panel-row"><span>Proveniência</span><b>100%</b></div>
+              <div class="panel-row"><span>Processamento</span><b>LOCAL</b></div>
+            </aside>
+          </div>
+
+          <div class="demo-footer">
+            <span>Local-first</span><span>Fontes identificadas</span><span>Dados autorizados</span>
+            <em>IMOBHUNTER ENGINE <i></i></em>
+          </div>
         </div>
       </div>
     </div>
