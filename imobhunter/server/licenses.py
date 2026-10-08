@@ -107,3 +107,30 @@ def issue_session_marker(license_id: str, device_id: str, expires_at: int) -> st
     payload = f"{license_id}.{hash_device_id(device_id)}.{expires_at}".encode()
     sig = hmac.new(cfg.signing_secret.encode(), payload, hashlib.sha256).hexdigest()
     return f"{license_id}.{expires_at}.{sig}"
+
+
+def verify_session_marker(marker: str, device_id: str) -> str:
+    cfg = settings()
+    parts = marker.split(".")
+    if len(parts) != 3:
+        raise PermissionError("Sessão de licença inválida.")
+    license_id, expires_raw, signature = parts
+    try:
+        expires_at = int(expires_raw)
+    except ValueError as exc:
+        raise PermissionError("Sessão de licença inválida.") from exc
+    if expires_at < int(time.time()):
+        raise PermissionError("Sessão de licença expirada.")
+    payload = f"{license_id}.{hash_device_id(device_id)}.{expires_at}".encode()
+    expected = hmac.new(cfg.signing_secret.encode(), payload, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected):
+        raise PermissionError("Assinatura da licença inválida.")
+    r = httpx.get(
+        f"{cfg.url}/rest/v1/license_activations?license_id=eq.{license_id}&device_hash=eq.{hash_device_id(device_id)}&active=eq.true&select=license_id",
+        headers=_headers(cfg.service_key),
+        timeout=10,
+    )
+    r.raise_for_status()
+    if not r.json():
+        raise PermissionError("Dispositivo não está autorizado.")
+    return license_id
