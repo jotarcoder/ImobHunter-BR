@@ -47,6 +47,9 @@
     function textLayer(name, txt, size, color, x, y, z, weight) {
         var l = comp.layers.addText(txt);
         l.name = name;
+        // Every text element participates in the real 3D camera scene.
+        // This keeps z-depth, parallax and camera movement consistent with the UI panels.
+        l.threeDLayer = true;
         var d = l.property("Source Text").value;
         d.font = "Inter";
         d.fontSize = size;
@@ -156,6 +159,12 @@
 
     // 04 — 3D camera: slow push-in + lateral parallax
     var cam = comp.layers.addCamera("CAMERA_CINEMATIC", [W/2,H/2]);
+    cam.autoOrient = AutoOrientType.NO_AUTO_ORIENT;
+    var camOpt = cam.property("Camera Options");
+    camOpt.property("Depth of Field").setValue(true);
+    camOpt.property("Focus Distance").setValue(1900);
+    camOpt.property("Aperture").setValue(28);
+    camOpt.property("Blur Level").setValue(18);
     cam.position.setValueAtTime(0, [960,540,1900]);
     cam.position.setValueAtTime(3.2, [1010,530,1450]);
     cam.position.setValueAtTime(7.0, [910,550,1250]);
@@ -166,6 +175,11 @@
     cam.pointOfInterest.setValueAtTime(12, [960,540,0]);
     ease(cam.position);
     ease(cam.pointOfInterest);
+    camOpt.property("Focus Distance").setValueAtTime(0, 1900);
+    camOpt.property("Focus Distance").setValueAtTime(3.2, 1500);
+    camOpt.property("Focus Distance").setValueAtTime(7.0, 1250);
+    camOpt.property("Focus Distance").setValueAtTime(12, 1550);
+    ease(camOpt.property("Focus Distance"));
 
     // 05 — Hero copy
     var eyebrow = textLayer("EYEBROW", "CAÇANDO OPORTUNIDADES  •  BRASIL", 24, C.green, 150, 210, 80, "Bold");
@@ -236,6 +250,7 @@
 
     // Motion language: no bounce, no elastic overshoot.
     // Use long ease curves and controlled depth. Premium = restraint.
+    // The camera, typography and UI are all true 3D layers; z values are intentional.
     comp.workAreaStart = 0;
     comp.workAreaDuration = DUR;
 
