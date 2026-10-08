@@ -15,6 +15,14 @@ def test_landing_is_institutional_only():
     assert "MOVE TO EXPLORE" not in html
     assert "motion-reel" in html
     assert "releases/latest/download/ImobHunter-BR-Setup-Windows.exe" in html
+    assert 'class="button primary"' in html
+    assert 'class="button"' in html
+    css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
+    motion = (ROOT / "web" / "motion.js").read_text(encoding="utf-8")
+    assert "--button-rx:0deg" in css
+    assert "translateZ(var(--button-z))" in css
+    assert "--button-rx" in motion
+    assert ".hero-copy{\n  text-align:center" in css
 
 
 def test_after_effects_motion_package_exists():
