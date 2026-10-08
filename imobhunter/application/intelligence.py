@@ -49,6 +49,8 @@ def _fields(record: PropertyRecord) -> dict[str, object]:
         "address": record.address,
         "cib": record.cib,
         "property_id": record.property_id,
+        "owner_name": record.owner_name,
+        "owner_document": record.owner_document,
         "block": record.block,
         "lot": record.lot,
         "area_m2": record.area_m2,
@@ -115,6 +117,7 @@ def opportunity_score(
 
     checks = (
         ("cib", 25.0, "CIB identificado"),
+        ("owner_name", 5.0, "Titular identificado"),
         ("block", 20.0, "Quadra identificada"),
         ("lot", 20.0, "Lote identificado"),
         ("area_m2", 15.0, "Área identificada"),
