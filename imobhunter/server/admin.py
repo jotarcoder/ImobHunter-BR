@@ -165,7 +165,7 @@ def _migrate_legacy_schema(db_engine=ENGINE) -> None:
 
     if "sessions" in inspector.get_table_names():
         columns = {column["name"] for column in inspector.get_columns("sessions")}
-        with ENGINE.begin() as connection:
+        with db_engine.begin() as connection:
             if "license_id" not in columns:
                 connection.execute(text("ALTER TABLE sessions ADD COLUMN license_id INTEGER"))
             if "device_id" not in columns:
