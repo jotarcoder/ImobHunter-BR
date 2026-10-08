@@ -1,4 +1,6 @@
 import json
+import zipfile
+
 
 from imobhunter.domain.models import SearchRequest
 from imobhunter.sources.cnefe import CNEFEAdapter
