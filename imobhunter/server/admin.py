@@ -192,9 +192,9 @@ def client(credentials: HTTPAuthorizationCredentials | None, db: Session) -> Use
 
 def current_license(db: Session, user_id: int) -> License | None:
     lic = db.scalar(select(License).where(License.user_id == user_id, License.status == "active").order_by(License.expires_at.desc()))
-    if lic and lic.starts_at <= now() < lic.expires_at:
+    if lic and as_utc(lic.starts_at) <= now() < as_utc(lic.expires_at):
         return lic
-    if lic and lic.expires_at <= now():
+    if lic and as_utc(lic.expires_at) <= now():
         lic.status = "expired"
         db.commit()
     return None
