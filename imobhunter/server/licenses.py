@@ -10,7 +10,7 @@ import httpx
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-ADMIN_EMAIL = os.getenv("IMOBHUNTER_ADMIN_EMAIL", "juninhoovf@gmail.com").lower()
+ADMIN_EMAIL = "juninhoovf@gmail.com"
 LICENSE_SIGNING_SECRET = os.getenv("IMOBHUNTER_LICENSE_SIGNING_SECRET", "")
 
 class LicenseConfigError(RuntimeError): pass
