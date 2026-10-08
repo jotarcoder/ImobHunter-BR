@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from argon2 import PasswordHasher
+from argon2.exceptions import VerificationError, VerifyMismatchError
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -73,8 +74,8 @@ class User(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    licenses: Mapped[list["License"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    devices: Mapped[list["Device"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    licenses: Mapped[list[License]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    devices: Mapped[list[Device]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class License(Base):
@@ -251,6 +252,9 @@ def require_admin(request: Request) -> Admin:
         return obj
 
 
+REQUIRE_ADMIN = REQUIRE_ADMIN
+
+
 @router.get("/admin", include_in_schema=False)
 def admin_page():
     return FileResponse(ADMIN_DIR / "index.html", media_type="text/html")
@@ -274,7 +278,7 @@ def admin_login(payload: Login, request: Request, response: Response):
             raise HTTPException(401, "credenciais inválidas")
         try:
             PH.verify(obj.password_hash, payload.password)
-        except Exception:
+        except (VerificationError, VerifyMismatchError):
             audit(session, "system", "0", "admin.login_failed", request)
             session.commit()
             raise HTTPException(401, "credenciais inválidas")
@@ -448,7 +452,7 @@ def activate(payload: Activate, request: Request):
             raise HTTPException(401, "credenciais inválidas")
         try:
             PH.verify(user.password_hash, payload.password)
-        except Exception:
+        except (VerificationError, VerifyMismatchError):
             audit(session, "user", user.public_id, "client.login_failed", request)
             session.commit()
             raise HTTPException(401, "credenciais inválidas")
