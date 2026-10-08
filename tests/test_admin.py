@@ -74,6 +74,7 @@ def test_activation_allows_only_one_device_per_license():
         json={"device_id": "device-1234567890123456", "app_version": "0.1.3"},
     )
     assert heartbeat.status_code == 200
+    assert "license_expires_at" in heartbeat.json()
     wrong_device_heartbeat = client.post(
         "/api/v1/heartbeat",
         headers={"Authorization": f"Bearer {token}"},
