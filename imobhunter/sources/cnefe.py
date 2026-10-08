@@ -139,7 +139,7 @@ def _municipality_catalog(cache_dir: Path) -> list[dict[str, Any]]:
 
     municipalities = _http_json(IBGE_MUNICIPALITIES_API)
     if not isinstance(municipalities, list):
-        raise ValueError("IBGE municipality catalog returned an invalid payload")
+        raise TypeError("IBGE municipality catalog returned an invalid payload")
     temp_path = cache_path.with_suffix(".json.part")
     try:
         temp_path.write_text(
