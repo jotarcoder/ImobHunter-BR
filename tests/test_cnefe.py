@@ -114,15 +114,17 @@ def test_cnefe_remote_resolves_municipality_and_uses_cache(tmp_path, monkeypatch
     with zipfile.ZipFile(source_zip, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("3550308_SAO_PAULO.csv", csv_content)
 
-    monkeypatch.setattr(
-        cnefe,
-        "_http_json",
-        lambda _url: [{
+    calls = {"catalog": 0}
+
+    def fake_catalog(_url):
+        calls["catalog"] += 1
+        return [{
             "id": 3550308,
             "nome": "São Paulo",
             "microrregiao": {"mesorregiao": {"UF": {"sigla": "SP"}}},
-        }],
-    )
+        }]
+
+    monkeypatch.setattr(cnefe, "_http_json", fake_catalog)
     monkeypatch.setattr(
         cnefe,
         "_http_text",
@@ -137,3 +139,10 @@ def test_cnefe_remote_resolves_municipality_and_uses_cache(tmp_path, monkeypatch
     assert len(records) == 1
     assert records[0].property_id == "999"
     assert records[0].block == "77"
+
+    second = CNEFEAdapter(cache_dir=tmp_path / "cache").search(
+        SearchRequest(address="Rua Pamplona", number="1578", city="São Paulo", state="SP")
+    )
+    assert len(second) == 1
+    assert calls["catalog"] == 1
+    assert (tmp_path / "cache" / "municipalities.json").is_file()
