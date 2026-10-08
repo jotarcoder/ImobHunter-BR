@@ -70,7 +70,7 @@ def create_license(*, max_devices: int = 1, expires_at: str | None = None, notes
 def set_license_status(license_id: str, status: str) -> dict:
     cfg = settings()
     if status not in {"active", "revoked", "expired"}: raise ValueError("Status inválido.")
-    patch = {"status": status, "revoked_at": "now()" if status == "revoked" else None}
+    patch = {"status": status, "revoked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) if status == "revoked" else None}
     r = httpx.patch(f"{cfg.url}/rest/v1/licenses?id=eq.{license_id}", headers={**_headers(cfg.service_key), "Prefer": "return=representation"}, json=patch, timeout=10)
     r.raise_for_status()
     return r.json()[0]
