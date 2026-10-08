@@ -40,3 +40,6 @@ footer span+span:before{content:"";position:absolute;left:0;top:50%;width:4px;he
 .floating-app{will-change:transform}
 .button:focus-visible,.download:focus-visible,.navlinks a:focus-visible,.textlink:focus-visible{outline:2px solid #35ff77;outline-offset:3px}
 @media(max-width:700px){footer{padding-bottom:28px}footer span+span:before{display:none}footer span+span{padding-left:0}}
+
+.section-lead{max-width:780px;color:#91a5b6;margin:-16px 0 30px;font-size:16px}
+.demo-search b{padding:7px 10px;border:1px solid #31516a;border-radius:999px;color:#35ff77;font-size:9px;letter-spacing:.1em}
