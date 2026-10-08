@@ -28,6 +28,12 @@ def sha(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
+def as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
 def token() -> str:
     return secrets.token_urlsafe(48)
 
@@ -171,7 +177,7 @@ def admin(request: Request, db: Session) -> Admin:
     if not raw:
         raise HTTPException(401, "admin authentication required")
     s = db.scalar(select(SessionToken).where(SessionToken.token_hash == sha(raw), SessionToken.kind == "admin"))
-    if not s or s.revoked_at or s.expires_at <= now() or not s.admin_id:
+    if not s or s.revoked_at or as_utc(s.expires_at) <= now() or not s.admin_id:
         raise HTTPException(401, "admin session expired")
     obj = db.get(Admin, s.admin_id)
     if not obj or not obj.active:
@@ -398,7 +404,7 @@ def extend_license(license_id: int, payload: Extend, request: Request, admin_use
         obj = session.get(License, license_id)
         if not obj:
             raise HTTPException(404, "licença não encontrada")
-        obj.expires_at = max(obj.expires_at, now()) + timedelta(days=payload.days)
+        obj.expires_at = max(as_utc(obj.expires_at), now()) + timedelta(days=payload.days)
         obj.status = "active"
         audit(session, "admin", str(admin_user.id), "license.extended", request, f"{obj.public_id}:{payload.days}")
         session.commit()
@@ -448,8 +454,8 @@ def activate(payload: Activate, request: Request):
             raise HTTPException(401, "credenciais inválidas")
         license_hash = sha(payload.license_key.strip().upper())
         lic = session.scalar(select(License).where(License.user_id == user.id, License.key_hash == license_hash))
-        if not lic or lic.status != "active" or not (lic.starts_at <= now() < lic.expires_at):
-            if lic and lic.expires_at <= now() and lic.status == "active":
+        if not lic or lic.status != "active" or not (as_utc(lic.starts_at) <= now() < as_utc(lic.expires_at)):
+            if lic and as_utc(lic.expires_at) <= now() and lic.status == "active":
                 lic.status = "expired"
             audit(session, "user", user.public_id, "license.activation_denied", request)
             session.commit()
@@ -483,7 +489,7 @@ def heartbeat(payload: Heartbeat, credentials: HTTPAuthorizationCredentials | No
     with db() as session:
         user, client_session = client(credentials, session)
         lic = session.get(License, client_session.license_id)
-        if not lic or lic.user_id != user.id or lic.status != "active" or not (lic.starts_at <= now() < lic.expires_at):
+        if not lic or lic.user_id != user.id or lic.status != "active" or not (as_utc(lic.starts_at) <= now() < as_utc(lic.expires_at)):
             raise HTTPException(403, "licença expirada ou revogada")
         device = session.scalar(select(Device).where(Device.id == client_session.device_id,
                                                        Device.user_id == user.id,
