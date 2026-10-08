@@ -195,7 +195,7 @@ def client(credentials: HTTPAuthorizationCredentials | None, db: Session) -> tup
     if not credentials or credentials.scheme.lower() != "bearer":
         raise HTTPException(401, "authentication required")
     s = db.scalar(select(SessionToken).where(SessionToken.token_hash == sha(credentials.credentials), SessionToken.kind == "client"))
-    if not s or s.revoked_at or s.expires_at <= now() or not s.user_id or not s.license_id or not s.device_id:
+    if not s or s.revoked_at or as_utc(s.expires_at) <= now() or not s.user_id or not s.license_id or not s.device_id:
         raise HTTPException(401, "session expired")
     obj = db.get(User, s.user_id)
     if not obj or obj.status != "active":
