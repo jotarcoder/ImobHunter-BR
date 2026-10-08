@@ -5,6 +5,7 @@ from uuid import uuid4
 os.environ["DATABASE_URL"] = "sqlite:///./test-imobhunter-admin.db"
 
 from fastapi.testclient import TestClient
+from sqlalchemy import inspect, text
 
 from imobhunter.server.admin import Base, ENGINE, License, SessionLocal, User, license_key, public_id, sha
 from imobhunter.server.main import app
@@ -120,3 +121,18 @@ def test_expired_license_is_rejected():
     client = TestClient(app)
     response = _activate(client, user, key, "device-expired-123456")
     assert response.status_code == 403
+
+
+def test_legacy_schema_migration_adds_license_columns(tmp_path) -> None:
+    from sqlalchemy import create_engine
+    from imobhunter.server.admin import _migrate_legacy_schema
+
+    legacy = create_engine(f"sqlite:///{tmp_path / 'legacy.db'}")
+    with legacy.begin() as connection:
+        connection.execute(text("CREATE TABLE devices (id INTEGER PRIMARY KEY, user_id INTEGER)"))
+        connection.execute(text("CREATE TABLE sessions (id INTEGER PRIMARY KEY, token_hash VARCHAR(64))"))
+
+    _migrate_legacy_schema(legacy)
+    assert "license_id" in {c["name"] for c in inspect(legacy).get_columns("devices")}
+    session_columns = {c["name"] for c in inspect(legacy).get_columns("sessions")}
+    assert {"license_id", "device_id"} <= session_columns
