@@ -43,3 +43,17 @@ footer span+span:before{content:"";position:absolute;left:0;top:50%;width:4px;he
 
 .section-lead{max-width:780px;color:#91a5b6;margin:-16px 0 30px;font-size:16px}
 .demo-search b{padding:7px 10px;border:1px solid #31516a;border-radius:999px;color:#35ff77;font-size:9px;letter-spacing:.1em}
+
+
+/* Cinematic 3D motion reels — lightweight, no external media dependency */
+.motion-reels{position:absolute;inset:0;pointer-events:none;perspective:1100px;transform-style:preserve-3d}
+.motion-reel{position:absolute;width:190px;height:112px;padding:14px;border:1px solid rgba(53,255,119,.24);border-radius:16px;background:linear-gradient(145deg,rgba(11,29,43,.96),rgba(5,15,25,.86));box-shadow:0 24px 55px rgba(0,0,0,.38),inset 0 0 30px rgba(53,255,119,.035);transform-style:preserve-3d;overflow:hidden;animation:reelFloat 4.8s ease-in-out infinite}
+.motion-reel:before{content:"";position:absolute;inset:18px 14px 31px;border:1px solid #18384b;background:linear-gradient(120deg,transparent 20%,rgba(53,255,119,.12) 21%,transparent 48%),linear-gradient(180deg,rgba(53,255,119,.08),transparent);transform:translateZ(14px) rotateX(12deg);opacity:.9}
+.motion-reel:after{content:"";position:absolute;left:14px;right:14px;bottom:16px;height:1px;background:linear-gradient(90deg,#35ff77 0 46%,#1b3548 46%);box-shadow:0 0 10px rgba(53,255,119,.3)}
+.motion-reel span,.motion-reel b{position:relative;z-index:2;display:block;font-size:8px;letter-spacing:.12em}.motion-reel span{color:#70899c}.motion-reel b{margin-top:8px;color:#edf5fa;font-size:13px;letter-spacing:.04em;transform:translateZ(18px)}
+.motion-reel i{position:absolute;width:5px;height:5px;right:14px;top:16px;border-radius:50%;background:#35ff77;box-shadow:0 0 12px rgba(53,255,119,.7)}
+.reel-a{left:0;top:10%;transform:rotateY(22deg) rotateX(7deg) rotateZ(-4deg);animation-delay:-1.2s}.reel-b{right:-1%;top:17%;transform:rotateY(-24deg) rotateX(8deg) rotateZ(5deg);animation-delay:-2.7s}.reel-c{right:9%;bottom:5%;transform:rotateY(-12deg) rotateX(-8deg) rotateZ(-3deg);animation-delay:-3.8s}
+@keyframes reelFloat{0%,100%{translate:0 0;scale:1}50%{translate:0 -12px;scale:1.025}}
+@media(max-width:1000px){.motion-reel{opacity:.72}.reel-a{left:2%;top:5%}.reel-b{right:1%;top:8%}.reel-c{right:5%;bottom:3%}}
+@media(max-width:700px){.motion-reel{width:145px;height:86px;padding:10px;border-radius:12px;opacity:.55}.motion-reel:before{inset:14px 10px 25px}.motion-reel span{font-size:7px}.motion-reel b{font-size:11px;margin-top:5px}.motion-reel:after{left:10px;right:10px;bottom:12px}.reel-a{left:-8%;top:2%}.reel-b{right:-8%;top:4%}.reel-c{right:-2%;bottom:0}}
+@media(prefers-reduced-motion:reduce){.motion-reel{animation:none}}
