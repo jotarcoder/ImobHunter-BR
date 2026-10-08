@@ -267,6 +267,14 @@ class MainWindow(QMainWindow):
         results_title.setObjectName("resultTitle")
         results_title.setObjectName("section")
         results_layout.addWidget(results_title)
+        self.dossier_scroll = QScrollArea()
+        self.dossier_scroll.setWidgetResizable(True)
+        self.dossier_host = QWidget()
+        self.dossier_layout = QVBoxLayout(self.dossier_host)
+        self.dossier_layout.setContentsMargins(0, 4, 0, 0)
+        self.dossier_layout.setSpacing(10)
+        self.dossier_scroll.setWidget(self.dossier_host)
+        results_layout.addWidget(self.dossier_scroll, 1)
         self.result_text = QLabel(
             "Pronto para pesquisar. O ImobHunter consulta as fontes configuradas "
             "e consolida os registros sem enviar os dados pesados para o servidor."
@@ -353,6 +361,48 @@ class MainWindow(QMainWindow):
             f"{found} registro(s) encontrado(s) em {active} fonte(s). "
             f"{len(result.dossiers)} imóvel(is) consolidado(s) após reconciliação."
         )
+        self._render_dossiers(result.dossiers)
+
+
+    def _render_dossiers(self, dossiers) -> None:
+        while self.dossier_layout.count():
+            item = self.dossier_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        if not dossiers:
+            self.dossier_layout.addWidget(QLabel("Nenhum dossiê consolidado para esta pesquisa."))
+            return
+        for index, dossier in enumerate(dossiers, 1):
+            card = QFrame()
+            card.setObjectName("card")
+            box = QVBoxLayout(card)
+            title = QLabel(f"Imóvel {index}  •  confiança {dossier.score:.0f}/100")
+            title.setObjectName("resultTitle")
+            box.addWidget(title)
+            reasons = QLabel(" • ".join(dossier.score_reasons) or "Sem indicadores suficientes.")
+            reasons.setObjectName("muted")
+            reasons.setWordWrap(True)
+            box.addWidget(reasons)
+            for fact in dossier.facts:
+                label = QLabel(
+                    f"<b>{fact.field}</b>: {fact.value}  ·  "
+                    f"fonte: {fact.provenance.source_id}  · "
+                    f"confiança: {fact.provenance.confidence:.0%}"
+                )
+                label.setTextFormat(Qt.TextFormat.RichText)
+                label.setWordWrap(True)
+                box.addWidget(label)
+            if dossier.conflicts:
+                conflict = QLabel("Conflitos: " + " | ".join(
+                    f"{item.field}: " + " ↔ ".join(str(value) for value in item.values)
+                    for item in dossier.conflicts
+                ))
+                conflict.setWordWrap(True)
+                conflict.setStyleSheet("color:#ffcc66;")
+                box.addWidget(conflict)
+            self.dossier_layout.addWidget(card)
+        self.dossier_layout.addStretch()
 
     def _search_failed(self, message: str) -> None:
         self.search_button.setEnabled(True)
