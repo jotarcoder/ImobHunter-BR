@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ImobHunter-BR • Central Administrativa</title>
+  <link rel="stylesheet" href="/admin/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section id="login" class="card login-card">
+      <div class="brand"><span>IH</span><div><strong>ImobHunter-BR</strong><small>Central administrativa</small></div></div>
+      <h1>Acesso administrativo</h1>
+      <p>Controle usuários, licenças anuais, dispositivos e auditoria.</p>
+      <form id="login-form">
+        <label>E-mail<input id="email" type="email" autocomplete="username" required></label>
+        <label>Senha<input id="password" type="password" autocomplete="current-password" required></label>
+        <button type="submit">Entrar</button>
+        <output id="login-error" class="error"></output>
+      </form>
+    </section>
+
+    <section id="panel" hidden>
+      <header class="topbar">
+        <div class="brand"><span>IH</span><div><strong>ImobHunter-BR</strong><small>Central administrativa</small></div></div>
+        <div class="top-actions"><span id="admin-email"></span><button id="logout" class="ghost">Sair</button></div>
+      </header>
+      <nav class="tabs">
+        <button data-view="dashboard" class="active">Visão geral</button>
+        <button data-view="users">Usuários</button>
+        <button data-view="licenses">Licenças</button>
+        <button data-view="devices">Dispositivos</button>
+        <button data-view="audit">Auditoria</button>
+      </nav>
+      <section id="view"></section>
+    </section>
+  </main>
+  <script src="/admin/app.js"></script>
+</body>
+</html>
