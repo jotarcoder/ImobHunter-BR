@@ -62,7 +62,7 @@ def _rows_from_json(path: Path) -> Iterable[dict[str, Any]]:
     with path.open(encoding="utf-8") as handle:
         payload = json.load(handle)
 
-    if payload.get("type") == "FeatureCollection":
+    if isinstance(payload, dict) and payload.get("type") == "FeatureCollection":
         for feature in payload.get("features", []):
             properties = dict(feature.get("properties") or {})
             geometry = feature.get("geometry") or {}
