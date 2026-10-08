@@ -11,7 +11,9 @@ def test_landing_is_institutional_only():
     assert "Termos de Uso" in html
     assert "Política de Fontes" in html
     assert "https://github.com/jotarcoder/ImobHunter-BR/releases" in html
-    assert "Extensão Web" in html
+    assert "3D MOTION" in html
+    assert "motion-reel" in html
+    assert "releases/latest/download/ImobHunter-BR-Setup-Windows.exe" in html
 
 
 def test_after_effects_motion_package_exists():
