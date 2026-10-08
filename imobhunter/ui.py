@@ -426,7 +426,7 @@ class MainWindow(QMainWindow):
         dialog.setWindowTitle("Dossiê do imóvel")
         dialog.setIcon(QMessageBox.Icon.Information)
         lines = [
-            f"<h2>Imóvel consolidado</h2>",
+            "<h2>Imóvel consolidado</h2>",
             f"<p><b>Confiança geral:</b> {dossier.score:.0f}/100</p>",
             "<h3>Informações consolidadas</h3>",
         ]
