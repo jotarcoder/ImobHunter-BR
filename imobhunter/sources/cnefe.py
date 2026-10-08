@@ -3,6 +3,7 @@ import io
 import json
 import os
 import re
+import time
 import unicodedata
 import zipfile
 from collections.abc import Iterable
@@ -43,6 +44,7 @@ CNEFE_FTP_ROOT = (
 )
 IBGE_MUNICIPALITIES_API = "https://servicodados.ibge.gov.br/api/v1/localidades/municipios"
 USER_AGENT = "ImobHunter-BR/0.1 (official IBGE CNEFE integration)"
+MUNICIPALITY_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
 
 
 def _clean_key(value: str) -> str:
@@ -122,8 +124,37 @@ def _http_text(url: str) -> str:
         return response.read().decode("utf-8", errors="replace")
 
 
-def _municipality_zip_url(city: str, state: str) -> str:
+def _municipality_catalog(cache_dir: Path) -> list[dict[str, Any]]:
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_path = cache_dir / "municipalities.json"
+    if cache_path.is_file():
+        age = time.time() - cache_path.stat().st_mtime
+        if age < MUNICIPALITY_CACHE_TTL_SECONDS:
+            try:
+                payload = json.loads(cache_path.read_text(encoding="utf-8"))
+                if isinstance(payload, list):
+                    return payload
+            except (OSError, json.JSONDecodeError):
+                pass
+
     municipalities = _http_json(IBGE_MUNICIPALITIES_API)
+    if not isinstance(municipalities, list):
+        raise ValueError("IBGE municipality catalog returned an invalid payload")
+    temp_path = cache_path.with_suffix(".json.part")
+    try:
+        temp_path.write_text(
+            json.dumps(municipalities, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        temp_path.replace(cache_path)
+    except OSError:
+        temp_path.unlink(missing_ok=True)
+        raise
+    return municipalities
+
+
+def _municipality_zip_url(city: str, state: str, cache_dir: Path) -> str:
+    municipalities = _municipality_catalog(cache_dir)
     wanted_city = normalize_text(city) or ""
     wanted_state = normalize_text(state) or ""
     matches = [
@@ -222,7 +253,7 @@ class CNEFEAdapter(SourceAdapter):
 
         data_path = self.data_path
         if data_path is None:
-            remote_url = _municipality_zip_url(wanted_city, wanted_state)
+            remote_url = _municipality_zip_url(wanted_city, wanted_state, self.cache_dir)
             data_path = _download_remote_zip(remote_url, self.cache_dir)
 
         records: list[PropertyRecord] = []
