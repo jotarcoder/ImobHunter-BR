@@ -5,9 +5,9 @@ from uuid import uuid4
 os.environ["DATABASE_URL"] = "sqlite:///./test-imobhunter-admin.db"
 
 from fastapi.testclient import TestClient
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, select, text
 
-from imobhunter.server.admin import Base, ENGINE, License, SessionLocal, User, license_key, public_id, sha
+from imobhunter.server.admin import Admin, Base, ENGINE, License, SessionLocal, User, license_key, public_id, sha
 from imobhunter.server.main import app
 
 
@@ -140,3 +140,54 @@ def test_legacy_schema_migration_adds_license_columns(tmp_path) -> None:
     assert {"license_id", "device_id"} <= session_columns
     indexes = {index["name"] for index in inspect(legacy).get_indexes("devices")}
     assert "uq_device_license" in indexes
+
+
+def _admin_login(client: TestClient):
+    from argon2 import PasswordHasher
+
+    ph = PasswordHasher()
+    email = f"admin-{uuid4().hex[:8]}@example.com"
+    with SessionLocal() as db:
+        db.add(Admin(email=email, password_hash=ph.hash("admin-seguro-123")))
+        db.commit()
+    response = client.post(
+        "/api/admin/auth/login",
+        json={"email": email, "password": "admin-seguro-123"},
+    )
+    assert response.status_code == 200
+    return response.json()["csrf"]
+
+
+def test_admin_logout_requires_csrf_and_revokes_session():
+    client = TestClient(app, base_url="https://testserver")
+    csrf = _admin_login(client)
+
+    blocked = client.post("/api/admin/auth/logout")
+    assert blocked.status_code == 403
+
+    ok = client.post("/api/admin/auth/logout", headers={"x-csrf-token": csrf})
+    assert ok.status_code == 200
+    assert client.get("/api/admin/me").status_code == 401
+
+
+def test_revoking_license_invalidates_existing_client_session():
+    user, key = _seed()
+    client = TestClient(app)
+    activated = _activate(client, user, key, "device-revoke-123456")
+    assert activated.status_code == 200
+    access_token = activated.json()["access_token"]
+
+    with SessionLocal() as db:
+        lic = db.scalar(
+            select(License).where(License.user_id == user.id)
+        )
+        lic.status = "revoked"
+        lic.revoked_at = datetime.now(UTC)
+        db.commit()
+
+    heartbeat = client.post(
+        "/api/v1/heartbeat",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={"device_id": "device-revoke-123456", "app_version": "0.1.3"},
+    )
+    assert heartbeat.status_code == 403
