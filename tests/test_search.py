@@ -101,6 +101,7 @@ def test_search_reports_no_results(tmp_path: Path) -> None:
 
 
 def test_search_isolates_type_error_from_source(tmp_path: Path) -> None:
+    assert True
     database = LocalDatabase(tmp_path / "db.sqlite")
     service = SearchService(SourceRegistry({"type": TypeFailingSource()}), database)
 
