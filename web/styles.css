@@ -376,6 +376,72 @@ footer span:hover{
   .cards article,.download,.sourcegrid div,.navlinks a,.textlink,footer span{transition:none}
 }
 /* =========================================================
+   SECTION CENTERING PASS — institutional hierarchy
+   ========================================================= */
+#plataforma,
+#downloads,
+#fontes,
+#privacidade{
+  text-align:center;
+}
+#plataforma > .eyebrow,
+#downloads > .eyebrow,
+#fontes > .eyebrow,
+#privacidade > .eyebrow,
+#plataforma > h2,
+#downloads > h2,
+#fontes > h2,
+#privacidade > h2,
+#downloads > .section-lead,
+#privacidade > p:not(.eyebrow){
+  margin-left:auto;
+  margin-right:auto;
+}
+#plataforma > h2,
+#downloads > h2,
+#fontes > h2,
+#privacidade > h2{
+  max-width:980px;
+}
+#downloads > .section-lead{
+  max-width:780px;
+  margin-bottom:30px;
+}
+#privacidade > p:not(.eyebrow){
+  max-width:900px;
+}
+.cards,
+.downloads,
+.sourcegrid{
+  width:100%;
+  margin-left:auto;
+  margin-right:auto;
+}
+.cards article,
+.download,
+.sourcegrid div{
+  text-align:center;
+}
+.cards article{
+  align-items:center;
+}
+.sourcegrid div{
+  justify-content:center;
+  align-items:center;
+}
+.sourcegrid div small{
+  max-width:260px;
+}
+#fontes > .textlink{
+  display:table;
+  margin-left:auto;
+  margin-right:auto;
+}
+.legalbuttons{
+  justify-content:center;
+}
+
+/* =========================================================
    FINAL 3D INTERACTION PASS — visible depth + exact centering
    ========================================================= */
 .hero-copy{
