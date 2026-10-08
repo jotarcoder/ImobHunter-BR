@@ -101,7 +101,7 @@ class Device(Base):
     __table_args__ = (UniqueConstraint("license_id", name="uq_device_license"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    license_id: Mapped[int] = mapped_column(ForeignKey("licenses.id"), index=True)
+    license_id: Mapped[int | None] = mapped_column(ForeignKey("licenses.id"), index=True, nullable=True)
     device_hash: Mapped[str] = mapped_column(String(64), index=True)
     platform: Mapped[str] = mapped_column(String(30))
     app_version: Mapped[str] = mapped_column(String(40))
@@ -152,8 +152,29 @@ ENGINE = engine()
 SessionLocal = sessionmaker(bind=ENGINE, autoflush=False, expire_on_commit=False)
 
 
+def _migrate_legacy_schema() -> None:
+    """Apply additive schema changes needed by releases after the initial schema."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(ENGINE)
+    if "devices" in inspector.get_table_names():
+        columns = {column["name"] for column in inspector.get_columns("devices")}
+        if "license_id" not in columns:
+            with ENGINE.begin() as connection:
+                connection.execute(text("ALTER TABLE devices ADD COLUMN license_id INTEGER"))
+
+    if "sessions" in inspector.get_table_names():
+        columns = {column["name"] for column in inspector.get_columns("sessions")}
+        with ENGINE.begin() as connection:
+            if "license_id" not in columns:
+                connection.execute(text("ALTER TABLE sessions ADD COLUMN license_id INTEGER"))
+            if "device_id" not in columns:
+                connection.execute(text("ALTER TABLE sessions ADD COLUMN device_id INTEGER"))
+
+
 def init_db() -> None:
     Base.metadata.create_all(ENGINE)
+    _migrate_legacy_schema()
     email = os.getenv("IMOBHUNTER_ADMIN_EMAIL")
     password = os.getenv("IMOBHUNTER_ADMIN_PASSWORD")
     if not email or not password:
