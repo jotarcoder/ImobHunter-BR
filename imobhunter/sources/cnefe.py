@@ -2,11 +2,14 @@ import csv
 import io
 import json
 import os
+import re
 import unicodedata
 import zipfile
-from pathlib import Path
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Any
+from urllib.parse import urljoin
+from urllib.request import Request, urlopen
 
 from imobhunter.application.address import normalize_request, normalize_text
 from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest, SourceStatus
@@ -25,17 +28,21 @@ _FIELD_ALIASES = {
     "cep": ("CEP",),
     "modifier": ("DSC_MODIFICADOR", "MODIFICADOR"),
     "species": ("CD_ESPECIE", "ESPECIE", "DSC_ESPECIE"),
-    "building_type": (
-        "CD_TIPO_EDIFICACAO",
-        "TIPO_EDIFICACAO",
-        "DSC_TIPO_EDIFICACAO",
-    ),
+    "building_type": ("CD_TIPO_EDIFICACAO", "TIPO_EDIFICACAO", "DSC_TIPO_EDIFICACAO"),
     "geocode_level": ("NV_GEO_COORD", "NIVEL_GEO_COORD"),
     "establishment": ("NM_ESTABELECIMENTO", "NOME_ESTABELECIMENTO"),
     "sector": ("CD_SETOR", "SETOR_CENSITARIO", "CD_SETOR_CENSITARIO"),
     "face": ("FACE",),
     "locality": ("NM_LOCALIDADE", "LOCALIDADE"),
 }
+
+CNEFE_FTP_ROOT = (
+    "https://ftp.ibge.gov.br/"
+    "Cadastro_Nacional_de_Enderecos_para_Fins_Estatisticos/"
+    "Censo_Demografico_2022/Arquivos_CNEFE/CSV/Municipio/"
+)
+IBGE_MUNICIPALITIES_API = "https://servicodados.ibge.gov.br/api/v1/localidades/municipios"
+USER_AGENT = "ImobHunter-BR/0.1 (official IBGE CNEFE integration)"
 
 
 def _clean_key(value: str) -> str:
@@ -63,17 +70,12 @@ def _float(value: Any) -> float | None:
 def _rows_from_json(path: Path) -> Iterable[dict[str, Any]]:
     with path.open(encoding="utf-8") as handle:
         payload = json.load(handle)
-
     if payload.get("type") == "FeatureCollection":
         for feature in payload.get("features", []):
             properties = dict(feature.get("properties") or {})
             geometry = feature.get("geometry") or {}
             coordinates = geometry.get("coordinates")
-            if (
-                geometry.get("type") == "Point"
-                and isinstance(coordinates, list)
-                and len(coordinates) >= 2
-            ):
+            if geometry.get("type") == "Point" and isinstance(coordinates, list) and len(coordinates) >= 2:
                 properties.setdefault("LONGITUDE", coordinates[0])
                 properties.setdefault("LATITUDE", coordinates[1])
             yield properties
@@ -84,15 +86,15 @@ def _rows_from_json(path: Path) -> Iterable[dict[str, Any]]:
 
 
 def _rows(path: Path) -> Iterable[dict[str, Any]]:
-    if path.suffix.lower() in {".json", ".geojson"}:
+    suffix = path.suffix.lower()
+    if suffix in {".json", ".geojson"}:
         return _rows_from_json(path)
-    if path.suffix.lower() == ".csv":
+    if suffix == ".csv":
         def read_csv() -> Iterable[dict[str, Any]]:
             with path.open(encoding="utf-8-sig", newline="") as handle:
                 yield from csv.DictReader(handle, delimiter=";")
-
         return read_csv()
-    if path.suffix.lower() == ".zip":
+    if suffix == ".zip":
         def read_zip() -> Iterable[dict[str, Any]]:
             with zipfile.ZipFile(path) as archive:
                 csv_names = [
@@ -104,27 +106,93 @@ def _rows(path: Path) -> Iterable[dict[str, Any]]:
                 with archive.open(csv_names[0], "r") as binary:
                     text = io.TextIOWrapper(binary, encoding="utf-8-sig", newline="")
                     yield from csv.DictReader(text, delimiter=";")
-
         return read_zip()
     raise ValueError("CNEFE file must be CSV, JSON, GeoJSON or ZIP")
 
 
-\n\nfrom urllib.parse import urljoin\nfrom urllib.request import Request, urlopen\nimport re\n\n\nCNEFE_FTP_ROOT = (\n    "https://ftp.ibge.gov.br/"\n    "Cadastro_Nacional_de_Enderecos_para_Fins_Estatisticos/"\n    "Censo_Demografico_2022/Arquivos_CNEFE/CSV/Municipio/"\n)\nIBGE_MUNICIPALITIES_API = "https://servicodados.ibge.gov.br/api/v1/localidades/municipios"\n\n\ndef _http_json(url: str) -> Any:\n    request = Request(url, headers={"User-Agent": "ImobHunter-BR/0.1 (CNEFE official source)"})\n    with urlopen(request, timeout=20) as response:\n        return json.load(response)\n\n\ndef _http_text(url: str) -> str:\n    request = Request(url, headers={"User-Agent": "ImobHunter-BR/0.1 (CNEFE official source)"})\n    with urlopen(request, timeout=20) as response:\n        return response.read().decode("utf-8", errors="replace")\n\n\ndef _municipality_zip_url(city: str, state: str) -> str:\n    municipalities = _http_json(IBGE_MUNICIPALITIES_API)\n    wanted_city = normalize_text(city) or ""\n    wanted_state = normalize_text(state) or ""\n    matches = [\n        item for item in municipalities\n        if normalize_text(str(item.get("nome") or "")) == wanted_city\n        and normalize_text(str(item.get("microrregiao", {}).get("mesorregiao", {}).get("UF", {}).get("sigla") or "")) == wanted_state\n    ]\n    if len(matches) != 1:\n        raise ValueError(f"IBGE municipality not uniquely resolved: {city}/{state}")\n    code = str(matches[0]["id"])\n    uf_dir = f"{code[:2]}_{wanted_state}"\n    listing_url = urljoin(CNEFE_FTP_ROOT, f"{uf_dir}/")\n    listing = _http_text(listing_url)\n    pattern = re.compile(r'href=["\\\']([^"\\\']*' + re.escape(code) + r'_[^"\\\']+\\.zip)["\\\']', re.I)\n    match = pattern.search(listing)\n    if not match:\n        raise FileNotFoundError(f"Official CNEFE ZIP not found for municipality {code}")\n    return urljoin(listing_url, match.group(1))\n\n\ndef _download_remote_zip(url: str, cache_dir: Path) -> Path:\n    cache_dir.mkdir(parents=True, exist_ok=True)\n    filename = url.rsplit("/", 1)[-1]\n    target = cache_dir / filename\n    if target.is_file() and target.stat().st_size > 0:\n        return target\n    temp = target.with_suffix(target.suffix + ".part")\n    request = Request(url, headers={"User-Agent": "ImobHunter-BR/0.1 (CNEFE official source)"})\n    try:\n        with urlopen(request, timeout=60) as response, temp.open("wb") as handle:\n            while True:\n                chunk = response.read(1024 * 1024)\n                if not chunk:\n                    break\n                handle.write(chunk)\n        temp.replace(target)\n    except Exception:\n        temp.unlink(missing_ok=True)\n        raise\n    return target\nclass CNEFEAdapter(SourceAdapter):
+def _http_json(url: str) -> Any:
+    request = Request(url, headers={"User-Agent": USER_AGENT})
+    with urlopen(request, timeout=20) as response:
+        return json.load(response)
+
+
+def _http_text(url: str) -> str:
+    request = Request(url, headers={"User-Agent": USER_AGENT})
+    with urlopen(request, timeout=20) as response:
+        return response.read().decode("utf-8", errors="replace")
+
+
+def _municipality_zip_url(city: str, state: str) -> str:
+    municipalities = _http_json(IBGE_MUNICIPALITIES_API)
+    wanted_city = normalize_text(city) or ""
+    wanted_state = normalize_text(state) or ""
+    matches = [
+        item for item in municipalities
+        if normalize_text(str(item.get("nome") or "")) == wanted_city
+        and normalize_text(
+            str(item.get("microrregiao", {}).get("mesorregiao", {}).get("UF", {}).get("sigla") or "")
+        ) == wanted_state
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"IBGE municipality not uniquely resolved: {city}/{state}")
+    code = str(matches[0]["id"])
+    uf_dir = f"{code[:2]}_{wanted_state}"
+    listing_url = urljoin(CNEFE_FTP_ROOT, f"{uf_dir}/")
+    listing = _http_text(listing_url)
+    pattern = re.compile(
+        r'href=["\']([^"\']*' + re.escape(code) + r'_[^"\']+\.zip)["\']',
+        re.IGNORECASE,
+    )
+    match = pattern.search(listing)
+    if not match:
+        raise FileNotFoundError(f"Official CNEFE ZIP not found for municipality {code}")
+    return urljoin(listing_url, match.group(1))
+
+
+def _download_remote_zip(url: str, cache_dir: Path) -> Path:
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    filename = url.rsplit("/", 1)[-1]
+    target = cache_dir / filename
+    if target.is_file() and target.stat().st_size > 0:
+        return target
+    temp = target.with_suffix(target.suffix + ".part")
+    request = Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urlopen(request, timeout=120) as response, temp.open("wb") as handle:
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                handle.write(chunk)
+        temp.replace(target)
+    except Exception:
+        temp.unlink(missing_ok=True)
+        raise
+    return target
+
+
+class CNEFEAdapter(SourceAdapter):
     source_id = "ibge_cnefe"
     name = "IBGE / CNEFE"
     category = "address"
 
-    def __init__(self, data_path: str | Path | None = None) -> None:
+    def __init__(self, data_path: str | Path | None = None, cache_dir: str | Path | None = None) -> None:
         configured = data_path or os.getenv("IMOBHUNTER_CNEFE_PATH")
         self.data_path = Path(configured).expanduser() if configured else None
+        configured_cache = cache_dir or os.getenv("IMOBHUNTER_CNEFE_CACHE")
+        self.cache_dir = (
+            Path(configured_cache).expanduser()
+            if configured_cache
+            else Path.home() / ".imobhunter" / "cache" / "cnefe"
+        )
 
     def status(self) -> SourceStatus:
         if self.data_path is None:
             return SourceStatus(
                 self.source_id,
                 self.name,
-                "not_configured",
-                "Configure IMOBHUNTER_CNEFE_PATH with an official CNEFE CSV, GeoJSON or ZIP file.",
+                "available",
+                "Integração oficial IBGE habilitada; o arquivo municipal é baixado sob demanda e mantido em cache local.",
             )
         if not self.data_path.is_file():
             return SourceStatus(
@@ -149,14 +217,20 @@ def _rows(path: Path) -> Iterable[dict[str, Any]]:
         wanted_number = normalize_text(normalized.number) or ""
         wanted_city = normalize_text(normalized.city)
         wanted_state = normalize_text(normalized.state)
-        records: list[PropertyRecord] = []
+        if not wanted_city or not wanted_state:
+            raise ValueError("CNEFE national lookup requires city and state")
 
-        for row in _rows(self.data_path):  # type: ignore[arg-type]
+        data_path = self.data_path
+        if data_path is None:
+            remote_url = _municipality_zip_url(wanted_city, wanted_state)
+            data_path = _download_remote_zip(remote_url, self.cache_dir)
+
+        records: list[PropertyRecord] = []
+        for row in _rows(data_path):
             street = normalize_text(str(_pick(row, "street") or "")) or ""
             number = normalize_text(str(_pick(row, "number") or "")) or ""
             if street != wanted_street or number != wanted_number:
                 continue
-
             row_city = normalize_text(str(_pick(row, "city") or ""))
             row_state = normalize_text(str(_pick(row, "state") or ""))
             if wanted_city and row_city and row_city != wanted_city:
@@ -164,8 +238,6 @@ def _rows(path: Path) -> Iterable[dict[str, Any]]:
             if wanted_state and row_state and row_state != wanted_state:
                 continue
 
-            unique_code = _pick(row, "unique_code")
-            block = _pick(row, "block")
             attributes = {
                 "cep": _pick(row, "cep"),
                 "modifier": _pick(row, "modifier"),
@@ -177,13 +249,11 @@ def _rows(path: Path) -> Iterable[dict[str, Any]]:
                 "face": _pick(row, "face"),
                 "locality": _pick(row, "locality"),
                 "source": "CNEFE / IBGE",
+                "source_reference": "IBGE CNEFE 2022",
             }
-            attributes = {
-                key: value
-                for key, value in attributes.items()
-                if value not in (None, "")
-            }
-
+            attributes = {key: value for key, value in attributes.items() if value not in (None, "")}
+            unique_code = _pick(row, "unique_code")
+            block = _pick(row, "block")
             records.append(
                 PropertyRecord(
                     property_id=str(unique_code) if unique_code is not None else None,
