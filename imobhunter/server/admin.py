@@ -152,15 +152,15 @@ ENGINE = engine()
 SessionLocal = sessionmaker(bind=ENGINE, autoflush=False, expire_on_commit=False)
 
 
-def _migrate_legacy_schema() -> None:
+def _migrate_legacy_schema(db_engine=ENGINE) -> None:
     """Apply additive schema changes needed by releases after the initial schema."""
     from sqlalchemy import inspect, text
 
-    inspector = inspect(ENGINE)
+    inspector = inspect(db_engine)
     if "devices" in inspector.get_table_names():
         columns = {column["name"] for column in inspector.get_columns("devices")}
         if "license_id" not in columns:
-            with ENGINE.begin() as connection:
+            with db_engine.begin() as connection:
                 connection.execute(text("ALTER TABLE devices ADD COLUMN license_id INTEGER"))
 
     if "sessions" in inspector.get_table_names():
@@ -174,7 +174,7 @@ def _migrate_legacy_schema() -> None:
 
 def init_db() -> None:
     Base.metadata.create_all(ENGINE)
-    _migrate_legacy_schema()
+    _migrate_legacy_schema(ENGINE)
     email = os.getenv("IMOBHUNTER_ADMIN_EMAIL")
     password = os.getenv("IMOBHUNTER_ADMIN_PASSWORD")
     if not email or not password:
