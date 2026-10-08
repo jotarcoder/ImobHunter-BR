@@ -8,8 +8,8 @@ from dataclasses import dataclass
 import httpx
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
+SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY", "")
 ADMIN_EMAIL = "juninhoovf@gmail.com"
 LICENSE_SIGNING_SECRET = os.getenv("IMOBHUNTER_LICENSE_SIGNING_SECRET", "")
 
@@ -17,12 +17,12 @@ class LicenseConfigError(RuntimeError): pass
 @dataclass(frozen=True)
 class LicenseSettings:
     url: str
-    anon_key: str
-    service_key: str
+    publishable_key: str
+    secret_key: str
     signing_secret: str
 
 def settings() -> LicenseSettings:
-    values = (SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, LICENSE_SIGNING_SECRET)
+    values = (SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, SUPABASE_SECRET_KEY, LICENSE_SIGNING_SECRET)
     if not all(values):
         raise LicenseConfigError("Sistema de licenças não configurado no ambiente.")
     return LicenseSettings(*values)
@@ -42,20 +42,20 @@ def _headers(key: str) -> dict[str, str]:
 
 def auth_user(access_token: str) -> dict:
     cfg = settings()
-    r = httpx.get(f"{cfg.url}/auth/v1/user", headers={"apikey": cfg.anon_key, "Authorization": f"Bearer {access_token}"}, timeout=10)
+    r = httpx.get(f"{cfg.url}/auth/v1/user", headers={"apikey": cfg.publishable_key, "Authorization": f"Bearer {access_token}"}, timeout=10)
     r.raise_for_status()
     return r.json()
 
 def admin_login(email: str, password: str) -> dict:
     cfg = settings()
     if email.lower() != ADMIN_EMAIL: raise PermissionError("Administrador não autorizado.")
-    r = httpx.post(f"{cfg.url}/auth/v1/token?grant_type=password", headers={"apikey": cfg.anon_key, "Content-Type": "application/json"}, json={"email": email, "password": password}, timeout=10)
+    r = httpx.post(f"{cfg.url}/auth/v1/token?grant_type=password", headers={"apikey": cfg.publishable_key, "Content-Type": "application/json"}, json={"email": email, "password": password}, timeout=10)
     if r.status_code >= 400: raise PermissionError("Credenciais inválidas.")
     return r.json()
 
 def list_licenses() -> list[dict]:
     cfg = settings()
-    r = httpx.get(f"{cfg.url}/rest/v1/licenses?select=*,license_activations(*)&order=created_at.desc", headers=_headers(cfg.service_key), timeout=10)
+    r = httpx.get(f"{cfg.url}/rest/v1/licenses?select=*,license_activations(*)&order=created_at.desc", headers=_headers(cfg.secret_key), timeout=10)
     r.raise_for_status()
     return r.json()
 
@@ -63,7 +63,7 @@ def create_license(*, max_devices: int = 1, expires_at: str | None = None, notes
     cfg = settings()
     key = new_license_key()
     payload = {"key_hash": hash_license_key(key), "key_last4": key[-4:], "status": "active", "max_devices": max_devices, "expires_at": expires_at, "notes": notes}
-    r = httpx.post(f"{cfg.url}/rest/v1/licenses", headers={**_headers(cfg.service_key), "Prefer": "return=representation"}, json=payload, timeout=10)
+    r = httpx.post(f"{cfg.url}/rest/v1/licenses", headers={**_headers(cfg.secret_key), "Prefer": "return=representation"}, json=payload, timeout=10)
     r.raise_for_status()
     return key, r.json()[0]
 
