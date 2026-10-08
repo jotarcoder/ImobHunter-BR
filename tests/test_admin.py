@@ -72,6 +72,7 @@ def test_activation_allows_only_one_device_per_license():
     assert second_device.status_code == 409
 
 
+
 def test_different_licenses_can_bind_different_devices():
     user, key_one = _seed()
     key_two = license_key()
