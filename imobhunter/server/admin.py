@@ -196,15 +196,6 @@ def client(credentials: HTTPAuthorizationCredentials | None, db: Session) -> tup
     return obj, s
 
 
-def current_license(db: Session, user_id: int) -> License | None:
-    lic = db.scalar(select(License).where(License.user_id == user_id, License.status == "active").order_by(License.expires_at.desc()))
-    if lic and lic.starts_at <= now() < lic.expires_at:
-        return lic
-    if lic and lic.expires_at <= now():
-        lic.status = "expired"
-        db.commit()
-    return None
-
 
 class Login(BaseModel):
     email: str
@@ -226,7 +217,6 @@ class UserPatch(BaseModel):
 class NewLicense(BaseModel):
     user_id: int
     days: int = Field(default=365, ge=1, le=3650)
-    max_devices: int = Field(default=1, ge=1, le=1)
     plan: str = Field(default="annual", min_length=2, max_length=40)
 
 
