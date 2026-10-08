@@ -80,3 +80,28 @@ def test_cnefe_is_not_configured_without_path(monkeypatch) -> None:
     status = CNEFEAdapter().status()
 
     assert status.status == "not_configured"
+
+
+def test_cnefe_accepts_list_json(tmp_path) -> None:
+    path = tmp_path / "cnefe.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "NM_LOGR": "PAMPLONA",
+                    "NR_ENDERECO": "1578",
+                    "NM_MUNICIPIO": "SAO PAULO",
+                    "SIGLA_UF": "SP",
+                    "COD_UNICO": "CNEFE-1",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    records = CNEFEAdapter(path).search(
+        SearchRequest(address="Rua Pamplona", number="1578", city="São Paulo", state="SP")
+    )
+
+    assert len(records) == 1
+    assert records[0].property_id == "CNEFE-1"
