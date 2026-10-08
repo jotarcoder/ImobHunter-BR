@@ -53,13 +53,32 @@
     revealItems.forEach((item) => observer.observe(item));
   }
 
-  document.querySelectorAll('.button, .download, .cards article').forEach((el) => {
+  const tiltItems = document.querySelectorAll('[data-tilt]');
+  tiltItems.forEach((el) => {
+    const depth = Number(el.dataset.depth || 10);
     el.addEventListener('pointermove', (event) => {
       if (reduce.matches) return;
       const rect = el.getBoundingClientRect();
       const x = (event.clientX - rect.left) / rect.width - 0.5;
       const y = (event.clientY - rect.top) / rect.height - 0.5;
-      el.style.transform = 'perspective(700px) rotateX(' + (-y * 2.2).toFixed(2) + 'deg) rotateY(' + (x * 2.8).toFixed(2) + 'deg) translateY(-3px)';
+      el.style.setProperty('--rx', (-y * 4.2).toFixed(2) + 'deg');
+      el.style.setProperty('--ry', (x * 5.2).toFixed(2) + 'deg');
+      el.style.setProperty('--tz', depth + 'px');
+    }, { passive: true });
+    el.addEventListener('pointerleave', () => {
+      el.style.setProperty('--rx', '0deg');
+      el.style.setProperty('--ry', '0deg');
+      el.style.setProperty('--tz', '0px');
+    }, { passive: true });
+  });
+
+  document.querySelectorAll('.button').forEach((el) => {
+    el.addEventListener('pointermove', (event) => {
+      if (reduce.matches) return;
+      const rect = el.getBoundingClientRect();
+      const x = (event.clientX - rect.left) / rect.width - 0.5;
+      const y = (event.clientY - rect.top) / rect.height - 0.5;
+      el.style.transform = 'perspective(700px) rotateX(' + (-y * 2).toFixed(2) + 'deg) rotateY(' + (x * 2.5).toFixed(2) + 'deg) translateY(-3px) translateZ(5px)';
     }, { passive: true });
     el.addEventListener('pointerleave', () => { el.style.transform = ''; }, { passive: true });
   });
