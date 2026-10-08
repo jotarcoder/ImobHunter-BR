@@ -184,16 +184,16 @@ def admin(request: Request, db: Session) -> Admin:
     return obj
 
 
-def client(credentials: HTTPAuthorizationCredentials | None, db: Session) -> User:
+def client(credentials: HTTPAuthorizationCredentials | None, db: Session) -> tuple[User, SessionToken]:
     if not credentials or credentials.scheme.lower() != "bearer":
         raise HTTPException(401, "authentication required")
     s = db.scalar(select(SessionToken).where(SessionToken.token_hash == sha(credentials.credentials), SessionToken.kind == "client"))
-    if not s or s.revoked_at or s.expires_at <= now() or not s.user_id:
+    if not s or s.revoked_at or s.expires_at <= now() or not s.user_id or not s.license_id or not s.device_id:
         raise HTTPException(401, "session expired")
     obj = db.get(User, s.user_id)
     if not obj or obj.status != "active":
         raise HTTPException(403, "user disabled")
-    return obj
+    return obj, s
 
 
 def current_license(db: Session, user_id: int) -> License | None:
@@ -456,8 +456,11 @@ def activate(payload: Activate, request: Request):
             audit(session, "user", user.public_id, "client.login_failed", request)
             session.commit()
             raise HTTPException(401, "credenciais inválidas")
-        lic = current_license(session, user.id)
-        if not lic or not secrets.compare_digest(lic.key_hash, sha(payload.license_key.strip().upper())):
+        license_hash = sha(payload.license_key.strip().upper())
+        lic = session.scalar(select(License).where(License.user_id == user.id, License.key_hash == license_hash))
+        if not lic or lic.status != "active" or not (lic.starts_at <= now() < lic.expires_at):
+            if lic and lic.expires_at <= now() and lic.status == "active":
+                lic.status = "expired"
             audit(session, "user", user.public_id, "license.activation_denied", request)
             session.commit()
             raise HTTPException(403, "licença inválida ou expirada")
@@ -488,11 +491,12 @@ def activate(payload: Activate, request: Request):
 @router.post("/api/v1/heartbeat")
 def heartbeat(payload: Heartbeat, credentials: HTTPAuthorizationCredentials | None = Depends(BEARER), request: Request = None):
     with db() as session:
-        user = client(credentials, session)
-        lic = current_license(session, user.id)
-        if not lic:
+        user, client_session = client(credentials, session)
+        lic = session.get(License, client_session.license_id)
+        if not lic or lic.user_id != user.id or lic.status != "active" or not (lic.starts_at <= now() < lic.expires_at):
             raise HTTPException(403, "licença expirada ou revogada")
-        device = session.scalar(select(Device).where(Device.user_id == user.id,
+        device = session.scalar(select(Device).where(Device.id == client_session.device_id,
+                                                       Device.user_id == user.id,
                                                        Device.license_id == lic.id,
                                                        Device.device_hash == sha(payload.device_id),
                                                        Device.status == "active"))
