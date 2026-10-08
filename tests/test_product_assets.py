@@ -29,5 +29,5 @@ def test_policy_documents_cover_source_and_privacy_rules() -> None:
 
 def test_download_center_exposes_all_targets() -> None:
     html = (ROOT / "web" / "index.html").read_text()
-    for target in ("Windows", "Linux", "macOS Intel", "macOS Apple Silicon"):
+    for target in ("Windows", "Linux", "macOS Intel", "macOS Apple Silicon", "Web"):
         assert target in html
