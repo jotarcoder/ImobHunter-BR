@@ -5,12 +5,156 @@ on:
   push:
     tags:
       - "v*.*.*"
+  workflow_run:
+    workflows: ["Tag version release"]
+    types: [completed]
 
 permissions:
   contents: write
 
 jobs:
+  meta:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      version: \${{ steps.version.outputs.version }}
+      ref: \${{ steps.ref.outputs.ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.meta.outputs.ref }}
+        with:
+          ref: \${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
+      - name: Read project version
+        id: version
+        shell: bash
+        run: |
+          VERSION="$(python - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path("pyproject.toml").read_text(encoding="utf-8")
+          match = re.search(r'^version = "([^"]+)"    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e ".[desktop]" pyinstaller
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+      - name: Build executable
+        shell: powershell
+        run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets;imobhunter/assets" --add-data "data/coverage/ddd.json;data/coverage" packaging/entrypoint.py
+      - name: Build installer
+        shell: powershell
+        run: iscc packaging/windows/ImobHunter-BR.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-Windows
+          path: packaging/windows/Output/ImobHunter-BR-Setup-Windows.exe
+          if-no-files-found: error
+
+  linux:
+    needs: meta
+    if: needs.meta.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e ".[desktop]" pyinstaller
+      - run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets:imobhunter/assets" --add-data "data/coverage/ddd.json:data/coverage" packaging/entrypoint.py
+      - name: Build AppImage
+        run: |
+          mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/scalable/apps
+          cp -r dist/ImobHunter-BR AppDir/usr/bin/
+          cp packaging/linux/AppRun AppDir/AppRun
+          cp packaging/linux/imobhunter.desktop AppDir/usr/share/applications/imobhunter.desktop
+          cp packaging/linux/imobhunter.desktop AppDir/imobhunter.desktop
+          cp imobhunter/assets/logo.svg AppDir/usr/share/icons/hicolor/scalable/apps/imobhunter.svg
+          cp imobhunter/assets/logo.svg AppDir/imobhunter.svg
+          chmod +x AppDir/AppRun
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
+          chmod +x appimagetool
+          ./appimagetool AppDir ImobHunter-BR-Linux.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-Linux
+          path: ImobHunter-BR-Linux.AppImage
+
+  macos-intel:
+    needs: meta
+    if: needs.meta.result == 'success'
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e ".[desktop]" pyinstaller
+      - run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets:imobhunter/assets" packaging/entrypoint.py
+      - run: hdiutil create -volname ImobHunter-BR -srcfolder dist/ImobHunter-BR.app -ov -format UDZO ImobHunter-BR-macOS-Intel.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-macOS-Intel
+          path: ImobHunter-BR-macOS-Intel.dmg
+
+  macos-arm:
+    needs: meta
+    if: needs.meta.result == 'success'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e ".[desktop]" pyinstaller
+      - run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets:imobhunter/assets" packaging/entrypoint.py
+      - run: hdiutil create -volname ImobHunter-BR -srcfolder dist/ImobHunter-BR.app -ov -format UDZO ImobHunter-BR-macOS-AppleSilicon.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-macOS-AppleSilicon
+          path: ImobHunter-BR-macOS-AppleSilicon.dmg
+
+  publish:
+    needs: [meta, windows, linux, macos-intel, macos-arm]
+    if: needs.meta.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ needs.meta.outputs.version }}
+          fail_on_unmatched_files: true
+          files: |
+            release/ImobHunter-BR-Windows/*
+            release/ImobHunter-BR-Linux/*
+            release/ImobHunter-BR-macOS-Intel/*
+            release/ImobHunter-BR-macOS-AppleSilicon/*
+          generate_release_notes: true
+, text, re.MULTILINE)
+          if not match:
+              raise SystemExit("project version not found")
+          print(match.group(1))
+          PY
+          )"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Select build ref
+        id: ref
+        shell: bash
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
+            echo "ref=\${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=$GITHUB_REF" >> "$GITHUB_OUTPUT"
+          fi
+
   windows:
+    needs: meta
+    if: needs.meta.result == 'success'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
