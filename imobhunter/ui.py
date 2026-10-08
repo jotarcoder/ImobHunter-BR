@@ -384,6 +384,12 @@ class MainWindow(QMainWindow):
             reasons.setObjectName("muted")
             reasons.setWordWrap(True)
             box.addWidget(reasons)
+            preview = QLabel(self._dossier_preview(dossier))
+            preview.setWordWrap(True)
+            box.addWidget(preview)
+            details = QPushButton("Abrir dossiê completo  →")
+            details.clicked.connect(lambda checked=False, d=dossier: self._show_dossier(d))
+            box.addWidget(details)
             for fact in dossier.facts:
                 label = QLabel(
                     f"<b>{fact.field}</b>: {fact.value}  ·  "
@@ -403,6 +409,45 @@ class MainWindow(QMainWindow):
                 box.addWidget(conflict)
             self.dossier_layout.addWidget(card)
         self.dossier_layout.addStretch()
+
+
+    @staticmethod
+    def _dossier_preview(dossier) -> str:
+        important = {"address", "area_m2", "cib", "property_id", "block", "lot"}
+        values = [
+            f"{fact.field}: {fact.value}"
+            for fact in dossier.facts
+            if fact.field in important
+        ]
+        return "  •  ".join(values) or "Identificação detalhada disponível no dossiê."
+
+    def _show_dossier(self, dossier) -> None:
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Dossiê do imóvel")
+        dialog.setIcon(QMessageBox.Icon.Information)
+        lines = [
+            f"<h2>Imóvel consolidado</h2>",
+            f"<p><b>Confiança geral:</b> {dossier.score:.0f}/100</p>",
+            "<h3>Informações consolidadas</h3>",
+        ]
+        for fact in dossier.facts:
+            lines.append(
+                f"<p><b>{fact.field}</b><br>"
+                f"{fact.value}<br>"
+                f"<small>Fonte: {fact.provenance.source_id} · "
+                f"Confiança: {fact.provenance.confidence:.0%}</small></p>"
+            )
+        if dossier.conflicts:
+            lines.append("<h3>Conflitos entre fontes</h3>")
+            for conflict in dossier.conflicts:
+                values = " ↔ ".join(str(value) for value in conflict.values)
+                lines.append(f"<p><b>{conflict.field}:</b> {values}</p>")
+        else:
+            lines.append("<p>Nenhum conflito identificado entre os dados consolidados.</p>")
+        dialog.setText("".join(lines))
+        dialog.setStandardButtons(QMessageBox.StandardButton.Close)
+        dialog.setMinimumWidth(680)
+        dialog.exec()
 
     def _search_failed(self, message: str) -> None:
         self.search_button.setEnabled(True)
