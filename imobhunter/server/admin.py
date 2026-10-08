@@ -25,7 +25,9 @@ from sqlalchemy import (
     inspect,
     select,
     text,
+
 )
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
 PH = PasswordHasher()
@@ -526,7 +528,17 @@ def activate(payload: Activate, request: Request):
             device = Device(user_id=user.id, license_id=lic.id, device_hash=device_hash,
                             platform=payload.platform, app_version=payload.app_version)
             session.add(device)
-            session.flush()
+            try:
+                session.flush()
+            except IntegrityError:
+                session.rollback()
+                device = session.scalar(select(Device).where(Device.license_id == lic.id))
+                if not device:
+                    raise HTTPException(409, "conflito ao vincular o dispositivo")
+                if device.status == "revoked":
+                    raise HTTPException(403, "dispositivo revogado")
+                if device.device_hash != device_hash:
+                    raise HTTPException(409, "esta licença já está vinculada a outro dispositivo")
         device.status, device.platform, device.app_version, device.last_seen_at = "active", payload.platform, payload.app_version, now()
         device.last_ip = request.client.host if request.client else None
         user.last_login_at = now()
