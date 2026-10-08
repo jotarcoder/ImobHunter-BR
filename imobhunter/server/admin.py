@@ -321,13 +321,29 @@ def admin_css():
 @router.post("/api/admin/auth/login")
 def admin_login(payload: Login, request: Request, response: Response):
     with db() as session:
-        obj = session.scalar(select(Admin).where(Admin.email == payload.email.lower().strip()))
+        email = payload.email.lower().strip()
+        cutoff = now() - timedelta(minutes=15)
+        failed = session.scalar(
+            select(func.count())
+            .select_from(AuditLog)
+            .where(
+                AuditLog.event == "admin.login_failed",
+                AuditLog.ip == (request.client.host if request.client else None),
+                AuditLog.created_at >= cutoff,
+            )
+        ) or 0
+        if failed >= 10:
+            raise HTTPException(429, "muitas tentativas; tente novamente mais tarde")
+
+        obj = session.scalar(select(Admin).where(Admin.email == email))
         if not obj or not obj.active:
+            audit(session, "system", "0", "admin.login_failed", request, email[:255])
+            session.commit()
             raise HTTPException(401, "credenciais inválidas")
         try:
             PH.verify(obj.password_hash, payload.password)
         except (VerificationError, VerifyMismatchError):
-            audit(session, "system", "0", "admin.login_failed", request)
+            audit(session, "system", "0", "admin.login_failed", request, email[:255])
             session.commit()
             raise HTTPException(401, "credenciais inválidas")
         raw, csrf = token(), token()
@@ -341,11 +357,17 @@ def admin_login(payload: Login, request: Request, response: Response):
 
 
 @router.post("/api/admin/auth/logout")
-def admin_logout(request: Request, response: Response):
+def admin_logout(request: Request, response: Response, admin_user: Admin = REQUIRE_ADMIN):
     raw = request.cookies.get("imh_admin_session")
     with db() as session:
         if raw:
-            s = session.scalar(select(SessionToken).where(SessionToken.token_hash == sha(raw), SessionToken.kind == "admin"))
+            s = session.scalar(
+                select(SessionToken).where(
+                    SessionToken.token_hash == sha(raw),
+                    SessionToken.kind == "admin",
+                    SessionToken.admin_id == admin_user.id,
+                )
+            )
             if s:
                 s.revoked_at = now()
                 session.commit()
@@ -451,6 +473,14 @@ def revoke_license(license_id: int, request: Request, admin_user: Admin = REQUIR
         if not obj:
             raise HTTPException(404, "licença não encontrada")
         obj.status, obj.revoked_at = "revoked", now()
+        for client_session in session.scalars(
+            select(SessionToken).where(
+                SessionToken.kind == "client",
+                SessionToken.license_id == obj.id,
+                SessionToken.revoked_at.is_(None),
+            )
+        ).all():
+            client_session.revoked_at = now()
         audit(session, "admin", str(admin_user.id), "license.revoked", request, obj.public_id)
         session.commit()
         return {"ok": True}
@@ -462,6 +492,8 @@ def extend_license(license_id: int, payload: Extend, request: Request, admin_use
         obj = session.get(License, license_id)
         if not obj:
             raise HTTPException(404, "licença não encontrada")
+        if obj.status == "revoked":
+            raise HTTPException(409, "licença revogada não pode ser renovada automaticamente")
         obj.expires_at = max(as_utc(obj.expires_at), now()) + timedelta(days=payload.days)
         obj.status = "active"
         audit(session, "admin", str(admin_user.id), "license.extended", request, f"{obj.public_id}:{payload.days}")
