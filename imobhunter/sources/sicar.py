@@ -3,12 +3,19 @@ from __future__ import annotations
 import csv
 import json
 import os
+
+import httpx
 from pathlib import Path
 from typing import Any
 
 from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest, SourceStatus
 
 from .base import SourceAdapter
+
+
+SICAR_API_BASE_ENV = "IMOBHUNTER_SICAR_API_BASE_URL"
+SICAR_API_TOKEN_ENV = "IMOBHUNTER_SICAR_API_TOKEN"
+SICAR_API_TIMEOUT_SECONDS = 20.0
 
 
 class SICARAdapter(SourceAdapter):
@@ -26,8 +33,12 @@ class SICARAdapter(SourceAdapter):
     def __init__(self, data_path: str | Path | None = None) -> None:
         configured = data_path or os.getenv("IMOBHUNTER_SICAR_PATH")
         self.data_path = Path(configured) if configured else None
+        self.api_base_url = os.getenv(SICAR_API_BASE_ENV, "").strip().rstrip("/")
+        self.api_token = os.getenv(SICAR_API_TOKEN_ENV, "").strip()
 
     def status(self) -> SourceStatus:
+        if self.api_base_url and self.api_token:
+            return SourceStatus(self.source_id, self.name, "available", "SICAR Conecta API configured.")
         if not self.data_path:
             return SourceStatus(
                 self.source_id,
@@ -44,7 +55,25 @@ class SICARAdapter(SourceAdapter):
             )
         return SourceStatus(self.source_id, self.name, "configured")
 
+    def _search_remote(self, code: str) -> list[PropertyRecord]:
+        url = f"{self.api_base_url}/{code}"
+        try:
+            response = httpx.get(
+                url,
+                headers={"Authorization": f"Bearer {self.api_token}", "Accept": "application/json"},
+                timeout=SICAR_API_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise RuntimeError(f"SICAR API request failed: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise TypeError("SICAR API returned an invalid payload")
+        return [self._to_record(payload)]
+
     def search(self, request: SearchRequest) -> list[PropertyRecord]:
+        if request.car_code and self.api_base_url and self.api_token:
+            return self._search_remote(request.car_code)
         rows = self._load()
         address = " ".join(
             part for part in (request.address, request.number) if part

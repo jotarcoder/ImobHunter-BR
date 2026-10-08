@@ -92,3 +92,46 @@ def test_sicar_not_configured():
     adapter = SICARAdapter()
     assert adapter.status().status == "not_configured"
     assert adapter.search(SearchRequest(address="x")) == []
+
+
+def test_sicar_authenticated_car_lookup(monkeypatch):
+    payload = {
+        "codigoImovel": "BA-176934-20170113-TEST",
+        "municipio": "Barreiras",
+        "uf": "BA",
+        "areaTotalImovel": 10.5,
+        "statusImovel": "AT",
+        "tipoImovel": "IRU",
+        "enderecoImovel": "FAZENDA TESTE",
+    }
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return payload
+
+    def fake_get(url, *, headers, timeout):
+        assert url.endswith("/BA-176934-20170113-TEST")
+        assert headers["Authorization"] == "Bearer token"
+        assert timeout == 20.0
+        return FakeResponse()
+
+    monkeypatch.setenv("IMOBHUNTER_SICAR_API_BASE_URL", "https://sicar.test/api-sicar-imovel/v1")
+    monkeypatch.setenv("IMOBHUNTER_SICAR_API_TOKEN", "token")
+    monkeypatch.setattr("imobhunter.sources.sicar.httpx.get", fake_get)
+
+    result = SICARAdapter().search(SearchRequest(car_code="BA-176934-20170113-TEST"))
+
+    assert len(result) == 1
+    assert result[0].property_id == "BA-176934-20170113-TEST"
+    assert result[0].area_m2 == 105000
+    assert result[0].city == "Barreiras"
+
+
+def test_sicar_api_status_requires_credentials(monkeypatch):
+    monkeypatch.setenv("IMOBHUNTER_SICAR_API_BASE_URL", "https://sicar.test")
+    monkeypatch.delenv("IMOBHUNTER_SICAR_API_TOKEN", raising=False)
+
+    assert SICARAdapter().status().status == "not_configured"
