@@ -267,6 +267,14 @@ class MainWindow(QMainWindow):
         results_title.setObjectName("resultTitle")
         results_title.setObjectName("section")
         results_layout.addWidget(results_title)
+        self.dossier_scroll = QScrollArea()
+        self.dossier_scroll.setWidgetResizable(True)
+        self.dossier_host = QWidget()
+        self.dossier_layout = QVBoxLayout(self.dossier_host)
+        self.dossier_layout.setContentsMargins(0, 4, 0, 0)
+        self.dossier_layout.setSpacing(10)
+        self.dossier_scroll.setWidget(self.dossier_host)
+        results_layout.addWidget(self.dossier_scroll, 1)
         self.result_text = QLabel(
             "Pronto para pesquisar. O ImobHunter consulta as fontes configuradas "
             "e consolida os registros sem enviar os dados pesados para o servidor."
@@ -353,6 +361,93 @@ class MainWindow(QMainWindow):
             f"{found} registro(s) encontrado(s) em {active} fonte(s). "
             f"{len(result.dossiers)} imóvel(is) consolidado(s) após reconciliação."
         )
+        self._render_dossiers(result.dossiers)
+
+
+    def _render_dossiers(self, dossiers) -> None:
+        while self.dossier_layout.count():
+            item = self.dossier_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        if not dossiers:
+            self.dossier_layout.addWidget(QLabel("Nenhum dossiê consolidado para esta pesquisa."))
+            return
+        for index, dossier in enumerate(dossiers, 1):
+            card = QFrame()
+            card.setObjectName("card")
+            box = QVBoxLayout(card)
+            title = QLabel(f"Imóvel {index}  •  confiança {dossier.score:.0f}/100")
+            title.setObjectName("resultTitle")
+            box.addWidget(title)
+            reasons = QLabel(" • ".join(dossier.score_reasons) or "Sem indicadores suficientes.")
+            reasons.setObjectName("muted")
+            reasons.setWordWrap(True)
+            box.addWidget(reasons)
+            preview = QLabel(self._dossier_preview(dossier))
+            preview.setWordWrap(True)
+            box.addWidget(preview)
+            details = QPushButton("Abrir dossiê completo  →")
+            details.clicked.connect(lambda checked=False, d=dossier: self._show_dossier(d))
+            box.addWidget(details)
+            for fact in dossier.facts:
+                label = QLabel(
+                    f"<b>{fact.field}</b>: {fact.value}  ·  "
+                    f"fonte: {fact.provenance.source_id}  · "
+                    f"confiança: {fact.provenance.confidence:.0%}"
+                )
+                label.setTextFormat(Qt.TextFormat.RichText)
+                label.setWordWrap(True)
+                box.addWidget(label)
+            if dossier.conflicts:
+                conflict = QLabel("Conflitos: " + " | ".join(
+                    f"{item.field}: " + " ↔ ".join(str(value) for value in item.values)
+                    for item in dossier.conflicts
+                ))
+                conflict.setWordWrap(True)
+                conflict.setStyleSheet("color:#ffcc66;")
+                box.addWidget(conflict)
+            self.dossier_layout.addWidget(card)
+        self.dossier_layout.addStretch()
+
+
+    @staticmethod
+    def _dossier_preview(dossier) -> str:
+        important = {"address", "area_m2", "cib", "property_id", "block", "lot"}
+        values = [
+            f"{fact.field}: {fact.value}"
+            for fact in dossier.facts
+            if fact.field in important
+        ]
+        return "  •  ".join(values) or "Identificação detalhada disponível no dossiê."
+
+    def _show_dossier(self, dossier) -> None:
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Dossiê do imóvel")
+        dialog.setIcon(QMessageBox.Icon.Information)
+        lines = [
+            "<h2>Imóvel consolidado</h2>",
+            f"<p><b>Confiança geral:</b> {dossier.score:.0f}/100</p>",
+            "<h3>Informações consolidadas</h3>",
+        ]
+        for fact in dossier.facts:
+            lines.append(
+                f"<p><b>{fact.field}</b><br>"
+                f"{fact.value}<br>"
+                f"<small>Fonte: {fact.provenance.source_id} · "
+                f"Confiança: {fact.provenance.confidence:.0%}</small></p>"
+            )
+        if dossier.conflicts:
+            lines.append("<h3>Conflitos entre fontes</h3>")
+            for conflict in dossier.conflicts:
+                values = " ↔ ".join(str(value) for value in conflict.values)
+                lines.append(f"<p><b>{conflict.field}:</b> {values}</p>")
+        else:
+            lines.append("<p>Nenhum conflito identificado entre os dados consolidados.</p>")
+        dialog.setText("".join(lines))
+        dialog.setStandardButtons(QMessageBox.StandardButton.Close)
+        dialog.setMinimumWidth(680)
+        dialog.exec()
 
     def _search_failed(self, message: str) -> None:
         self.search_button.setEnabled(True)
