@@ -80,3 +80,21 @@ def test_cnefe_is_not_configured_without_path(monkeypatch) -> None:
     status = CNEFEAdapter().status()
 
     assert status.status == "not_configured"
+
+
+def test_cnefe_zip_search(tmp_path) -> None:
+    path = tmp_path / "cnefe.zip"
+    csv_content = (
+        "NM_LOGR;NUMERO;NM_MUNICIPIO;SIGLA_UF;COD_UNICO;QUADRA;LATITUDE;LONGITUDE\n"
+        "PAMPLONA;1578;SAO PAULO;SP;789;12;-23.5602;-46.6602\n"
+    )
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("3550308_SAO_PAULO.csv", csv_content)
+
+    records = CNEFEAdapter(path).search(
+        SearchRequest(address="Rua Pamplona", number="1578", city="São Paulo", state="SP")
+    )
+
+    assert len(records) == 1
+    assert records[0].property_id == "789"
+    assert records[0].block == "12"
