@@ -76,12 +76,13 @@ def test_cnefe_reports_missing_local_file(tmp_path) -> None:
     assert "not found" in (status.message or "")
 
 
-def test_cnefe_is_not_configured_without_path(monkeypatch) -> None:
+def test_cnefe_uses_official_remote_when_path_is_not_configured(monkeypatch) -> None:
     monkeypatch.delenv("IMOBHUNTER_CNEFE_PATH", raising=False)
 
     status = CNEFEAdapter().status()
 
-    assert status.status == "not_configured"
+    assert status.status == "available"
+    assert "IBGE" in (status.message or "")
 
 
 def test_cnefe_zip_search(tmp_path) -> None:
@@ -100,3 +101,39 @@ def test_cnefe_zip_search(tmp_path) -> None:
     assert len(records) == 1
     assert records[0].property_id == "789"
     assert records[0].block == "12"
+
+
+def test_cnefe_remote_resolves_municipality_and_uses_cache(tmp_path, monkeypatch) -> None:
+    import imobhunter.sources.cnefe as cnefe
+
+    source_zip = tmp_path / "3550308_SAO_PAULO.zip"
+    csv_content = (
+        "NM_LOGR;NUMERO;NM_MUNICIPIO;SIGLA_UF;COD_UNICO;QUADRA\\n"
+        "PAMPLONA;1578;SAO PAULO;SP;999;77\\n"
+    )
+    with zipfile.ZipFile(source_zip, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("3550308_SAO_PAULO.csv", csv_content)
+
+    monkeypatch.setattr(
+        cnefe,
+        "_http_json",
+        lambda _url: [{
+            "id": 3550308,
+            "nome": "São Paulo",
+            "microrregiao": {"mesorregiao": {"UF": {"sigla": "SP"}}},
+        }],
+    )
+    monkeypatch.setattr(
+        cnefe,
+        "_http_text",
+        lambda _url: '<a href="3550308_SAO_PAULO.zip">arquivo</a>',
+    )
+    monkeypatch.setattr(cnefe, "_download_remote_zip", lambda _url, _cache: source_zip)
+
+    records = CNEFEAdapter(cache_dir=tmp_path / "cache").search(
+        SearchRequest(address="Rua Pamplona", number="1578", city="São Paulo", state="SP")
+    )
+
+    assert len(records) == 1
+    assert records[0].property_id == "999"
+    assert records[0].block == "77"
