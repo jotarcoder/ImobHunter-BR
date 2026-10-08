@@ -113,3 +113,30 @@ footer span+span:before{content:"";position:absolute;left:0;top:50%;width:4px;he
   .floating-app{animation:none;transform:none}
   .live-dot{animation:none}
 }
+
+
+/* Unified premium controls */
+.navlinks a{position:relative;padding:7px 0}
+.navlinks a:after{content:"";position:absolute;left:0;right:100%;bottom:0;height:1px;background:#35ff77;transition:right .25s ease}
+.navlinks a:hover:after{right:0}
+.button{position:relative;overflow:hidden;isolation:isolate;box-shadow:0 10px 24px rgba(0,0,0,.16)}
+.button:before{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(105deg,transparent 20%,rgba(255,255,255,.1) 50%,transparent 80%);transform:translateX(-120%);transition:transform .55s ease}
+.button:hover:before{transform:translateX(120%)}
+.primary{box-shadow:0 12px 32px rgba(53,255,119,.12)}
+.cards article,.download,.sourcegrid div{position:relative;overflow:hidden;box-shadow:0 12px 32px rgba(0,0,0,.12),inset 0 1px rgba(255,255,255,.02)}
+.cards article:before,.download:before,.sourcegrid div:before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 90% 0,rgba(53,255,119,.07),transparent 35%)}
+.cards article b{display:flex;align-items:center;gap:8px;color:#e9f4f8;font-size:15px;letter-spacing:-.01em}
+.cards article b:first-letter{color:#35ff77}
+.download strong{letter-spacing:-.025em}
+.download small{margin-top:10px;transition:color .2s,transform .2s}
+.download:hover small{color:#35ff77;transform:translateX(3px)}
+.sourcegrid div{min-height:128px;transition:transform .25s,border-color .25s,box-shadow .25s}
+.sourcegrid div:hover{transform:translateY(-4px);border-color:#31546d;box-shadow:0 18px 38px rgba(0,0,0,.2)}
+.textlink{position:relative}
+.textlink:after{content:"";position:absolute;left:0;right:100%;bottom:-4px;height:1px;background:#35ff77;transition:right .25s}
+.textlink:hover:after{right:0}
+.legal{box-shadow:0 20px 60px rgba(0,0,0,.16),inset 0 1px rgba(255,255,255,.025)}
+footer{background:linear-gradient(180deg,transparent,rgba(10,23,36,.18))}
+@media(prefers-reduced-motion:reduce){
+  .button:before,.navlinks a:after,.textlink:after{transition:none}
+}
