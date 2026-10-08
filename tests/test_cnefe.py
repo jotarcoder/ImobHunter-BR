@@ -55,8 +55,8 @@ def test_cnefe_geojson_search(tmp_path) -> None:
 def test_cnefe_csv_search(tmp_path) -> None:
     path = tmp_path / "cnefe.csv"
     path.write_text(
-        "NM_LOGR,NUMERO,NM_MUNICIPIO,SIGLA_UF,COD_UNICO,QUADRA,LATITUDE,LONGITUDE\n"
-        "PAMPLONA,1578,SAO PAULO,SP,456,9,-23.5601,-46.6601\n",
+        "NM_LOGR;NUMERO;NM_MUNICIPIO;SIGLA_UF;COD_UNICO;QUADRA;LATITUDE;LONGITUDE\n"
+        "PAMPLONA;1578;SAO PAULO;SP;456;9;-23.5601;-46.6601\n",
         encoding="utf-8",
     )
 
