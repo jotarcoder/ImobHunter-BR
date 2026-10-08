@@ -133,6 +133,10 @@ def test_legacy_schema_migration_adds_license_columns(tmp_path) -> None:
         connection.execute(text("CREATE TABLE sessions (id INTEGER PRIMARY KEY, token_hash VARCHAR(64))"))
 
     _migrate_legacy_schema(legacy)
+    _migrate_legacy_schema(legacy)
+
     assert "license_id" in {c["name"] for c in inspect(legacy).get_columns("devices")}
     session_columns = {c["name"] for c in inspect(legacy).get_columns("sessions")}
     assert {"license_id", "device_id"} <= session_columns
+    indexes = {index["name"] for index in inspect(legacy).get_indexes("devices")}
+    assert "uq_device_license" in indexes
