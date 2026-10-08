@@ -20,6 +20,18 @@ class FailingSource(SourceAdapter):
         raise RuntimeError("source unavailable")
 
 
+class NetworkFailingSource(SourceAdapter):
+    source_id = "network_failing"
+    name = "Network Failing"
+    category = "test"
+
+    def status(self) -> SourceStatus:
+        return SourceStatus(self.source_id, self.name, "available")
+
+    def search(self, request: SearchRequest) -> list[PropertyRecord]:
+        raise OSError("network unavailable")
+
+
 class RecordSource(SourceAdapter):
     source_id = "records"
     name = "Records"
@@ -86,3 +98,20 @@ def test_search_reports_no_results(tmp_path: Path) -> None:
 
     assert result.sources[0].status == "no_results"
     assert result.sources[0].records_count == 0
+
+
+def test_search_isolates_source_network_failure(tmp_path: Path) -> None:
+    database = LocalDatabase(tmp_path / "db.sqlite")
+    registry = SourceRegistry({})
+    registry.register(NetworkFailingSource())
+    registry.register(RecordSource())
+    service = SearchService(registry, database)
+
+    result = service.search(SearchRequest(address="Rua Pamplona", number="1578"))
+
+    assert len(result.records) == 1
+    assert [(item.source_id, item.status) for item in result.sources] == [
+        ("network_failing", "error"),
+        ("records", "ok"),
+    ]
+    assert "network unavailable" in (result.sources[0].message or "")
