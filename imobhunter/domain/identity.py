@@ -21,7 +21,8 @@ def identity_keys(record: PropertyRecord) -> frozenset[str]:
     if record.cib:
         keys.add(f"cib:{canonical_cib(record.cib)}")
     if record.property_id:
-        keys.add(f"property:{canonical_text(record.property_id)}")
+        source_id = max(record.provenance, key=lambda item: item.confidence).source_id if record.provenance else "unknown"
+        keys.add(f"property:{canonical_text(source_id)}:{canonical_text(record.property_id)}")
     if record.block and record.lot and record.city and record.state:
         keys.add(
             f"parcel:{canonical_text(record.state)}:{canonical_text(record.city)}:"
@@ -32,7 +33,7 @@ def identity_keys(record: PropertyRecord) -> frozenset[str]:
             f"address:{canonical_text(record.address)}:"
             f"{canonical_text(record.city)}:{canonical_text(record.state)}"
         )
-    if record.latitude is not None and record.longitude is not None:
+    if record.latitude is not None and record.longitude is not None and not keys:
         keys.add(f"coord:{record.latitude:.6f}:{record.longitude:.6f}")
     return frozenset(keys)
 
