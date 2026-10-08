@@ -253,6 +253,7 @@ def require_admin(request: Request) -> Admin:
 
 
 REQUIRE_ADMIN = Depends(require_admin)
+REQUIRE_BEARER = Depends(BEARER)
 
 
 @router.get("/admin", include_in_schema=False)
@@ -489,7 +490,7 @@ def activate(payload: Activate, request: Request):
 
 
 @router.post("/api/v1/heartbeat")
-def heartbeat(payload: Heartbeat, request: Request, credentials: HTTPAuthorizationCredentials | None = Depends(BEARER)):
+def heartbeat(payload: Heartbeat, request: Request, credentials: HTTPAuthorizationCredentials | None = REQUIRE_BEARER):
     with db() as session:
         user, client_session = client(credentials, session)
         lic = session.get(License, client_session.license_id)
