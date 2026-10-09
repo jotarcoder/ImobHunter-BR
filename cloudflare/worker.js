@@ -62,10 +62,12 @@ export default {
   if(path==="/api/admin/login" && request.method==="POST"){
    await ensureAdminTables(env);
    const b=await body(request), email=String(b.email||"").trim().toLowerCase(), password=String(b.password||"");
-   if(!env.ADMIN_EMAIL) return json({error:"Painel administrativo ainda não configurado. Defina o segredo ADMIN_EMAIL no Worker Cloudflare."},503);\n   if(email!==String(env.ADMIN_EMAIL).trim().toLowerCase()||password.length<1) return json({error:"E-mail ou senha inválidos."},401);
+   if(!env.ADMIN_EMAIL) return json({error:"Painel administrativo ainda não configurado. Defina o segredo ADMIN_EMAIL no Worker Cloudflare."},503);
+   if(email!==String(env.ADMIN_EMAIL).trim().toLowerCase()||password.length<1) return json({error:"E-mail ou senha inválidos."},401);
    let user=await env.DB.prepare("SELECT email,salt,password_hash FROM admin_users WHERE email=?").bind(email).first();
    if(!user){
-    if(!env.ADMIN_PASSWORD) return json({error:"Primeiro acesso bloqueado: configure o segredo ADMIN_PASSWORD no Worker Cloudflare."},503);\n    if(password!==env.ADMIN_PASSWORD) return json({error:"E-mail ou senha inválidos."},401);
+    if(!env.ADMIN_PASSWORD) return json({error:"Primeiro acesso bloqueado: configure o segredo ADMIN_PASSWORD no Worker Cloudflare."},503);
+    if(password!==env.ADMIN_PASSWORD) return json({error:"E-mail ou senha inválidos."},401);
     const salt=crypto.getRandomValues(new Uint8Array(16)), saltText=b64url(salt), digest=await passwordHash(password,salt);
     await env.DB.prepare("INSERT INTO admin_users(email,salt,password_hash,updated_at) VALUES(?,?,?,?)").bind(email,saltText,digest,isoNow()).run();
     user={email,salt:saltText,password_hash:digest};
