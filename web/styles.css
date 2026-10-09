@@ -676,3 +676,49 @@ footer span:hover{
   .download,
   .sourcegrid .source-card{transition:none}
 }
+
+
+/* Clear, accessible account and WhatsApp actions. */
+.navlinks .admin-nav{
+  display:inline-flex;
+  align-items:center;
+  padding:8px 12px;
+  border:1px solid rgba(53,255,119,.38);
+  border-radius:9px;
+  color:var(--green);
+  background:rgba(53,255,119,.055);
+  font-weight:750;
+}
+.navlinks .admin-nav:after{display:none}
+.navlinks .admin-nav:hover{
+  background:rgba(53,255,119,.12);
+  box-shadow:0 8px 24px rgba(53,255,119,.08);
+}
+#planos{text-align:center}
+#planos>.eyebrow,#planos>h2,#planos>.section-lead{margin-left:auto;margin-right:auto}
+#planos>.section-lead{max-width:820px}
+#planos .cards{grid-template-columns:repeat(2,minmax(0,1fr));max-width:900px}
+#planos .cards article{display:flex;flex-direction:column;align-items:center;gap:10px}
+#planos .cards article>b{font-size:clamp(28px,3vw,40px);color:var(--green)}
+#planos .cards article>p{max-width:340px;margin:4px auto 14px}
+#planos .plan-cta{margin-top:auto;min-height:48px;background:rgba(53,255,119,.09);border-color:rgba(53,255,119,.5);color:var(--green)}
+#planos .plan-cta:hover{background:var(--green);color:#04100a}
+.contact-activation{
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  margin:36px auto 0;padding:26px 20px;max-width:760px;
+  border:1px solid rgba(53,255,119,.22);border-radius:18px;
+  background:linear-gradient(135deg,rgba(53,255,119,.055),rgba(9,23,36,.72));
+}
+.contact-activation p{margin:0;color:#a8bac8}
+.contact-activation .button{margin-top:8px}
+.footer-admin{
+  display:inline-flex;align-items:center;justify-content:center;
+  color:var(--green);font-weight:750;padding:4px 8px;border-radius:7px;
+  transition:background .2s,transform .2s;
+}
+.footer-admin:hover{background:rgba(53,255,119,.08);transform:translateY(-2px)}
+@media(max-width:700px){
+  #planos .cards{grid-template-columns:1fr}
+  .contact-activation{padding:22px 16px}
+  .contact-activation .button{width:100%;text-align:center}
+}
