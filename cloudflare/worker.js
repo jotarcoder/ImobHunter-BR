@@ -6,7 +6,7 @@ const hashKey = async (key) => hex(new Uint8Array(await crypto.subtle.digest("SH
 const isoNow = () => new Date().toISOString();
 const addMonths = (date, months) => { const d=new Date(date), day=d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth()+months); const last=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate(); d.setUTCDate(Math.min(day,last)); return d.toISOString(); };
 async function audit(env, actor, action, userId, detail={}) { await env.DB.prepare("INSERT INTO audit_log(actor,action,user_id,detail,created_at) VALUES(?,?,?,?,?)").bind(actor,action,userId||null,JSON.stringify(detail),isoNow()).run(); }
-const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\\+/g,"-").replace(/\\//g,"_").replace(/=+$/g,"");
+const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"");
 const fromB64url = (s) => Uint8Array.from(atob(s.replace(/-/g,"+").replace(/_/g,"/")+"=".repeat((4-s.length%4)%4)),c=>c.charCodeAt(0));
 const enc = (s) => new TextEncoder().encode(s);
 async function passwordHash(password, salt) {
@@ -29,7 +29,7 @@ async function createSession(env,email) {
  return {token:payload+"."+sig,expires_at:new Date(expires).toISOString()};
 }
 async function admin(request,env) {
- const token=(request.headers.get("Authorization")||"").replace(/^Bearer\\s+/i,"");
+ const token=(request.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"");
  const parts=token.split("."); if(parts.length!==2) return false;
  const secret=await getConfig(env,"session_secret"); if(!secret) return false;
  const key=await crypto.subtle.importKey("raw",enc(secret),{name:"HMAC",hash:"SHA-256"},false,["verify"]);
@@ -55,7 +55,7 @@ export default {
    const b=await body(request), userId=String(b.user_id||"").trim(), key=String(b.activation_key||"").trim().toUpperCase();
    if(!/^[0-9a-f-]{36}$/i.test(userId)||!/^[0-9A-F]{64}$/.test(key)) return json({ok:false,error:"ID de usuário ou chave inválidos."},400);
    const digest=await hashKey(key), row=await env.DB.prepare("SELECT user_id,status,plan,expires_at,deleted_at FROM licenses WHERE user_id=? AND key_hash=?").bind(userId,digest).first();
-   if(!row||row.deleted_at||row.status!=="active"||!row.expires_at||Date.parse(row.expires_at)<=Date.now()) return json({ok:false,authorized:false,error:"Licença não autorizada. Entre em contato com +55 (11) 99903-7737 para obter a ativação."},403);
+   if(!row||row.deleted_at||row.status!=="active"||!row.expires_at||Date.parse(row.expires_at)<=Date.now()) return json({ok:false,authorized:false,error:"Licença não autorizada. Solicite suporte pelo botão de WhatsApp no aplicativo."},403);
    await env.DB.prepare("UPDATE licenses SET last_seen_at=? WHERE user_id=?").bind(isoNow(),userId).run();
    return json({ok:true,authorized:true,user_id:userId,plan:row.plan,expires_at:row.expires_at,checked_at:isoNow()});
   }
