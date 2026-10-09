@@ -23,7 +23,7 @@ def main() -> None:
             "pip install -e '.[desktop]'"
         ) from exc
 
-    from .licensing import DEFAULT_LICENSE_API, LicenseError, activate, get_user_id
+    from .licensing import LicenseError, activate, get_user_id
     from .application.search import SearchService
     from .infrastructure.local_db import LocalDatabase
     from .sources.registry import build_default_registry
