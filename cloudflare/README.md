@@ -1,1 +1,40 @@
-# ImobHunter Cloudflare licensing\n\n## Deploy\n\nWorker endpoint: `https://imobhunter-license.imobhunterbr.workers.dev`\n\nInstitutional site project: `imobhunter-br` (`https://imobhunter-br.pages.dev`). The Pages project is created; the first static deployment is pending the Pages asset upload or GitHub Actions credentials.\n\n1. Create the D1 database `imobhunter-licenses` (database ID is in `wrangler.toml`).\n2. Apply `schema.sql` with `wrangler d1 execute imobhunter-licenses --remote --file=schema.sql`.\n3. Set a strong random admin token: `wrangler secret put ADMIN_TOKEN`. Do not put this token in Git or the desktop build.\n4. Deploy from this directory with `wrangler deploy`.\n5. Open `/admin` on the Worker URL. Admin APIs require the bearer token.\n\nThe first-time customer key is a 256-bit cryptographically random hexadecimal string. Only its SHA-256 digest is stored. The complete key is returned once by the admin creation/rotation action. New licenses begin in `pending`; an administrator must activate them after confirming payment. Suspension/revocation is checked by the desktop client every five minutes.\n\n## Routes\n\n- `GET /health`: service health\n- `GET /admin`: restricted admin interface (requires token for all data mutations/reads)\n- `POST /api/license/activate`: checks user ID, key hash, status and expiry\n- `/api/admin/clients`: create/list, activate, suspend, rotate key, change plan, archive\n- `GET /api/admin/audit`: latest admin actions\n\n## Pricing configured\n\n- Monthly: R$ 3.000, validity one month\n- Annual: R$ 20.000, validity twelve months\n\nAdmin token must be set before using the admin endpoints. The API fails closed if it is missing. Configure Cloudflare Access as an additional layer before exposing the admin URL to staff.\n\n## GitHub Actions deployment\n\nAdd repository secret `CLOUDFLARE_API_TOKEN` with Cloudflare Workers Scripts Write, Pages Write, D1 Read (and account settings read as requested by Wrangler). The account ID is already configured in the workflow. The workflows intentionally skip deployment rather than fail when the secret is absent. After the secret is added, run `Deploy institutional website to Cloudflare Pages` once from Actions to publish the current `web/` directory; later changes to `web/**` deploy automatically. Changes under `cloudflare/**` deploy the Worker automatically.\n\nTo enable the admin panel, add `ADMIN_TOKEN` as a **Secret** on the Worker in Cloudflare Dashboard → Workers & Pages → `imobhunter-license` → Settings → Variables and Secrets. Use a unique long random value and never commit it to GitHub. The `/admin` page can be opened publicly, but every admin API call returns 401 until this secret is configured.\n
+# ImobHunter Cloudflare licensing
+
+## Endpoints
+
+- License Worker: https://imobhunter-license.imobhunterbr.workers.dev
+- Institutional Pages project: https://imobhunter-br.pages.dev
+
+The Pages project has been created, but the first static deployment still needs the Cloudflare API token in GitHub Actions. The Git integration attempt returned a Cloudflare Pages installation error, so the project uses direct deployment through Wrangler.
+
+## Deploy the license Worker
+
+1. The D1 database `imobhunter-licenses` has been created and `schema.sql` applied.
+2. The D1 database ID is configured in `wrangler.toml`.
+3. In Cloudflare Dashboard, open Workers & Pages → `imobhunter-license` → Settings → Variables and Secrets.
+4. Add `ADMIN_TOKEN` as a **Secret**. Use a unique, long random value. Never put it in Git or in the desktop installer.
+5. Open `/admin` on the Worker URL and enter that token. Admin APIs return 401 until the secret exists (fail-closed).
+
+## GitHub Actions deployments
+
+Add the repository secret `CLOUDFLARE_API_TOKEN` with permissions for Workers Scripts Write, Pages Write, D1 Read, and any account settings read permissions requested by Wrangler. The account ID is already configured in the workflows.
+
+After adding the secret, run **Deploy institutional website to Cloudflare Pages** once from GitHub Actions to publish the current `web/` directory. Later changes under `web/**` deploy automatically. Changes under `cloudflare/**` deploy the Worker automatically. Both workflows skip cleanly while the secret is absent.
+
+## License behavior
+
+The first-time customer key is a 256-bit cryptographically random hexadecimal string. Only its SHA-256 digest is stored. The complete key is returned once when an admin creates a client or rotates a key. New licenses begin in `pending`; an administrator must activate them after confirming payment. The desktop revalidates every five minutes, so suspensions and expirations take effect during an open session.
+
+## Routes
+
+- `GET /health`: service health.
+- `GET /admin`: administrative interface; every admin API requires the token.
+- `POST /api/license/activate`: checks user ID, key hash, status and expiry.
+- `/api/admin/clients`: create/list clients, activate, suspend, rotate keys, change plan and archive clients.
+- `GET /api/admin/audit`: recent administrative actions.
+
+## Prices configured
+
+- Monthly: R$ 3.000, valid for one month.
+- Annual: R$ 20.000, valid for twelve months.
+- Contact for activation: +55 (11) 99903-7737.
