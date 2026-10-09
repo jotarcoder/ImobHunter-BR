@@ -1,14 +1,29 @@
+from __future__ import annotations
+
+from urllib.parse import quote
+
+
 def main() -> None:
     try:
-        from PySide6.QtCore import QTimer
-        from PySide6.QtWidgets import QApplication, QInputDialog, QMessageBox, QLineEdit
+        from PySide6.QtCore import QTimer, QUrl
+        from PySide6.QtGui import QDesktopServices
+        from PySide6.QtWidgets import (
+            QApplication,
+            QDialog,
+            QHBoxLayout,
+            QLabel,
+            QLineEdit,
+            QMessageBox,
+            QPushButton,
+            QVBoxLayout,
+        )
     except ImportError as exc:
         raise RuntimeError(
             "A interface desktop requer a instalação do extra 'desktop': "
             "pip install -e '.[desktop]'"
         ) from exc
 
-    from .licensing import CONTACT_PHONE, LicenseError, activate, get_user_id
+    from .licensing import DEFAULT_LICENSE_API, LicenseError, activate, get_user_id
     from .application.search import SearchService
     from .infrastructure.local_db import LocalDatabase
     from .sources.registry import build_default_registry
@@ -17,26 +32,88 @@ def main() -> None:
     app = QApplication([])
     apply_style(app)
     user_id = get_user_id()
-    QMessageBox.information(
-        None,
-        "Ativação do ImobHunter",
-        "A instalação está liberada, mas o uso dos recursos exige uma licença ativa.\n\n"
-        f"Seu ID de usuário é:\n{user_id}\n\n"
-        f"Para obter a ativação, entre em contato: {CONTACT_PHONE}",
-    )
-    key, accepted = QInputDialog.getText(
-        None, "Ativar licença", "Cole a chave hexadecimal de ativação:",
-        QLineEdit.EchoMode.Password,
-    )
-    if not accepted or not key.strip():
-        QMessageBox.information(None, "Licença necessária", f"Entre em contato com {CONTACT_PHONE} para obter sua chave.")
+
+    class ActivationDialog(QDialog):
+        def __init__(self) -> None:
+            super().__init__()
+            self.setWindowTitle("Ativar ImobHunter-BR")
+            self.setMinimumWidth(520)
+            self.activation_key = ""
+            layout = QVBoxLayout(self)
+            layout.setSpacing(12)
+
+            title = QLabel("Ativação do ImobHunter-BR")
+            title.setStyleSheet("font-size: 22px; font-weight: 800;")
+            layout.addWidget(title)
+            intro = QLabel(
+                "Para liberar as pesquisas e os dossiês, informe a chave de licença "
+                "emitida pela equipe ImobHunter. Sua licença será validada online."
+            )
+            intro.setWordWrap(True)
+            layout.addWidget(intro)
+
+            layout.addWidget(QLabel("Seu ID exclusivo de usuário"))
+            id_row = QHBoxLayout()
+            self.id_field = QLineEdit(user_id)
+            self.id_field.setReadOnly(True)
+            id_row.addWidget(self.id_field, 1)
+            copy_button = QPushButton("Copiar ID")
+            copy_button.clicked.connect(lambda: app.clipboard().setText(user_id))
+            id_row.addWidget(copy_button)
+            layout.addLayout(id_row)
+
+            layout.addWidget(QLabel("Chave de ativação"))
+            self.key_field = QLineEdit()
+            self.key_field.setPlaceholderText("Cole aqui sua chave de 64 caracteres")
+            self.key_field.setEchoMode(QLineEdit.EchoMode.Password)
+            self.key_field.returnPressed.connect(self.try_activate)
+            layout.addWidget(self.key_field)
+
+            self.status = QLabel("")
+            self.status.setWordWrap(True)
+            layout.addWidget(self.status)
+
+            buttons = QHBoxLayout()
+            whatsapp = QPushButton("Solicitar pelo WhatsApp")
+            whatsapp.clicked.connect(self.open_whatsapp)
+            buttons.addWidget(whatsapp)
+            buttons.addStretch(1)
+            activate_button = QPushButton("Validar e ativar")
+            activate_button.setDefault(True)
+            activate_button.clicked.connect(self.try_activate)
+            buttons.addWidget(activate_button)
+            layout.addLayout(buttons)
+
+            self.key_field.setFocus()
+
+        def open_whatsapp(self) -> None:
+            message = (
+                "Olá! Quero adquirir o serviço ImobHunter-BR e preciso de ajuda "
+                f"com a ativação. Meu ID de usuário é {user_id}. "
+                "Gostaria de receber informações sobre os planos mensal e anual."
+            )
+            url = "https://wa.me/5511999037737?text=" + quote(message)
+            QDesktopServices.openUrl(QUrl(url))
+
+        def try_activate(self) -> None:
+            key = self.key_field.text().strip()
+            if not key:
+                self.status.setText("Cole a chave de ativação para continuar.")
+                return
+            self.status.setText("Validando licença com o servidor…")
+            QApplication.processEvents()
+            try:
+                activate(user_id, key)
+            except LicenseError as exc:
+                self.status.setText(str(exc))
+                return
+            self.activation_key = key
+            self.accept()
+
+    dialog = ActivationDialog()
+    if dialog.exec() != QDialog.DialogCode.Accepted:
         return
-    activation_key = key.strip()
-    try:
-        activate(user_id, activation_key)
-    except LicenseError as exc:
-        QMessageBox.critical(None, "Ativação recusada", f"{exc}\n\nContato: {CONTACT_PHONE}")
-        return
+    activation_key = dialog.activation_key
 
     registry = build_default_registry()
     database = LocalDatabase.default()
@@ -53,7 +130,7 @@ def main() -> None:
                 window,
                 "Licença suspensa",
                 "O servidor não autorizou a continuidade do uso. "
-                f"Entre em contato com {CONTACT_PHONE}.",
+                "Abra novamente a tela de ativação ou solicite suporte pelo WhatsApp.",
             )
             window.close()
             app.quit()
