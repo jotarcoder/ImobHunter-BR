@@ -62,11 +62,11 @@ export default {
   if(path==="/api/admin/login" && request.method==="POST"){
    await ensureAdminTables(env);
    const b=await body(request), email=String(b.email||"").trim().toLowerCase(), password=String(b.password||"");
-   if(!env.ADMIN_EMAIL||!env.ADMIN_PASSWORD||email!==String(env.ADMIN_EMAIL).trim().toLowerCase()||password.length<1) return json({error:"E-mail ou senha inválidos."},401);
+   if(!env.ADMIN_EMAIL||email!==String(env.ADMIN_EMAIL).trim().toLowerCase()||password.length<1) return json({error:"E-mail ou senha inválidos."},401);
    let user=await env.DB.prepare("SELECT email,salt,password_hash FROM admin_users WHERE email=?").bind(email).first();
    if(!user){
+    if(!env.ADMIN_PASSWORD||password!==env.ADMIN_PASSWORD) return json({error:"E-mail ou senha inválidos."},401);
     const salt=crypto.getRandomValues(new Uint8Array(16)), saltText=b64url(salt), digest=await passwordHash(password,salt);
-    if(password!==env.ADMIN_PASSWORD) return json({error:"E-mail ou senha inválidos."},401);
     await env.DB.prepare("INSERT INTO admin_users(email,salt,password_hash,updated_at) VALUES(?,?,?,?)").bind(email,saltText,digest,isoNow()).run();
     user={email,salt:saltText,password_hash:digest};
    } else {
