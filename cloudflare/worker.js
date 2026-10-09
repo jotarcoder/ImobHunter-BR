@@ -4,7 +4,7 @@ const hex = (bytes) => [...bytes].map(b=>b.toString(16).padStart(2,"0")).join(""
 const randomHex = (n=32) => { const b=new Uint8Array(n); crypto.getRandomValues(b); return hex(b); };
 const hashKey = async (key) => hex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key.trim().toUpperCase()))));
 const isoNow = () => new Date().toISOString();
-const addMonths = (date, months) => { const d=new Date(date); d.setUTCMonth(d.getUTCMonth()+months); return d.toISOString(); };
+const addMonths = (date, months) => { const d=new Date(date), day=d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth()+months); const last=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate(); d.setUTCDate(Math.min(day,last)); return d.toISOString(); };
 async function audit(env, actor, action, userId, detail={}) { await env.DB.prepare("INSERT INTO audit_log(actor,action,user_id,detail,created_at) VALUES(?,?,?,?,?)").bind(actor,action,userId||null,JSON.stringify(detail),isoNow()).run(); }
 function admin(request, env) { return Boolean(env.ADMIN_TOKEN) && request.headers.get("Authorization")==="Bearer "+env.ADMIN_TOKEN; }
 async function body(request) { try { return await request.json(); } catch { return {}; } }
@@ -34,7 +34,7 @@ export default {
    const actor="admin-token";
    if(path==="/api/admin/clients"&&request.method==="GET"){
     const rows=await env.DB.prepare("SELECT user_id,name,email,plan,status,expires_at,created_at FROM licenses WHERE deleted_at IS NULL ORDER BY created_at DESC").all();
-    return json({clients:(rows.results||[]).map(r=>({...r,plan_label:r.plan==="annual"?"Anual · R$ 20.000":"Mensal · R$ 3.000"}))});
+    return json({clients:(rows.results||[]).map(r=>({...r,status:r.status==="active"&&Date.parse(r.expires_at)<=Date.now()?"expired":r.status,plan_label:r.plan==="annual"?"Anual · R$ 20.000":"Mensal · R$ 3.000"}))});
    }
    if(path==="/api/admin/clients"&&request.method==="POST"){
     const b=await body(request), name=String(b.name||"").trim(), email=String(b.email||"").trim(), plan=b.plan==="annual"?"annual":"monthly";
