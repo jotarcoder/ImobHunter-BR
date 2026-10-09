@@ -56,9 +56,11 @@ def test_activation_denial_raises_license_error() -> None:
         {},
         BytesIO(b'{"error":"Licen\u00e7a suspensa"}'),
     )
-    with patch("imobhunter.licensing.urlopen", side_effect=error):
-        with pytest.raises(LicenseError, match="Licença suspensa"):
-            activate(
+    with (
+        patch("imobhunter.licensing.urlopen", side_effect=error),
+        pytest.raises(LicenseError, match="Licença suspensa"),
+    ):
+        activate(
                 "00000000-0000-4000-8000-000000000001",
                 "A" * 64,
                 "https://license.example",
