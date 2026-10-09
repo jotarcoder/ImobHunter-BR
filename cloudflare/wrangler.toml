@@ -1,0 +1,9 @@
+name = "imobhunter-license"
+main = "worker.js"
+compatibility_date = "2026-10-09"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "imobhunter-licenses"
+database_id = "c8f12ab9-e628-4c35-9710-43ffb1ec8cb0"
