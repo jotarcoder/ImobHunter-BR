@@ -23,7 +23,7 @@ After adding the secret, run **Deploy institutional website to Cloudflare Pages*
 
 ## License behavior
 
-The first-time customer key is a 256-bit cryptographically random hexadecimal string. Only its SHA-256 digest is stored. The complete key is returned once when an admin creates a client or rotates a key. New licenses begin in `pending`; an administrator must activate them after confirming payment. The desktop revalidates every five minutes, so suspensions and expirations take effect during an open session.
+The first-time customer key is a 256-bit cryptographically random hexadecimal string. Only its SHA-256 digest is stored. The admin must paste the exact UUID displayed by the customer's desktop app when creating a client; the key is bound to that ID. The complete key is returned once when an admin creates a client or rotates a key. New licenses begin in `pending`; an administrator must activate them after confirming payment. The desktop revalidates every five minutes, so suspensions and expirations take effect during an open session.
 
 ## Routes
 
