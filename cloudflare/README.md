@@ -12,8 +12,9 @@ The Pages project has been created, but the first static deployment still needs 
 1. The D1 database `imobhunter-licenses` has been created and `schema.sql` applied.
 2. The D1 database ID is configured in `wrangler.toml`.
 3. In Cloudflare Dashboard, open Workers & Pages → `imobhunter-license` → Settings → Variables and Secrets.
-4. Add `ADMIN_TOKEN` as a **Secret**. Use a unique, long random value. Never put it in Git or in the desktop installer.
-5. Open `/admin` on the Worker URL and enter that token. Admin APIs return 401 until the secret exists (fail-closed).
+4. Add `ADMIN_EMAIL` as a **Secret** with the authorized administrator email.
+5. Add `ADMIN_PASSWORD` as a **Secret** with the temporary initial password provided privately to the administrator. Never commit either value to Git or bundle it into the desktop installer.
+6. Deploy the Worker, then open `/admin` and sign in with email and password. The first successful login stores a salted PBKDF2 password hash in D1; the temporary password secret is only used to bootstrap that first login. Change the password in the Security section immediately. Sessions expire after eight hours.
 
 ## GitHub Actions deployments
 
@@ -28,7 +29,7 @@ The first-time customer key is a 256-bit cryptographically random hexadecimal st
 ## Routes
 
 - `GET /health`: service health.
-- `GET /admin`: administrative interface; every admin API requires the token.
+- `GET /admin`: administrative interface; every admin API requires a signed, expiring session.
 - `POST /api/license/activate`: checks user ID, key hash, status and expiry.
 - `/api/admin/clients`: create/list clients, activate, suspend, rotate keys, change plan and archive clients.
 - `GET /api/admin/audit`: recent administrative actions.
@@ -37,4 +38,4 @@ The first-time customer key is a 256-bit cryptographically random hexadecimal st
 
 - Monthly: R$ 3.000, valid for one month.
 - Annual: R$ 20.000, valid for twelve months.
-- Contact for activation: +55 (11) 99903-7737.
+- Sales requests use the plan-specific WhatsApp links on the institutional website; the phone number is not printed on the page.
