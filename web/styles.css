@@ -727,3 +727,13 @@ footer span:hover{
 /* WhatsApp CTA: ensure the contact action stays above decorative 3D layers and is easy to tap. */
 .whatsapp-button{position:relative;z-index:20;pointer-events:auto;cursor:pointer;touch-action:manipulation}
 .whatsapp-button:before,.whatsapp-button:after{pointer-events:none}
+
+
+/* WhatsApp: isolate the contact area from 3D/reveal stacking contexts. */
+#planos .contact-activation{position:relative!important;z-index:100!important;isolation:isolate!important;transform:none!important;opacity:1!important;visibility:visible!important;}
+#planos .contact-activation a.whatsapp-button,
+#planos a.plan-cta{position:relative!important;display:inline-flex!important;z-index:101!important;pointer-events:auto!important;visibility:visible!important;opacity:1!important;cursor:pointer!important;touch-action:manipulation!important;}
+#planos .contact-activation a.whatsapp-button:before,
+#planos .contact-activation a.whatsapp-button:after,
+#planos a.plan-cta:before,
+#planos a.plan-cta:after{pointer-events:none!important;}
