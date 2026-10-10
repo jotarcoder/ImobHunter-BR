@@ -722,3 +722,8 @@ footer span:hover{
   .contact-activation{padding:22px 16px}
   .contact-activation .button{width:100%;text-align:center}
 }
+
+
+/* WhatsApp CTA: ensure the contact action stays above decorative 3D layers and is easy to tap. */
+.whatsapp-button{position:relative;z-index:20;pointer-events:auto;cursor:pointer;touch-action:manipulation}
+.whatsapp-button:before,.whatsapp-button:after{pointer-events:none}
