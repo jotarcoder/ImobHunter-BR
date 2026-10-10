@@ -11,7 +11,7 @@ const fromB64url = (s) => Uint8Array.from(atob(s.replace(/-/g,"+").replace(/_/g,
 const enc = (s) => new TextEncoder().encode(s);
 async function passwordHash(password, salt) {
  const key=await crypto.subtle.importKey("raw",enc(password),"PBKDF2",false,["deriveBits"]);
- const bits=await crypto.subtle.deriveBits({name:"PBKDF2",salt,iterations:210000,hash:"SHA-256"},key,256);
+ const bits=await crypto.subtle.deriveBits({name:"PBKDF2",salt,iterations:100000,hash:"SHA-256"},key,256);
  return b64url(bits);
 }
 async function getConfig(env,key) { const row=await env.DB.prepare("SELECT value FROM admin_config WHERE key=?").bind(key).first(); return row?.value||null; }
