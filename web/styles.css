@@ -748,3 +748,31 @@ footer span:hover{
 #planos .cards article > a.plan-cta::after{pointer-events:none!important;}
 #planos .contact-activation{position:relative;isolation:isolate;z-index:3;}
 #planos .contact-activation > a.whatsapp-button{position:relative!important;z-index:9999!important;pointer-events:auto!important;cursor:pointer!important;transform:none!important;}
+
+
+/* Interface polish: tactile navigation, premium CTAs and on-page legal accordions. */
+.navlinks{align-items:center;gap:clamp(7px,1.15vw,16px);color:#a7bacb}
+.navlinks a:not(.admin-nav){display:inline-flex;align-items:center;padding:9px 12px;border:1px solid transparent;border-radius:11px;color:#b5c6d4;background:linear-gradient(145deg,rgba(255,255,255,.035),rgba(255,255,255,.008));transition:transform .22s,border-color .22s,background .22s,color .22s,box-shadow .22s}
+.navlinks a:not(.admin-nav):after{display:none}
+.navlinks a:not(.admin-nav):hover{transform:translateY(-2px);border-color:rgba(53,255,119,.35);color:var(--green);background:linear-gradient(145deg,rgba(53,255,119,.10),rgba(104,184,255,.045));box-shadow:0 8px 24px rgba(0,0,0,.22),inset 0 1px rgba(255,255,255,.06)}
+.button{position:relative;isolation:isolate;overflow:hidden;border-radius:13px;box-shadow:0 8px 22px rgba(0,0,0,.16),inset 0 1px rgba(255,255,255,.09);transition:transform .22s,border-color .22s,background .22s,box-shadow .22s,color .22s}
+.button:hover{transform:translateY(-2px);box-shadow:0 13px 30px rgba(0,0,0,.26),0 0 22px rgba(53,255,119,.075),inset 0 1px rgba(255,255,255,.12)}
+.button.primary{box-shadow:0 9px 26px rgba(53,255,119,.13),inset 0 1px rgba(255,255,255,.25)}
+#planos .cards{isolation:auto;z-index:auto}
+#planos .cards article{pointer-events:auto!important;isolation:auto;transform:none!important}
+#planos .cards article > *{pointer-events:auto!important}
+#planos .cards article > a.plan-cta{display:inline-flex!important;align-items:center;justify-content:center;min-height:52px;width:100%;max-width:320px;position:relative!important;z-index:5!important;pointer-events:auto!important;transform:none!important;cursor:pointer}
+#planos .cards article > a.plan-cta:before,#planos .cards article > a.plan-cta:after{pointer-events:none!important}
+.policy-accordions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start}
+.policy-card{min-width:0;text-align:left;border:1px solid rgba(104,184,255,.20);border-radius:15px;background:linear-gradient(145deg,rgba(16,38,56,.92),rgba(7,20,32,.92));box-shadow:0 14px 34px rgba(0,0,0,.20),inset 0 1px rgba(255,255,255,.04);overflow:hidden}
+.policy-card>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;list-style:none;cursor:pointer;margin:0;width:100%;min-height:58px;border:0;border-radius:0;box-shadow:none;text-align:left}
+.policy-card>summary::-webkit-details-marker{display:none}
+.policy-card>summary span{font-size:20px;transition:transform .2s}
+.policy-card[open]>summary{color:var(--green);background:rgba(53,255,119,.075);border-bottom:1px solid rgba(53,255,119,.16)}
+.policy-card[open]>summary span{transform:rotate(45deg)}
+.policy-content{padding:20px 20px 22px;color:#a8bac7}
+.policy-content h3{margin:0 0 12px;color:#edf5fa;font-size:18px}
+.policy-content p{margin:0 0 12px;line-height:1.7}
+.policy-content p:last-child{margin-bottom:0}
+@media(max-width:900px){.navlinks{gap:5px}.navlinks a:not(.admin-nav){padding:8px 9px;font-size:13px}.policy-accordions{grid-template-columns:1fr}.policy-content{padding:17px}}
+@media(max-width:700px){.navlinks{display:none}.button{min-height:46px}.policy-accordions{grid-template-columns:1fr}}
