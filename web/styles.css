@@ -737,3 +737,14 @@ footer span:hover{
 #planos .contact-activation a.whatsapp-button:after,
 #planos a.plan-cta:before,
 #planos a.plan-cta:after{pointer-events:none!important;}
+
+
+/* Hotfix: make plan CTAs the only hit targets inside the transformed pricing cards. */
+#planos .cards{position:relative;isolation:isolate;z-index:2;}
+#planos .cards article{position:relative;isolation:isolate;pointer-events:none;}
+#planos .cards article > *{pointer-events:none;}
+#planos .cards article > a.plan-cta{position:relative!important;z-index:9999!important;pointer-events:auto!important;cursor:pointer!important;transform:none!important;}
+#planos .cards article > a.plan-cta::before,
+#planos .cards article > a.plan-cta::after{pointer-events:none!important;}
+#planos .contact-activation{position:relative;isolation:isolate;z-index:3;}
+#planos .contact-activation > a.whatsapp-button{position:relative!important;z-index:9999!important;pointer-events:auto!important;cursor:pointer!important;transform:none!important;}
