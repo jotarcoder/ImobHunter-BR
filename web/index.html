@@ -17,7 +17,6 @@
       <a href="#fontes">Fontes</a>
       <a href="#planos">Licenciamento</a>
       <a href="#privacidade">Privacidade</a>
-      <a class="admin-nav" href="https://imobhunter-license.imobhunterbr.workers.dev/admin">Painel administrativo ↗</a>
     </div>
   </nav>
 
@@ -160,15 +159,41 @@
       <p class="eyebrow">CONFIANÇA POR DESIGN</p>
       <h2>Privacidade e regras claras.</h2>
       <p>O projeto foi desenhado para minimizar exposição: processamento local, credenciais separadas, proveniência dos dados e nenhum uso de bases vazadas. Autenticação e CAPTCHA nunca são contornados.</p>
-      <div class="legalbuttons">
-        <a class="button primary" href="https://github.com/jotarcoder/ImobHunter-BR/blob/main/docs/PRIVACY_POLICY.md">Política de Privacidade</a>
-        <a class="button" href="https://github.com/jotarcoder/ImobHunter-BR/blob/main/docs/TERMS_OF_USE.md">Termos de Uso</a>
-        <a class="button" href="https://github.com/jotarcoder/ImobHunter-BR/blob/main/docs/DATA_SOURCE_POLICY.md">Política de Fontes</a>
+      <div class="legalbuttons policy-accordions">
+        <details class="policy-card">
+          <summary class="button primary">Política de Privacidade <span aria-hidden="true">＋</span></summary>
+          <div class="policy-content">
+            <h3>Privacidade e processamento local</h3>
+            <p>O ImobHunter-BR foi projetado com abordagem local-first: consultas, cache, dados geoespaciais e reconciliação devem permanecer no computador do usuário sempre que tecnicamente possível. O servidor de licenciamento recebe apenas os dados mínimos necessários para autenticação e validação da licença.</p>
+            <p>Conforme a funcionalidade utilizada, podem ser tratados endereço e parâmetros de pesquisa, cidade, UF, quadra, lote, identificadores cadastrais retornados pelas fontes, informações geoespaciais e tributárias disponibilizadas legalmente, metadados de origem e dados mínimos da licença.</p>
+            <p>O sistema não deve coletar CPF apenas por ser tecnicamente possível. Não incorpora dados vazados nem compartilha dados com terceiros para publicidade. Integrações externas devem receber somente o necessário para a função escolhida. O site deve funcionar sem cookies publicitários por padrão.</p>
+            <p>Solicitações relativas a dados pessoais serão tratadas conforme a legislação aplicável, inclusive a LGPD. Esta política descreve a base de transparência do produto e deve passar por revisão jurídica antes da comercialização.</p>
+          </div>
+        </details>
+        <details class="policy-card">
+          <summary class="button">Termos de Uso <span aria-hidden="true">＋</span></summary>
+          <div class="policy-content">
+            <h3>Uso responsável da plataforma</h3>
+            <p>O ImobHunter-BR organiza, cruza e enriquece informações imobiliárias. Não substitui matrícula, certidão, cadastro municipal, autoridade ambiental, Receita Federal ou parecer profissional. Resultados de pesquisa são evidências informativas, não garantias jurídicas de propriedade.</p>
+            <p>É proibido utilizar a plataforma para fraude, perseguição, assédio, discriminação, acesso não autorizado, contorno de CAPTCHA ou autenticação, exploração de bases vazadas ou criação de listas ilícitas de dados pessoais.</p>
+            <p>Fontes públicas e serviços de terceiros podem ter limites, indisponibilidades, regras e licenças próprias. O usuário deve confirmar informações críticas diretamente na fonte oficial e utilizar dados pessoais para finalidades legítimas. Os termos comerciais de licença serão definidos no plano contratado.</p>
+            <p>Estes termos são uma base de produto e devem receber revisão jurídica antes da publicação comercial definitiva.</p>
+          </div>
+        </details>
+        <details class="policy-card">
+          <summary class="button">Política de Fontes <span aria-hidden="true">＋</span></summary>
+          <div class="policy-content">
+            <h3>Origem, autorização e proveniência</h3>
+            <p>As integrações devem utilizar fontes públicas, oficiais, licenciadas ou fornecidas/autorizadas pelo usuário. Cada resultado deve preservar, quando disponível, a origem, a data da consulta, a finalidade e o nível de confiança. Uma fonte deve poder ser desativada sem interromper todo o sistema.</p>
+            <p>As camadas podem incluir GeoSampa, IBGE/CNEFE, SINTER/CIB, SNCR/INCRA, SICAR/CAR, SIGEF, CNIR, Receita Federal/CNPJ, INDE, ICMBio, IPHAN, OpenStreetMap e consultas municipais de IPTU, conforme disponibilidade e autorização. Nem toda fonte oferece API pública anônima ou todos os campos.</p>
+            <p>Dados cadastrais ou tributários não são prova definitiva de propriedade. O sistema não contorna autenticação, CAPTCHA, firewalls ou controles de acesso e não incorpora bases vazadas. Respeitam-se limites técnicos, termos de uso, atribuição e licenças aplicáveis, incluindo ODbL para OpenStreetMap.</p>
+          </div>
+        </details>
       </div>
     </section>
   </main>
 
-  <footer><span>ImobHunter-BR</span><span>Inteligência imobiliária local-first</span><span>Processamento no seu computador</span><a class="footer-admin" href="https://imobhunter-license.imobhunterbr.workers.dev/admin">Acesso administrativo ↗</a></footer>
+  <footer><span>ImobHunter-BR</span><span>Inteligência imobiliária local-first</span><span>Processamento no seu computador</span></footer>
   <script src="motion.js" defer></script>
 </body>
 </html>
