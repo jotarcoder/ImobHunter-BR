@@ -93,7 +93,14 @@ def main() -> None:
                 "Gostaria de receber informações sobre os planos mensal e anual."
             )
             url = "https://wa.me/5511999037737?text=" + quote(message)
-            QDesktopServices.openUrl(QUrl(url))
+            opened = QDesktopServices.openUrl(QUrl(url))
+            if not opened:
+                QMessageBox.warning(
+                    self,
+                    "WhatsApp",
+                    "Não foi possível abrir o WhatsApp automaticamente. "
+                    "Verifique seu navegador padrão ou acesse https://wa.me/5511999037737.",
+                )
 
         def try_activate(self) -> None:
             key = self.key_field.text().strip()
