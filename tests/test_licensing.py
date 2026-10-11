@@ -25,9 +25,10 @@ def test_invalid_persisted_user_id_is_replaced(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr("imobhunter.licensing.os.name", "posix")
     data_dir = tmp_path / "ImobHunter-BR"
     data_dir.mkdir()
-    (data_dir / "installation.json").write_text('{"user_id":"x" * 36}', encoding="utf-8")
+    (data_dir / "installation.json").write_text('{"user_id":"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"}', encoding="utf-8")
     generated = get_user_id()
     assert str(uuid.UUID(generated)) == generated
+    assert generated != "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 
 
 def test_activation_sends_normalized_user_id_and_hex_key() -> None:
