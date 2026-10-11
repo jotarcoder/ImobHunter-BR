@@ -1,56 +1,87 @@
 name: Publish installers to Cloudflare R2
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Release installers"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       release_tag:
-        description: GitHub release tag
+        description: GitHub release tag to publish
         required: true
-        default: v0.1.7
+        default: v0.1.9
 
 permissions:
   contents: read
 
 jobs:
   publish:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
+      - name: Select release tag
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
+            tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+          else
+            tag="$INPUT_TAG"
+          fi
+          test -n "$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Publishing installers from $tag"
+
       - name: Download release installers
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}
+          TAG: ${{ steps.release.outputs.tag }}
         run: |
+          set -euo pipefail
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
             --pattern "ImobHunter-BR-Setup-Windows.exe" \
             --pattern "ImobHunter-BR-Linux.AppImage" \
             --pattern "ImobHunter-BR-macOS-Intel.dmg" \
             --pattern "ImobHunter-BR-macOS-AppleSilicon.dmg"
-
-      - name: Configure AWS CLI for Cloudflare R2
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-        run: |
-          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
-            echo "::error::Missing R2 credentials in repository secrets."
-            exit 1
-          fi
-          aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
-          aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
-          aws configure set region auto
-
-      - name: Upload installers
-        shell: bash
-        run: |
-          set -euo pipefail
-          endpoint="https://15895c53eb86fc8d91e14e9b4456b656.r2.cloudflarestorage.com"
           for file in \
             "ImobHunter-BR-Setup-Windows.exe" \
             "ImobHunter-BR-Linux.AppImage" \
             "ImobHunter-BR-macOS-Intel.dmg" \
             "ImobHunter-BR-macOS-AppleSilicon.dmg"; do
             test -s "$file"
+          done
+
+      - name: Configure AWS CLI for Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "::error::Missing R2 credentials in repository secrets R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY."
+            exit 1
+          fi
+          aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
+          aws configure set region auto
+
+      - name: Upload installers to public R2 bucket
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint="https://15895c53eb86fc8d91e14e9b4456b656.r2.cloudflarestorage.com"
+          public_base="https://pub-6bd1ab819504434691f4832d98de3cb6.r2.dev"
+          for file in \
+            "ImobHunter-BR-Setup-Windows.exe" \
+            "ImobHunter-BR-Linux.AppImage" \
+            "ImobHunter-BR-macOS-Intel.dmg" \
+            "ImobHunter-BR-macOS-AppleSilicon.dmg"; do
             aws s3 cp "$file" "s3://imobhunter-downloads/$file" --endpoint-url "$endpoint" --only-show-errors
+            curl --fail --silent --show-error --location --output /dev/null "$public_base/$file"
+            echo "Public download verified: $file"
           done
