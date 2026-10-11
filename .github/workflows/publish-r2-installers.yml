@@ -4,13 +4,12 @@ on:
   workflow_run:
     workflows: ["Release installers"]
     types: [completed]
-    branches: [main]
   workflow_dispatch:
     inputs:
       release_tag:
         description: GitHub release tag to publish
         required: true
-        default: v0.1.9
+        default: v0.1.10
 
 permissions:
   contents: read
@@ -25,15 +24,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           INPUT_TAG: ${{ inputs.release_tag }}
+          WORKFLOW_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
         shell: bash
         run: |
           set -euo pipefail
           if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
-            tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+            if [[ "$WORKFLOW_HEAD_BRANCH" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              tag="$WORKFLOW_HEAD_BRANCH"
+            else
+              # Manual release runs use the latest release created by the successful workflow.
+              tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+            fi
           else
             tag="$INPUT_TAG"
           fi
-          test -n "$tag"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid release tag: expected vMAJOR.MINOR.PATCH."
+            exit 1
+          fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "Publishing installers from $tag"
 
