@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QFileDialog, QHBoxLayout, QLabel,
+    QComboBox, QDialog, QFileDialog, QHBoxLayout, QInputDialog, QLabel,
     QLineEdit, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem,
     QVBoxLayout,
 )
@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 from .application.market_intelligence import MarketIntelligenceStore
 from .application.receita_import import import_receita_archives, search_receita_establishments
 from .application.receita_geo import import_receita_coordinates
+from .application.address_geocoding import CachedAddressGeocoder, GeocodingError
 
 
 class MarketIntelligenceDialog(QDialog):
@@ -68,6 +69,10 @@ class MarketIntelligenceDialog(QDialog):
         root.addLayout(controls)
 
         actions = QHBoxLayout()
+        geocode_button = QPushButton("Localizar endereço")
+        geocode_button.setToolTip("Localiza um endereço por vez e preenche as coordenadas para a pesquisa por raio.")
+        geocode_button.clicked.connect(self._geocode_address)
+        actions.addWidget(geocode_button)
         import_button = QPushButton("Importar CSV local")
         import_button.clicked.connect(self._import_csv)
         actions.addWidget(import_button)
@@ -106,6 +111,39 @@ class MarketIntelligenceDialog(QDialog):
 
     def _refresh_count(self) -> None:
         self.status.setText(f"{self.store.count()} empresa(s) no banco local.")
+
+    def _geocode_address(self) -> None:
+        address, accepted = QInputDialog.getText(
+            self,
+            "Localizar endereço",
+            "Digite rua, número, cidade e UF:",
+        )
+        if not accepted:
+            return
+        try:
+            geocoder = CachedAddressGeocoder(
+                self.store.path,
+                "ImobHunter-BR/0.1 (aplicativo desktop; contato pelo site institucional)",
+            )
+            result = geocoder.geocode(address)
+        except (GeocodingError, OSError, ValueError) as exc:
+            QMessageBox.warning(self, "Geocodificação", str(exc))
+            return
+        self.latitude.setText(str(result["latitude"]))
+        self.longitude.setText(str(result["longitude"]))
+        cache_note = " (cache local)" if result.get("cached") else ""
+        self.status.setText(
+            f"Endereço localizado{cache_note}: {result['display_name']} • {result['attribution']}"
+        )
+        QMessageBox.information(
+            self,
+            "Endereço localizado",
+            f"{result['display_name']}\n"
+            f"Latitude: {result['latitude']}\nLongitude: {result['longitude']}\n\n"
+            f"Fonte: {result['provider']} — {result['attribution']}\n"
+            "As coordenadas foram preenchidas para a pesquisa por raio. "
+            "A consulta é individual e o resultado fica em cache local.",
+        )
 
     def _import_csv(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Importar base empresarial", "", "CSV (*.csv)")
