@@ -260,7 +260,11 @@ class ReceitaBrowseDialog(QDialog):
         search = QPushButton("Pesquisar")
         search.clicked.connect(self._search)
         filters.addWidget(search)
+        export_geo = QPushButton("Exportar endereços para coordenadas")
+        export_geo.clicked.connect(self._export_geocoding_csv)
+        filters.addWidget(export_geo)
         root.addLayout(filters)
+        self.current_rows = []
         self.status = QLabel("Pesquise na base importada; os resultados ficam no PC.")
         root.addWidget(self.status)
         self.table = QTableWidget(0, 8)
@@ -269,10 +273,63 @@ class ReceitaBrowseDialog(QDialog):
         self.table.horizontalHeader().setStretchLastSection(True)
         root.addWidget(self.table, 1)
 
+
+    def _export_geocoding_csv(self) -> None:
+        if not self.current_rows:
+            QMessageBox.information(
+                self, "Exportar endereços",
+                "Faça uma pesquisa com resultados antes de exportar."
+            )
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Exportar endereços para completar coordenadas",
+            "imobhunter-enderecos-coordenadas.csv", "CSV (*.csv)"
+        )
+        if not path:
+            return
+        fields = [
+            "cnpj", "name", "trade_name", "address", "neighborhood",
+            "postal_code", "state", "municipality_code", "cnae",
+            "latitude", "longitude", "source", "updated_at"
+        ]
+        try:
+            with open(path, "w", encoding="utf-8-sig", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
+                writer.writeheader()
+                for item in self.current_rows:
+                    writer.writerow({
+                        "cnpj": item.get("cnpj", ""),
+                        "name": item.get("legal_name") or item.get("trade_name") or "",
+                        "trade_name": item.get("trade_name") or "",
+                        "address": " ".join(part for part in [
+                            item.get("street_type") or "", item.get("street") or "",
+                            item.get("street_number") or "", item.get("complement") or ""
+                        ] if part),
+                        "neighborhood": item.get("neighborhood") or "",
+                        "postal_code": item.get("postal_code") or "",
+                        "state": item.get("state") or "",
+                        "municipality_code": item.get("municipality_code") or "",
+                        "cnae": item.get("main_cnae") or "",
+                        "latitude": "",
+                        "longitude": "",
+                        "source": "Receita Federal CNPJ; coordenadas pendentes",
+                        "updated_at": "",
+                    })
+        except OSError as exc:
+            QMessageBox.warning(self, "Exportar endereços", str(exc))
+            return
+        QMessageBox.information(
+            self, "Exportar endereços",
+            "CSV exportado. Preencha latitude e longitude com coordenadas verificadas e "
+            "importe-o pelo botão 'Vincular coordenadas por CNPJ'. O aplicativo não "
+            "preenche coordenadas inventadas nem executa geocodificação em massa."
+        )
+
     def _search(self) -> None:
         rows = search_receita_establishments(
             self.database_path, self.query.text(), self.state.text(), self.cnae.text(), 1000
         )
+        self.current_rows = rows
         self.table.setRowCount(len(rows))
         for row_index, item in enumerate(rows):
             street = " ".join(part for part in [
