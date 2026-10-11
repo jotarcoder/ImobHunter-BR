@@ -55,8 +55,8 @@ export default {
   if(path==="/health") return json({ok:true,service:"imobhunter-license",time:isoNow()});
   if(path==="/admin") return new Response(adminPage(),{headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store","Content-Security-Policy":"default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"}});
   if(path==="/api/license/activate" && request.method==="POST"){
-   const b=await body(request), userId=String(b.user_id||"").trim(), key=String(b.activation_key||"").trim().toUpperCase();
-   if(!/^[0-9a-f-]{36}$/i.test(userId)||!/^[0-9A-F]{64}$/.test(key)) return json({ok:false,error:"ID de usuário ou chave inválidos."},400);
+   const b=await body(request), userId=String(b.user_id||"").trim().toLowerCase(), key=String(b.activation_key||"").trim().toUpperCase();
+   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)||!/^[0-9A-F]{64}$/.test(key)) return json({ok:false,error:"ID de usuário ou chave inválidos."},400);
    const digest=await hashKey(key), row=await env.DB.prepare("SELECT user_id,status,plan,expires_at,deleted_at FROM licenses WHERE user_id=? AND key_hash=?").bind(userId,digest).first();
    if(!row||row.deleted_at||row.status!=="active"||!row.expires_at||Date.parse(row.expires_at)<=Date.now()) return json({ok:false,authorized:false,error:"Licença não autorizada. Solicite suporte pelo botão de WhatsApp no aplicativo."},403);
    await env.DB.prepare("UPDATE licenses SET last_seen_at=? WHERE user_id=?").bind(isoNow(),userId).run();
@@ -100,8 +100,8 @@ export default {
     return json({clients:(rows.results||[]).map(r=>({...r,status:r.status==="active"&&Date.parse(r.expires_at)<=Date.now()?"expired":r.status,plan_label:r.plan==="annual"?"Anual":"Mensal"}))});
    }
    if(path==="/api/admin/clients"&&request.method==="POST"){
-    const b=await body(request), userId=String(b.user_id||"").trim(), name=String(b.name||"").trim(), email=String(b.email||"").trim(), cpfCnpj=String(b.cpf_cnpj||"").trim(), phone=String(b.phone||"").trim(), plan=b.plan==="annual"?"annual":"monthly";
-    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(userId)) return json({error:"Informe o ID UUID exibido no aplicativo do cliente."},400);
+    const b=await body(request), userId=String(b.user_id||"").trim().toLowerCase(), name=String(b.name||"").trim(), email=String(b.email||"").trim(), cpfCnpj=String(b.cpf_cnpj||"").trim(), phone=String(b.phone||"").trim(), plan=b.plan==="annual"?"annual":"monthly";
+    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) return json({error:"Informe o ID UUID exibido no aplicativo do cliente."},400);
     if(name.length<2||name.length>160||email.length>254||cpfCnpj.length>24||phone.length>32) return json({error:"Confira o nome, CPF/CNPJ, telefone e e-mail informados."},400);
     const duplicate=await env.DB.prepare("SELECT user_id,deleted_at FROM licenses WHERE user_id=?").bind(userId).first();
     const key=randomHex(32), now=isoNow(), expires=addMonths(now,plan==="annual"?12:1), digest=await hashKey(key);
