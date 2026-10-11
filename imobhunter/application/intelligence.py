@@ -47,6 +47,7 @@ def _priority(source_id: str) -> int:
 def _fields(record: PropertyRecord) -> dict[str, object]:
     return {
         "address": record.address,
+        "registry_number": record.registry_number,
         "cib": record.cib,
         "property_id": record.property_id,
         "owner_name": record.owner_name,
