@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import csv
 import sqlite3
 import zipfile
 from pathlib import Path
