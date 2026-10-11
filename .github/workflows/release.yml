@@ -39,28 +39,31 @@ jobs:
           PY
           )"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-      - name: Confirm this commit owns the version tag
+      - name: Confirm version tag exists and release is not already published
         id: ref
         shell: bash
         env:
           VERSION: ${{ steps.version.outputs.version }}
           EVENT_NAME: ${{ github.event_name }}
-          EVENT_SHA: ${{ github.event.workflow_run.head_sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          REF="$GITHUB_SHA"
           SHOULD_RELEASE=false
+          REF="$GITHUB_SHA"
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             SHOULD_RELEASE=true
           else
             git fetch --force origin "refs/tags/v$VERSION:refs/tags/v$VERSION" || true
             TAG_SHA="$(git rev-parse "refs/tags/v$VERSION^{commit}" 2>/dev/null || true)"
-            if [ -n "$TAG_SHA" ] && [ "$TAG_SHA" = "$EVENT_SHA" ]; then
-              SHOULD_RELEASE=true
+            if [ -n "$TAG_SHA" ]; then
+              REF="refs/tags/v$VERSION"
+              if ! gh release view "v$VERSION" >/dev/null 2>&1; then
+                SHOULD_RELEASE=true
+              fi
             fi
           fi
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
           echo "should_release=$SHOULD_RELEASE" >> "$GITHUB_OUTPUT"
-          echo "Version: $VERSION; should_release=$SHOULD_RELEASE"
+          echo "Version: $VERSION; should_release=$SHOULD_RELEASE; ref=$REF"
 
   windows:
     needs: meta
