@@ -6,6 +6,7 @@ O ImobHunter-BR foi projetado para corretores, imobiliárias, construtores e cap
 
 ## O que o projeto entrega
 - Pesquisa por endereço, número e estrutura cadastral quando disponível.
+- Número da matrícula no dossiê quando presente em fonte autorizada, com encaminhamento ao RI Digital para conferência quando não localizado.
 - Reconciliação de registros e indicação de confiança/proveniência.
 - Arquitetura local-first: processamento pesado, cache e dados de pesquisa permanecem no PC sempre que possível.
 - Integrações por fontes públicas e autorizadas, sem bases vazadas e sem contornar autenticação ou CAPTCHA.
