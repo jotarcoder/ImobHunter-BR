@@ -16,10 +16,10 @@ O ImobHunter-BR foi projetado para corretores, imobiliárias, construtores e cap
 ## Downloads
 | Plataforma | Download |
 |---|---|
-| Windows | [Instalador .exe](https://github.com/jotarcoder/ImobHunter-BR/releases/latest/download/ImobHunter-BR-Setup-Windows.exe) |
-| Linux | [AppImage](https://github.com/jotarcoder/ImobHunter-BR/releases/latest/download/ImobHunter-BR-Linux.AppImage) |
-| macOS Intel | [.dmg](https://github.com/jotarcoder/ImobHunter-BR/releases/latest/download/ImobHunter-BR-macOS-Intel.dmg) |
-| macOS Apple Silicon | [.dmg](https://github.com/jotarcoder/ImobHunter-BR/releases/latest/download/ImobHunter-BR-macOS-AppleSilicon.dmg) |
+| Windows | [Instalador .exe](https://pub-6bd1ab819504434691f4832d98de3cb6.r2.dev/ImobHunter-BR-Setup-Windows.exe) |
+| Linux | [AppImage](https://pub-6bd1ab819504434691f4832d98de3cb6.r2.dev/ImobHunter-BR-Linux.AppImage) |
+| macOS Intel | [.dmg](https://pub-6bd1ab819504434691f4832d98de3cb6.r2.dev/ImobHunter-BR-macOS-Intel.dmg) |
+| macOS Apple Silicon | [.dmg](https://pub-6bd1ab819504434691f4832d98de3cb6.r2.dev/ImobHunter-BR-macOS-AppleSilicon.dmg) |
 
 **[Central de releases](https://github.com/jotarcoder/ImobHunter-BR/releases/latest)**
 
