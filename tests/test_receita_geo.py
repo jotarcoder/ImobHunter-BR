@@ -50,7 +50,7 @@ def test_receita_coordinate_join_enables_radius_search(tmp_path: Path):
 def test_coordinate_import_skips_unknown_cnpj(tmp_path: Path):
     db_path = tmp_path / "market.sqlite3"
     with sqlite3.connect(db_path) as db:
-        db.execute("CREATE TABLE rf_establishments (cnpj TEXT PRIMARY KEY)")
+        db.execute("CREATE TABLE rf_establishments (cnpj TEXT PRIMARY KEY, cnpj_base TEXT)")
         db.execute("CREATE TABLE rf_companies (cnpj_base TEXT PRIMARY KEY, legal_name TEXT)")
         db.execute("CREATE TABLE businesses (id INTEGER PRIMARY KEY, name TEXT NOT NULL, cnpj TEXT DEFAULT '', cnae TEXT DEFAULT '', address TEXT DEFAULT '', city TEXT DEFAULT '', state TEXT DEFAULT '', latitude REAL, longitude REAL, revenue_reported REAL, revenue_period TEXT DEFAULT '', revenue_estimate REAL, estimate_method TEXT DEFAULT '', source TEXT DEFAULT '', updated_at TEXT DEFAULT '')")
     csv_path = tmp_path / "coords.csv"
