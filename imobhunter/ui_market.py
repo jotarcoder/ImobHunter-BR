@@ -324,7 +324,7 @@ class ReceitaBrowseDialog(QDialog):
         item = self.current_rows[row_index]
         cnpj = str(item.get('cnpj') or '')
         street = ' '.join(str(part).strip() for part in (item.get('street_type'), item.get('street'), item.get('street_number'), item.get('complement'), item.get('neighborhood'), item.get('postal_code')) if part and str(part).strip())
-        location = ' '.join(str(part).strip() for part in (item.get('municipality_code'), item.get('state'), 'Brasil') if part and str(part).strip())
+        location = ' '.join(str(part).strip() for part in (item.get('state'), 'Brasil') if part and str(part).strip())
         address = ', '.join(part for part in (street, location) if part)
         if not street or not item.get('state'):
             QMessageBox.warning(self, 'Endereço incompleto', 'O cadastro não tem endereço e UF suficientes.')
