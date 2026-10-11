@@ -28,10 +28,10 @@ def get_user_id() -> str:
     path = _user_data_dir() / "installation.json"
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        value = str(data.get("user_id", ""))
-        if len(value) == 36:
+        value = str(data.get("user_id", "")).strip().lower()
+        if str(uuid.UUID(value)) == value:
             return value
-    except (OSError, ValueError, AttributeError):
+    except (OSError, ValueError, AttributeError, TypeError):
         pass
     value = str(uuid.uuid4())
     path.write_text(json.dumps({"user_id": value}), encoding="utf-8")
@@ -43,8 +43,18 @@ def get_user_id() -> str:
 
 
 def activate(user_id: str, activation_key: str, api_url: str | None = None) -> dict:
+    try:
+        normalized_id = str(uuid.UUID(str(user_id).strip())).lower()
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise LicenseError("O ID desta instalação é inválido. Feche e abra o aplicativo para gerar um ID válido.") from exc
+
+    # Permit formatted clipboard pastes, but only send the exact 64-character hex key.
+    key = "".join(str(activation_key).split()).replace("-", "").upper()
+    if len(key) != 64 or any(char not in "0123456789ABCDEF" for char in key):
+        raise LicenseError("A chave precisa conter 64 caracteres hexadecimais. Copie novamente a chave completa no painel administrativo.")
+
     base = (api_url or os.environ.get("IMOBHUNTER_LICENSE_API") or DEFAULT_LICENSE_API).rstrip("/")
-    payload = json.dumps({"user_id": user_id, "activation_key": activation_key}).encode()
+    payload = json.dumps({"user_id": normalized_id, "activation_key": key}).encode()
     request = Request(
         f"{base}/api/license/activate",
         data=payload,
