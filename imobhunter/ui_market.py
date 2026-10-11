@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from .application.market_intelligence import MarketIntelligenceStore
+from .application.receita_import import import_receita_archives
 
 
 class MarketIntelligenceDialog(QDialog):
@@ -69,6 +70,9 @@ class MarketIntelligenceDialog(QDialog):
         import_button = QPushButton("Importar CSV local")
         import_button.clicked.connect(self._import_csv)
         actions.addWidget(import_button)
+        receita_button = QPushButton("Importar ZIP oficial do CNPJ")
+        receita_button.clicked.connect(self._import_receita)
+        actions.addWidget(receita_button)
         export_button = QPushButton("Exportar resultados CSV")
         export_button.clicked.connect(self._export_csv)
         actions.addWidget(export_button)
@@ -107,6 +111,28 @@ class MarketIntelligenceDialog(QDialog):
             return
         self._refresh_count()
         QMessageBox.information(self, "Importação concluída", f"{count} registro(s) válido(s) importado(s) para o banco local.")
+
+    def _import_receita(self) -> None:
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "Selecionar arquivos ZIP oficiais do CNPJ",
+            "", "Arquivos ZIP (*.zip)"
+        )
+        if not paths:
+            return
+        try:
+            counts = import_receita_archives(self.store.path, paths)
+        except (OSError, ValueError, csv.Error) as exc:
+            QMessageBox.warning(self, "Importação Receita Federal", str(exc))
+            return
+        QMessageBox.information(
+            self, "Importação concluída",
+            "Dados oficiais importados localmente.\n"
+            f"Registros de empresas: {counts['companies']:,}\n"
+            f"Estabelecimentos: {counts['establishments']:,}\n\n"
+            "Observação: os arquivos cadastrais não trazem coordenadas geográficas. "
+            "A etapa de geocodificação será necessária para pesquisar por raio."
+        )
+        self._refresh_count()
 
     def _search(self) -> None:
         try:
