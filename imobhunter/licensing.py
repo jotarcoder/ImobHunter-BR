@@ -59,13 +59,17 @@ def activate(user_id: str, activation_key: str, api_url: str | None = None) -> d
             result = json.loads(exc.read().decode("utf-8"))
         except (ValueError, OSError):
             result = {}
-        raise LicenseError(str(result.get("error", "Licença não autorizada."))) from exc
+        message = str(result.get("error") or "O servidor recusou a ativação sem informar o motivo.")
+        code = str(result.get("code") or "SEM_CODIGO")
+        raise LicenseError(f"[HTTP {exc.code} · {code}] {message}") from exc
     except (URLError, TimeoutError, OSError, ValueError) as exc:
         raise LicenseError(
             "Não foi possível validar a licença no servidor. Verifique a conexão e tente novamente."
         ) from exc
     if result.get("authorized") is not True:
-        raise LicenseError(str(result.get("error", "Licença não autorizada.")))
+        code = str(result.get("code") or "SEM_CODIGO")
+        message = str(result.get("error") or "O servidor não autorizou a licença e não informou o motivo.")
+        raise LicenseError(f"[{code}] {message}")
     return result
 
 
