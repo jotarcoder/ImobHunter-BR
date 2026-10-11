@@ -5,6 +5,10 @@ on:
   push:
     tags:
       - "v*.*.*"
+  workflow_run:
+    workflows: ["Tag version release"]
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: write
