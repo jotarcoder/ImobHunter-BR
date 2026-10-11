@@ -1,6 +1,5 @@
 from html.parser import HTMLParser
 from pathlib import Path
-import re
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "web"
@@ -76,3 +75,9 @@ def test_pages_security_headers_are_configured():
         "object-src 'none'",
     ):
         assert expected in headers
+
+def test_landing_static_asset_budgets():
+    # Transfer budgets prevent accidental addition of large uncompressed assets.
+    assert (WEB / "index.html").stat().st_size < 22_000
+    assert (WEB / "styles.css").stat().st_size < 58_000
+    assert (WEB / "motion.js").stat().st_size < 10_000
