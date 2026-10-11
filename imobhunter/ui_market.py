@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from .application.market_intelligence import MarketIntelligenceStore
-from .application.receita_import import import_receita_archives
+from .application.receita_import import import_receita_archives, search_receita_establishments
 
 
 class MarketIntelligenceDialog(QDialog):
@@ -73,6 +73,9 @@ class MarketIntelligenceDialog(QDialog):
         receita_button = QPushButton("Importar ZIP oficial do CNPJ")
         receita_button.clicked.connect(self._import_receita)
         actions.addWidget(receita_button)
+        browse_button = QPushButton("Consultar base oficial")
+        browse_button.clicked.connect(self._browse_receita)
+        actions.addWidget(browse_button)
         export_button = QPushButton("Exportar resultados CSV")
         export_button.clicked.connect(self._export_csv)
         actions.addWidget(export_button)
@@ -134,6 +137,10 @@ class MarketIntelligenceDialog(QDialog):
         )
         self._refresh_count()
 
+    def _browse_receita(self) -> None:
+        dialog = ReceitaBrowseDialog(self.store.path, self)
+        dialog.exec()
+
     def _search(self) -> None:
         try:
             lat = float(self.latitude.text().strip().replace(",", "."))
@@ -187,3 +194,72 @@ class MarketIntelligenceDialog(QDialog):
             QMessageBox.warning(self, "Exportar", str(exc))
             return
         QMessageBox.information(self, "Exportar", "Resultados exportados localmente.")
+
+
+
+class ReceitaBrowseDialog(QDialog):
+    """Browse the locally imported official CNPJ dataset without network access."""
+
+    def __init__(self, database_path: Path, parent=None) -> None:
+        super().__init__(parent)
+        self.database_path = database_path
+        self.setWindowTitle("ImobHunter • Base oficial de CNPJ local")
+        self.resize(1250, 650)
+        self.setStyleSheet("""
+            QDialog { background:#07111b; color:#eaf2f7; }
+            QLabel { color:#eaf2f7; }
+            QLineEdit { background:#0b1926; color:#f4f8fb; border:1px solid #254156; border-radius:8px; padding:8px; }
+            QPushButton { background:#102332; color:#eaf2f7; border:1px solid #2b4c63; border-radius:9px; padding:8px 12px; }
+            QPushButton:hover { border-color:#35ff77; }
+            QTableWidget { background:#091722; alternate-background-color:#0d1d2b; gridline-color:#1b3348; color:#eaf2f7; }
+            QHeaderView::section { background:#102332; color:#a9bdcb; padding:7px; border:0; }
+        """)
+        root = QVBoxLayout(self)
+        title = QLabel("Base oficial de CNPJ importada no computador")
+        title.setStyleSheet("font-size:22px;font-weight:800")
+        root.addWidget(title)
+        filters = QHBoxLayout()
+        self.query = QLineEdit()
+        self.query.setPlaceholderText("Razão social, nome fantasia ou CNPJ")
+        self.state = QLineEdit()
+        self.state.setPlaceholderText("UF (ex.: SP)")
+        self.state.setMaximumWidth(100)
+        self.cnae = QLineEdit()
+        self.cnae.setPlaceholderText("Prefixo CNAE (opcional)")
+        self.cnae.setMaximumWidth(180)
+        filters.addWidget(self.query, 1)
+        filters.addWidget(self.state)
+        filters.addWidget(self.cnae)
+        search = QPushButton("Pesquisar")
+        search.clicked.connect(self._search)
+        filters.addWidget(search)
+        root.addLayout(filters)
+        self.status = QLabel("Pesquise na base importada; os resultados ficam no PC.")
+        root.addWidget(self.status)
+        self.table = QTableWidget(0, 8)
+        self.table.setHorizontalHeaderLabels(["Razão social", "Nome fantasia", "CNPJ", "Situação", "CNAE principal", "Endereço", "UF / município", "Porte"])
+        self.table.setAlternatingRowColors(True)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        root.addWidget(self.table, 1)
+
+    def _search(self) -> None:
+        rows = search_receita_establishments(
+            self.database_path, self.query.text(), self.state.text(), self.cnae.text(), 1000
+        )
+        self.table.setRowCount(len(rows))
+        for row_index, item in enumerate(rows):
+            street = " ".join(part for part in [
+                item.get("street_type", ""), item.get("street", ""),
+                item.get("street_number", ""), item.get("complement", ""),
+                item.get("neighborhood", ""), item.get("postal_code", "")
+            ] if part)
+            values = [
+                item.get("legal_name") or "", item.get("trade_name") or "",
+                item.get("cnpj") or "", item.get("registration_status") or "",
+                item.get("main_cnae") or "", street,
+                " / ".join(part for part in [item.get("state") or "", item.get("municipality_code") or ""] if part),
+                item.get("company_size") or ""
+            ]
+            for column, value in enumerate(values):
+                self.table.setItem(row_index, column, QTableWidgetItem(str(value)))
+        self.status.setText(f"{len(rows)} resultado(s), limite de 1.000 por pesquisa. Dados consultados localmente.")
