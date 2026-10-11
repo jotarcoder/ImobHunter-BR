@@ -4,7 +4,7 @@ import csv
 import sqlite3
 import zipfile
 from pathlib import Path
-from typing import Iterable
+from collections.abc import Iterable
 
 
 SCHEMA = """
