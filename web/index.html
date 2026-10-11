@@ -208,18 +208,6 @@
   </main>
 
   <footer><span>ImobHunter-BR</span><span>Inteligência imobiliária local-first</span><span>Processamento no seu computador</span></footer>
-  <script>
-    // Forçar o clique primário a navegar diretamente para o arquivo anexado no R2.
-    // A resposta Content-Disposition: attachment inicia o download sem depender de nova aba.
-    document.addEventListener('click', function (event) {
-      const link = event.target instanceof Element
-        ? event.target.closest('a[data-download-direct]')
-        : null;
-      if (!link || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      event.preventDefault();
-      window.location.assign(link.href);
-    }, true);
-  </script>
   <script src="motion.js" defer></script>
 </body>
 </html>
