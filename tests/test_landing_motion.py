@@ -11,7 +11,7 @@ def test_landing_is_institutional_only():
     assert "Termos de Uso" in html
     assert "Política de Fontes" in html
     assert "github.com/jotarcoder/ImobHunter-BR/releases/latest/download/" not in html
-    assert "https://github.com/jotarcoder/ImobHunter-BR/releases/download/v0.1.12/" in html
+    assert "https://pub-6bd1ab819504434691f4832d98de3cb6.r2.dev/" in html
     for asset in (
         "ImobHunter-BR-Setup-Windows.exe",
         "ImobHunter-BR-Linux.AppImage",
@@ -39,7 +39,7 @@ def test_landing_is_institutional_only():
     assert "magnetic-cursor" in css
     assert "cursor.className = 'magnetic-cursor'" in motion
     assert 'href="https://ridigital.org.br/" target="_blank" rel="noopener noreferrer"' in html
-    assert 'href="https://github.com/jotarcoder/ImobHunter-BR/releases/download/v0.1.12/ImobHunter-BR-Setup-Windows.exe"' in html
+    assert 'href="https://pub-6bd1ab819504434691f4832d98de3cb6.r2.dev/ImobHunter-BR-Setup-Windows.exe"' in html
     assert "grid-template-columns:minmax(0,1fr)" in css
     assert "Premium centered composition" in css
     assert "data-magnetic" in motion
