@@ -462,8 +462,27 @@ class MainWindow(QMainWindow):
                 lines.append(f"<p><b>{conflict.field}:</b> {values}</p>")
         else:
             lines.append("<p>Nenhum conflito identificado entre os dados consolidados.</p>")
+        registry_number = next(
+            (str(fact.value) for fact in dossier.facts if fact.field == "registry_number"),
+            None,
+        )
+        if registry_number:
+            lines.insert(2, f"<p><b>Matrícula do imóvel:</b> {registry_number}</p>")
+            lines.insert(3, "<p><small>Confirme o número e a situação diretamente no registro oficial.</small></p>")
+        else:
+            lines.insert(
+                2,
+                "<p><b>Matrícula:</b> não localizada nas fontes consultadas. "
+                "Isso não significa que o imóvel não tenha matrícula.</p>",
+            )
         dialog.setText("".join(lines))
         dialog.setStandardButtons(QMessageBox.StandardButton.Close)
+        lookup_button = dialog.addButton(
+            "Consultar RI Digital", QMessageBox.ButtonRole.ActionRole
+        )
+        lookup_button.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl("https://registradores.onr.org.br/"))
+        )
         dialog.setMinimumWidth(680)
         dialog.exec()
 
