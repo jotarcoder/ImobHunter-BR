@@ -180,8 +180,8 @@ def search_receita_establishments(database_path: str | Path, query: str = "",
     clauses = []
     params: list[object] = []
     if query.strip():
-        term = "%" + query.strip().replace("%", "\\%").replace("_", "\\_") + "%"
-        clauses.append("(c.legal_name LIKE ? ESCAPE '\\\\' OR e.trade_name LIKE ? ESCAPE '\\\\' OR e.cnpj LIKE ?)")
+        term = "%" + query.strip() + "%"
+        clauses.append("(c.legal_name LIKE ? OR e.trade_name LIKE ? OR e.cnpj LIKE ?)")
         params.extend([term, term, term])
     if state.strip():
         clauses.append("e.state = ?")
