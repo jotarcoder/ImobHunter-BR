@@ -4,6 +4,9 @@
   const finePointer = window.matchMedia('(pointer: fine)');
   const stage = document.querySelector('.hero-stage');
   const app = document.querySelector('.floating-app');
+  // Cache scroll targets once instead of querying the DOM and allocating NodeLists per frame.
+  const motionReels = stage ? stage.querySelectorAll('.motion-reel') : [];
+  const sections = document.querySelectorAll('main section');
   let scrollFrame = 0;
 
   // Reveal content with a measured, editorial cadence; keep all text in the DOM.
@@ -39,12 +42,12 @@
     const span = Math.max(1, rect.height + window.innerHeight);
     const p = Math.min(1, Math.max(0, (window.innerHeight - rect.top) / span));
     stage.style.setProperty('--scene-progress', p.toFixed(4));
-    stage.querySelectorAll('.motion-reel').forEach((el, i) => {
+    motionReels.forEach((el, i) => {
       const drift = (p - .5) * (i === 1 ? -34 : 26);
       el.style.setProperty('--scroll-drift', drift.toFixed(1) + 'px');
     });
     if (app) app.style.setProperty('--scroll-drift', ((p - .5) * -22).toFixed(1) + 'px');
-    document.querySelectorAll('main section').forEach((section, i) => {
+    sections.forEach((section, i) => {
       const r = section.getBoundingClientRect();
       const center = (r.top + r.height * .5 - window.innerHeight * .5) / Math.max(1, window.innerHeight);
       section.style.setProperty('--section-drift', (Math.max(-1, Math.min(1, center)) * (i % 2 ? 4 : -4)).toFixed(1) + 'px');
