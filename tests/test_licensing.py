@@ -20,7 +20,18 @@ def test_user_id_is_persistent_and_uuid(monkeypatch, tmp_path) -> None:
     assert str(uuid.UUID(first)) == first
 
 
-def test_activation_sends_user_id_and_hex_key() -> None:
+def test_invalid_persisted_user_id_is_replaced(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setattr("imobhunter.licensing.os.name", "posix")
+    data_dir = tmp_path / "ImobHunter-BR"
+    data_dir.mkdir()
+    (data_dir / "installation.json").write_text('{"user_id":"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"}', encoding="utf-8")
+    generated = get_user_id()
+    assert str(uuid.UUID(generated)) == generated
+    assert generated != "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+
+def test_activation_sends_normalized_user_id_and_hex_key() -> None:
     class Response:
         def __enter__(self):
             return self
@@ -42,9 +53,28 @@ def test_activation_sends_user_id_and_hex_key() -> None:
         }
         return Response()
 
+    formatted_key = "-".join(["A" * 16] * 4)
     with patch("imobhunter.licensing.urlopen", fake_urlopen):
-        result = activate("00000000-0000-4000-8000-000000000001", "A" * 64, "https://license.example/")
+        result = activate("00000000-0000-4000-8000-000000000001", f"  {formatted_key}\n", "https://license.example/")
     assert result["authorized"] is True
+
+
+def test_activation_rejects_malformed_key_before_network_call() -> None:
+    with (
+        patch("imobhunter.licensing.urlopen") as network,
+        pytest.raises(LicenseError, match="64 caracteres hexadecimais"),
+    ):
+        activate("00000000-0000-4000-8000-000000000001", "not-a-key")
+    network.assert_not_called()
+
+
+def test_activation_rejects_invalid_user_id_before_network_call() -> None:
+    with (
+        patch("imobhunter.licensing.urlopen") as network,
+        pytest.raises(LicenseError, match="ID desta instalação é inválido"),
+    ):
+        activate("not-a-uuid", "A" * 64)
+    network.assert_not_called()
 
 
 def test_activation_denial_includes_worker_code_and_message() -> None:
@@ -82,4 +112,4 @@ def test_activation_converts_network_errors_to_license_error() -> None:
         patch("imobhunter.licensing.urlopen", side_effect=TimeoutError("timed out")),
         pytest.raises(LicenseError, match="Não foi possível validar a licença"),
     ):
-        activate("00000000-0000-4000-8000-000000000001", "A" * 64, "https://license.example")
+        activate("00000000-0000-4000-8000-000000000001", "A" * 64)
