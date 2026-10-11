@@ -30,6 +30,9 @@ def test_landing_is_institutional_only():
     assert "translateZ(30px)" in css
     assert "--field-x" in css
     assert "--field-x" in motion
+    assert "magnetic-cursor" in css
+    assert "Magnetic cursor:" in motion
+    assert "data-magnetic" in motion
     assert '<strong>GeoSampa</strong>' in html
     assert '<strong>OpenStreetMap</strong>' in html
 
