@@ -900,3 +900,26 @@ nav{justify-content:center;flex-wrap:wrap;gap:12px 28px}
 footer{display:flex;justify-content:center;align-items:center;flex-wrap:wrap;text-align:center;gap:12px 32px}
 @media(max-width:1000px){.hero{grid-template-columns:minmax(0,1fr);gap:18px}.hero-copy{max-width:900px}.hero-stage{min-height:500px}}
 @media(max-width:700px){nav{padding:12px 4vw}.navlinks{gap:8px 14px;font-size:12px}.hero{padding:54px 5vw 45px}.hero-stage{min-height:370px}.depth-section{padding-inline:5vw}.cards,.downloads,.sourcegrid{grid-template-columns:minmax(0,1fr)}footer{flex-direction:column;gap:6px}}
+
+/* Download links must remain native, clickable anchors despite the 3D card effects. */
+#downloads .downloads > a.download[data-download-direct] {
+  position: relative !important;
+  z-index: 20 !important;
+  display: flex !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  backface-visibility: visible !important;
+  transform: none !important;
+}
+#downloads .downloads > a.download[data-download-direct]::before,
+#downloads .downloads > a.download[data-download-direct]::after,
+#downloads .downloads > a.download[data-download-direct] > * {
+  pointer-events: none !important;
+}
+#downloads .downloads > a.download[data-download-direct]:focus-visible {
+  outline: 3px solid #a4f5c4;
+  outline-offset: 4px;
+}
