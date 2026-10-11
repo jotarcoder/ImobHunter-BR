@@ -10,8 +10,8 @@ def test_landing_is_institutional_only():
     assert "Política de Privacidade" in html
     assert "Termos de Uso" in html
     assert "Política de Fontes" in html
-    assert "github.com/jotarcoder/ImobHunter-BR/releases/latest/download/" in html
-    assert "pub-6bd1ab819504434691f4832d98de3cb6.r2.dev" not in html
+    assert "github.com/jotarcoder/ImobHunter-BR/releases/latest/download/" not in html
+    assert "https://pub-6bd1ab819504434691f4832d98de3cb6.r2.dev/" in html
     for asset in (
         "ImobHunter-BR-Setup-Windows.exe",
         "ImobHunter-BR-Linux.AppImage",
