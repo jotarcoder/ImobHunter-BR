@@ -65,7 +65,7 @@ jobs:
         run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets;imobhunter/assets" --add-data "data/coverage/ddd.json;data/coverage" packaging/entrypoint.py
       - name: Build installer
         shell: powershell
-        run: iscc packaging/windows/ImobHunter-BR.iss
+        run: iscc /DMyAppVersion=${{ needs.meta.outputs.version }} packaging/windows/ImobHunter-BR.iss
       - uses: actions/upload-artifact@v4
         with:
           name: ImobHunter-BR-Windows

@@ -1,6 +1,6 @@
 ; ImobHunter-BR Windows installer
 #define MyAppName "ImobHunter-BR"
-#define MyAppVersion "0.1.3"
+#define MyAppVersion "0.0.0" ; fallback only; CI overrides from pyproject.toml
 #define MyAppPublisher "ImobHunter-BR"
 #define MyAppExeName "ImobHunter-BR.exe"
 
