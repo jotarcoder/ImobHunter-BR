@@ -37,7 +37,7 @@ def test_landing_is_institutional_only():
     assert "--field-x" in css
     assert "--field-x" in motion
     assert "magnetic-cursor" in css
-    assert "Magnetic cursor:" in motion
+    assert "cursor.className = 'magnetic-cursor'" in motion
     assert 'href="https://ridigital.org.br/" target="_blank" rel="noopener noreferrer"' in html
     assert 'href="https://pub-6bd1ab819504434691f4832d98de3cb6.r2.dev/ImobHunter-BR-Setup-Windows.exe"' in html
     assert "grid-template-columns:minmax(0,1fr)" in css
