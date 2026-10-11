@@ -27,10 +27,10 @@ def test_landing_is_institutional_only():
     assert "--button-rx:0deg" in css
     assert "translateZ(var(--button-z))" in css
     assert "--button-rx" in motion
-    assert ".hero-copy{\\n  text-align:center" in css
-    assert "#plataforma,\\n#downloads,\\n#fontes,\\n#privacidade{\\n  text-align:center;" in css
+    assert ".hero-copy{\n  text-align:center" in css
+    assert "#plataforma,\n#downloads,\n#fontes,\n#privacidade{\n  text-align:center;" in css
     assert "#fontes > .textlink" in css
-    assert ".legalbuttons{\\n  justify-content:center;" in css
+    assert ".legalbuttons{\n  justify-content:center;" in css
     assert ".sourcegrid .source-card strong" in css
     assert "translateZ(30px)" in css
     assert "--field-x" in css
