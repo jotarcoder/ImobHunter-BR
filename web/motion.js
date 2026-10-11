@@ -96,3 +96,56 @@
     }, { passive: true });
   });
 })();
+
+/* Magnetic cursor: subtle attraction to actionable controls on fine pointers only. */
+(() => {
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const finePointer = window.matchMedia("(pointer: fine)");
+  if (reduce.matches || !finePointer.matches) return;
+  const cursor = document.createElement("div");
+  cursor.className = "magnetic-cursor";
+  cursor.setAttribute("aria-hidden", "true");
+  document.body.appendChild(cursor);
+  document.body.classList.add("magnetic-cursor-enabled");
+  const targets = [...document.querySelectorAll(".button, .download, .navlinks a, .policy-card > summary")];
+  targets.forEach((target) => target.setAttribute("data-magnetic", ""));
+  let x = -100, y = -100, targetX = x, targetY = y, raf = 0, active = null;
+  const render = () => {
+    x += (targetX - x) * 0.22;
+    y += (targetY - y) * 0.22;
+    cursor.style.transform = "translate3d(" + x.toFixed(2) + "px," + y.toFixed(2) + "px,0) translate(-50%,-50%)";
+    if (Math.abs(targetX - x) > .2 || Math.abs(targetY - y) > .2) raf = requestAnimationFrame(render);
+    else raf = 0;
+  };
+  const move = (event) => {
+    targetX = event.clientX; targetY = event.clientY;
+    const next = event.target instanceof Element ? event.target.closest("[data-magnetic]") : null;
+    if (active !== next) {
+      active?.classList.remove("magnetic-near");
+      active = next;
+      active?.classList.add("magnetic-near");
+      cursor.classList.toggle("is-active", Boolean(active));
+    }
+    if (active) {
+      const rect = active.getBoundingClientRect();
+      const dx = event.clientX - (rect.left + rect.width / 2);
+      const dy = event.clientY - (rect.top + rect.height / 2);
+      active.style.setProperty("--magnetic-x", Math.max(-7, Math.min(7, dx * .10)).toFixed(1) + "px");
+      active.style.setProperty("--magnetic-y", Math.max(-7, Math.min(7, dy * .10)).toFixed(1) + "px");
+    }
+    cursor.classList.add("is-visible");
+    if (!raf) raf = requestAnimationFrame(render);
+  };
+  const leave = () => {
+    targetX = -100; targetY = -100;
+    cursor.classList.remove("is-visible", "is-active");
+    active?.classList.remove("magnetic-near");
+    active?.style.setProperty("--magnetic-x", "0px");
+    active?.style.setProperty("--magnetic-y", "0px");
+    active = null;
+    if (!raf) raf = requestAnimationFrame(render);
+  };
+  window.addEventListener("pointermove", move, {passive:true});
+  document.documentElement.addEventListener("pointerleave", leave, {passive:true});
+  window.addEventListener("blur", leave);
+})();
