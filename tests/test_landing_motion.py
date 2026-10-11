@@ -38,6 +38,10 @@ def test_landing_is_institutional_only():
     assert "--field-x" in motion
     assert "magnetic-cursor" in css
     assert "Magnetic cursor:" in motion
+    assert 'href="https://ridigital.org.br/" target="_blank" rel="noopener noreferrer"' in html
+    assert 'href="https://pub-6bd1ab819504434691f4832d98de3cb6.r2.dev/ImobHunter-BR-Setup-Windows.exe"' in html
+    assert "grid-template-columns:minmax(0,1fr)" in css
+    assert "Premium centered composition" in css
     assert "data-magnetic" in motion
     assert '<strong>GeoSampa</strong>' in html
     assert '<strong>OpenStreetMap</strong>' in html
