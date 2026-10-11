@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import sqlite3
 import time
 from pathlib import Path
@@ -88,6 +87,8 @@ class CachedAddressGeocoder:
             },
             follow_redirects=True,
         )
+        client.headers["User-Agent"] = self.user_agent
+        client.headers["Accept"] = "application/json"
         try:
             wait = self.minimum_interval - (time.monotonic() - self._last_request_at)
             if wait > 0:
