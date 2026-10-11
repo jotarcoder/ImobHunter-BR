@@ -64,6 +64,9 @@ Camada geográfica complementar para ruas, pontos, categorias e contexto territo
 ### IPTU municipal
 Camada tributária municipal. Pode registrar no_debt_found, debt_found, query_unavailable, authentication_required ou captcha_required, além de exercício, valor, vencimento e descrição quando disponíveis. CAPTCHA e autenticação nunca são contornados.
 
+### Matrícula de imóvel / Registro de Imóveis
+O campo explícito de matrícula é preenchido somente quando uma fonte autorizada consultada fornece esse dado, como o campo de registro de matrícula presente em determinados conjuntos SIGEF. O número é apresentado com a proveniência da fonte que o forneceu. Não se presume que endereço, SQL/inscrição de IPTU, CIB, quadra ou lote sejam uma matrícula. Quando nenhuma fonte consultada retornar o número, o aplicativo informa “não localizada nas fontes consultadas” e oferece acesso ao portal oficial RI Digital/ONR: https://registradores.onr.org.br/. A pesquisa registral pode depender de cartório, modalidade, cobertura, credenciais ou pagamento; o sistema não contorna autenticação nem simula uma consulta oficial.
+
 ### DDD / cobertura
 O DDD é apenas um agrupador de navegação e cobertura. Não é equivalente a estado ou município. Um DDD pode abranger mais de uma UF.
 
