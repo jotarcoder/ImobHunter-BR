@@ -166,3 +166,42 @@ def import_receita_archives(database_path: str | Path, archive_paths: Iterable[s
                                 municipality_code=excluded.municipality_code, source_file=excluded.source_file""", batch)
                             counts["establishments"] += len(batch)
     return counts
+
+
+
+def search_receita_establishments(database_path: str | Path, query: str = "",
+                                  state: str = "", cnae_prefix: str = "",
+                                  limit: int = 500) -> list[dict[str, object]]:
+    """Search locally imported CNPJ records by name, CNPJ, UF and primary CNAE."""
+    limit = max(1, min(int(limit), 5000))
+    db_path = Path(database_path)
+    if not db_path.exists():
+        return []
+    clauses = []
+    params: list[object] = []
+    if query.strip():
+        term = "%" + query.strip().replace("%", "\\%").replace("_", "\\_") + "%"
+        clauses.append("(c.legal_name LIKE ? ESCAPE '\\\\' OR e.trade_name LIKE ? ESCAPE '\\\\' OR e.cnpj LIKE ?)")
+        params.extend([term, term, term])
+    if state.strip():
+        clauses.append("e.state = ?")
+        params.append(state.strip().upper())
+    if cnae_prefix.strip():
+        clauses.append("e.main_cnae LIKE ?")
+        params.append(cnae_prefix.strip() + "%")
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    with sqlite3.connect(db_path) as db:
+        db.row_factory = sqlite3.Row
+        try:
+            rows = db.execute(
+                "SELECT e.cnpj, c.legal_name, e.trade_name, e.registration_status, "
+                "e.main_cnae, e.street_type, e.street, e.street_number, e.complement, "
+                "e.neighborhood, e.postal_code, e.state, e.municipality_code, e.email, "
+                "c.company_size, c.share_capital, e.source_file "
+                "FROM rf_establishments e LEFT JOIN rf_companies c ON c.cnpj_base=e.cnpj_base"
+                + where + " ORDER BY c.legal_name, e.cnpj LIMIT ?",
+                [*params, limit],
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+    return [dict(row) for row in rows]
