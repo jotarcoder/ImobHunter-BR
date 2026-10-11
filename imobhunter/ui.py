@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 
 from PySide6.QtCore import QThreadPool, QObject, QRunnable, QUrl, Qt, Signal, Slot
-from PySide6.QtGui import QDesktopServices, QFont, QIcon, QPixmap
+from PySide6.QtGui import QCursor, QDesktopServices, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -104,9 +104,17 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("ImobHunter-BR")
         logo_path = Path(__file__).resolve().parent / "assets" / "logo.svg"
         self.setWindowIcon(QIcon(str(logo_path)))
+        cursor_path = Path(__file__).resolve().parent / "assets" / "magnetic_cursor.svg"
+        cursor_pixmap = QPixmap(str(cursor_path)).scaled(32, 32, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        self._magnetic_cursor = QCursor(cursor_pixmap, 4, 3)
+        self.setCursor(self._magnetic_cursor)
         self.resize(1320, 820)
         self.setMinimumSize(980, 680)
         self._build()
+        for button in self.findChildren(QPushButton):
+            button.setCursor(self._magnetic_cursor)
+        for field in self.findChildren(QLineEdit):
+            field.setCursor(Qt.CursorShape.IBeamCursor)
         self._populate_coverage()
 
     def _build(self) -> None:
