@@ -6,6 +6,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_brand_assets_exist() -> None:
     assert (ROOT / "imobhunter" / "assets" / "logo.svg").exists()
+    assert (ROOT / "imobhunter" / "assets" / "magnetic_cursor.svg").exists()
+    ui = (ROOT / "imobhunter" / "ui.py").read_text(encoding="utf-8")
+    assert "magnetic_cursor.svg" in ui
     assert (ROOT / "web" / "assets" / "hero.svg").exists()
 
 
