@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 
 from .application.market_intelligence import MarketIntelligenceStore
 from .application.receita_import import import_receita_archives, search_receita_establishments
+from .application.receita_geo import import_receita_coordinates
 
 
 class MarketIntelligenceDialog(QDialog):
@@ -73,6 +74,9 @@ class MarketIntelligenceDialog(QDialog):
         receita_button = QPushButton("Importar ZIP oficial do CNPJ")
         receita_button.clicked.connect(self._import_receita)
         actions.addWidget(receita_button)
+        geo_button = QPushButton("Vincular coordenadas por CNPJ")
+        geo_button.clicked.connect(self._import_coordinates)
+        actions.addWidget(geo_button)
         browse_button = QPushButton("Consultar base oficial")
         browse_button.clicked.connect(self._browse_receita)
         actions.addWidget(browse_button)
@@ -136,6 +140,29 @@ class MarketIntelligenceDialog(QDialog):
             "A etapa de geocodificação será necessária para pesquisar por raio."
         )
         self._refresh_count()
+
+
+    def _import_coordinates(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Selecionar CSV de coordenadas por CNPJ", "", "CSV (*.csv)"
+        )
+        if not path:
+            return
+        try:
+            counts = import_receita_coordinates(self.store.path, path)
+        except (OSError, ValueError, csv.Error) as exc:
+            QMessageBox.warning(self, "Vincular coordenadas", str(exc))
+            return
+        self._refresh_count()
+        QMessageBox.information(
+            self, "Vinculação concluída",
+            f"Correspondências encontradas: {counts['matched']:,}\\n"
+            f"Novas empresas na pesquisa por raio: {counts['inserted']:,}\\n"
+            f"Registros atualizados: {counts['updated']:,}\\n"
+            f"Linhas ignoradas ou sem CNPJ correspondente: {counts['skipped']:,}\\n\\n"
+            "A vinculação usa o CNPJ completo. O CSV precisa conter cnpj, latitude e longitude. "
+            "Nenhuma geocodificação em massa foi executada."
+        )
 
     def _browse_receita(self) -> None:
         dialog = ReceitaBrowseDialog(self.store.path, self)
