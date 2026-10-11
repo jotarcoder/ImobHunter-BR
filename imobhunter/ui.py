@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from .application.coverage import DDDCoverageRegistry, load_ddd_coverage
 from .application.search import SearchResult, SearchService
 from .domain.models import SearchRequest
+from .ui_market import MarketIntelligenceDialog
 
 
 APP_STYLE = """
@@ -145,6 +146,11 @@ class MainWindow(QMainWindow):
         self.nav_coverage.setObjectName("nav")
         self.nav_coverage.clicked.connect(lambda: self.coverage_scroll.setFocus())
         side.addWidget(self.nav_coverage)
+
+        self.nav_market = QPushButton("⌖  Inteligência de Mercado")
+        self.nav_market.setObjectName("nav")
+        self.nav_market.clicked.connect(self._show_market_intelligence)
+        side.addWidget(self.nav_market)
 
         self.nav_sources = QPushButton("◈  Fontes")
         self.nav_sources.setObjectName("nav")
@@ -287,6 +293,10 @@ class MainWindow(QMainWindow):
         root.setLayout(shell)
         shell.addWidget(content, 1)
         self.setCentralWidget(root)
+
+    def _show_market_intelligence(self) -> None:
+        dialog = MarketIntelligenceDialog(self)
+        dialog.exec()
 
     def _show_sources(self) -> None:
         QMessageBox.information(
