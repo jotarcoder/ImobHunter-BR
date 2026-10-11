@@ -1,0 +1,54 @@
+name: Publish installers to Cloudflare R2
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: GitHub release tag
+        required: true
+        default: v0.1.7
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "ImobHunter-BR-Setup-Windows.exe" \
+            --pattern "ImobHunter-BR-Linux.AppImage" \
+            --pattern "ImobHunter-BR-macOS-Intel.dmg" \
+            --pattern "ImobHunter-BR-macOS-AppleSilicon.dmg"
+
+      - name: Configure AWS CLI for Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "::error::Missing R2 credentials in repository secrets."
+            exit 1
+          fi
+          aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
+          aws configure set region auto
+
+      - name: Upload installers
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint="https://15895c53eb86fc8d91e14e9b4456b656.r2.cloudflarestorage.com"
+          for file in \
+            "ImobHunter-BR-Setup-Windows.exe" \
+            "ImobHunter-BR-Linux.AppImage" \
+            "ImobHunter-BR-macOS-Intel.dmg" \
+            "ImobHunter-BR-macOS-AppleSilicon.dmg"; do
+            test -s "$file"
+            aws s3 cp "$file" "s3://imobhunter-downloads/$file" --endpoint-url "$endpoint" --only-show-errors
+          done
