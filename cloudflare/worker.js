@@ -125,9 +125,9 @@ export default {
     if(request.method==="DELETE"&&!action){
      const b=await body(request), confirmId=String(b.confirm_user_id||"").trim().toLowerCase();
      if(confirmId!==id.toLowerCase()) return json({error:"Confirmação inválida. Informe exatamente o ID do cliente para excluir o cadastro."},400);
-     await audit(env,actor,"client_permanently_deleted",id,{record_deleted:true,previous_status:existing.status});
      const result=await env.DB.prepare("DELETE FROM licenses WHERE user_id=?").bind(id).run();
-     if(!result.success || result.meta?.changes===0) return json({error:"Não foi possível excluir o cadastro. Atualize a lista e tente novamente."},500);
+     if(!result.success || result.meta?.changes!==1) return json({error:"Não foi possível confirmar a exclusão no banco de dados. Atualize a lista e tente novamente."},500);
+     await audit(env,actor,"client_permanently_deleted",id,{record_deleted:true,previous_status:existing.status});
      return json({ok:true,deleted:true,message:"Cadastro e licença removidos. O ID já pode ser cadastrado novamente."});
     }
     if(request.method==="POST"&&action==="activate"){
