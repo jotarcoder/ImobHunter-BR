@@ -99,6 +99,26 @@
     });
   }
 
+
+  // Preserve the landing's existing 3D CTA interaction while keeping it restrained.
+  if (finePointer.matches && !reduce.matches) {
+    document.querySelectorAll('.button').forEach(button => {
+      button.addEventListener('pointermove', event => {
+        const r = button.getBoundingClientRect();
+        const x = (event.clientX - r.left) / r.width - .5;
+        const y = (event.clientY - r.top) / r.height - .5;
+        button.style.setProperty('--button-rx', (-y * 4).toFixed(2) + 'deg');
+        button.style.setProperty('--button-ry', (x * 5).toFixed(2) + 'deg');
+        button.style.setProperty('--button-z', '3px');
+      }, { passive: true });
+      button.addEventListener('pointerleave', () => {
+        button.style.setProperty('--button-rx', '0deg');
+        button.style.setProperty('--button-ry', '0deg');
+        button.style.setProperty('--button-z', '0px');
+      }, { passive: true });
+    });
+  }
+
   // Magnetic cursor is decorative only; native pointer remains on touch and reduced-motion setups.
   if (!reduce.matches && finePointer.matches) {
     const cursor = document.createElement('div');
