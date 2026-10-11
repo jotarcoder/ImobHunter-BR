@@ -488,7 +488,7 @@ class MainWindow(QMainWindow):
             "Consultar RI Digital", QMessageBox.ButtonRole.ActionRole
         )
         lookup_button.clicked.connect(
-            lambda: QDesktopServices.openUrl(QUrl("https://registradores.onr.org.br/"))
+            lambda: QDesktopServices.openUrl(QUrl("https://ridigital.org.br/"))
         )
         dialog.setMinimumWidth(680)
         dialog.exec()
