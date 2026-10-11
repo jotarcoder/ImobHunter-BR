@@ -26,7 +26,7 @@ jobs:
         shell: bash
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "::notice::Cloudflare deployment skipped. Add the CLOUDFLARE_API_TOKEN repository secret to enable automatic Worker deployment."
-            exit 0
+            echo "::error::Cloudflare deployment blocked: configure the CLOUDFLARE_API_TOKEN repository secret. Do not report a skipped deployment as successful."
+            exit 1
           fi
           npx --yes wrangler@4 deploy --config cloudflare/wrangler.toml
