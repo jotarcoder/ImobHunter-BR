@@ -66,6 +66,13 @@ jobs:
             echo "::error::Missing R2 credentials in repository secrets R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY."
             exit 1
           fi
+          # GitHub secrets can be pasted with a trailing newline; normalize without logging credentials.
+          AWS_ACCESS_KEY_ID="$(printf %s "$AWS_ACCESS_KEY_ID" | tr -d "\r\n")"
+          AWS_SECRET_ACCESS_KEY="$(printf %s "$AWS_SECRET_ACCESS_KEY" | tr -d "\r\n")"
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "::error::R2 credentials are empty after whitespace normalization."
+            exit 1
+          fi
           aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
           aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
           aws configure set region auto
