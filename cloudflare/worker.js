@@ -127,7 +127,7 @@ export default {
     }
     if(request.method==="POST"&&action==="rotate-key"){
      if(existing.deleted_at) return json({error:"Cliente arquivado."},409);
-     const key=randomHex(32), digest=await hashKey(key);await env.DB.prepare("UPDATE licenses SET key_hash=?,status='pending',updated_at=? WHERE user_id=?").bind(digest,isoNow(),id).run();await audit(env,actor,"key_rotated",id,{});return json({ok:true,activation_key:key,status:"pending"});
+     const key=randomHex(32), digest=await hashKey(key), nextStatus=existing.status==="active"&&existing.deleted_at===null?"active":"pending";await env.DB.prepare("UPDATE licenses SET key_hash=?,status=?,updated_at=? WHERE user_id=?").bind(digest,nextStatus,isoNow(),id).run();await audit(env,actor,"key_rotated",id,{status:nextStatus});return json({ok:true,activation_key:key,status:nextStatus});
     }
     if(request.method==="PATCH"&&action==="plan"){
      const b=await body(request);if(!["monthly","annual"].includes(b.plan))return json({error:"Plano inválido."},400);
