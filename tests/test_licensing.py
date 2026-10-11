@@ -20,7 +20,7 @@ def test_user_id_is_persistent_and_uuid(monkeypatch, tmp_path) -> None:
     assert str(uuid.UUID(first)) == first
 
 
-def test_activation_sends_user_id_and_hex_key(monkeypatch) -> None:
+def test_activation_sends_user_id_and_hex_key() -> None:
     class Response:
         def __enter__(self):
             return self
@@ -33,35 +33,53 @@ def test_activation_sends_user_id_and_hex_key(monkeypatch) -> None:
 
     def fake_urlopen(request, timeout):
         assert request.full_url == "https://license.example/api/license/activate"
+        assert request.get_method() == "POST"
+        assert request.get_header("Content-type") == "application/json"
         assert timeout == 8
-        payload = json.loads(request.data)
-        assert payload["user_id"] == "00000000-0000-4000-8000-000000000001"
-        assert payload["activation_key"] == "A" * 64
+        assert json.loads(request.data) == {
+            "user_id": "00000000-0000-4000-8000-000000000001",
+            "activation_key": "A" * 64,
+        }
         return Response()
 
     with patch("imobhunter.licensing.urlopen", fake_urlopen):
-        result = activate(
-            "00000000-0000-4000-8000-000000000001",
-            "A" * 64,
-            "https://license.example",
-        )
+        result = activate("00000000-0000-4000-8000-000000000001", "A" * 64, "https://license.example/")
     assert result["authorized"] is True
 
 
-def test_activation_denial_raises_license_error() -> None:
+def test_activation_denial_includes_worker_code_and_message() -> None:
     error = HTTPError(
-        "https://license.example/api/license/activate",
-        403,
-        "Forbidden",
-        {},
-        BytesIO(b'{"error":"Licen\u00e7a suspensa"}'),
+        "https://license.example/api/license/activate", 403, "Forbidden", {},
+        BytesIO(b'{"code":"ACTIVATION_KEY_MISMATCH","error":"Chave incorreta"}'),
     )
     with (
         patch("imobhunter.licensing.urlopen", side_effect=error),
-        pytest.raises(LicenseError, match="Licença suspensa"),
+        pytest.raises(LicenseError, match=r"HTTP 403.*ACTIVATION_KEY_MISMATCH.*Chave incorreta"),
     ):
-        activate(
-                "00000000-0000-4000-8000-000000000001",
-                "A" * 64,
-                "https://license.example",
-            )
+        activate("00000000-0000-4000-8000-000000000001", "A" * 64, "https://license.example")
+
+
+def test_activation_rejects_success_http_without_authorized_true() -> None:
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return b'{"ok":true,"authorized":false,"code":"LICENSE_NOT_ACTIVE","error":"Licenca suspensa"}'
+
+    with (
+        patch("imobhunter.licensing.urlopen", return_value=Response()),
+        pytest.raises(LicenseError, match=r"LICENSE_NOT_ACTIVE.*Licenca suspensa"),
+    ):
+        activate("00000000-0000-4000-8000-000000000001", "A" * 64, "https://license.example")
+
+
+def test_activation_converts_network_errors_to_license_error() -> None:
+    with (
+        patch("imobhunter.licensing.urlopen", side_effect=TimeoutError("timed out")),
+        pytest.raises(LicenseError, match="Não foi possível validar a licença"),
+    ):
+        activate("00000000-0000-4000-8000-000000000001", "A" * 64, "https://license.example")
