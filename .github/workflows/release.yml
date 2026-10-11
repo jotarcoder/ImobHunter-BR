@@ -1,9 +1,10 @@
 name: Release installers
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_run:
+    workflows: ["Tag version release"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -11,14 +12,18 @@ permissions:
 
 jobs:
   meta:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
       ref: ${{ steps.ref.outputs.ref }}
+      should_release: ${{ steps.ref.outputs.should_release }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          fetch-tags: true
       - name: Read project version
         id: version
         shell: bash
@@ -34,15 +39,35 @@ jobs:
           PY
           )"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-      - name: Select build ref
+      - name: Confirm version tag exists and release is not already published
         id: ref
         shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          echo "ref=$GITHUB_REF" >> "$GITHUB_OUTPUT"
+          SHOULD_RELEASE=false
+          REF="$GITHUB_SHA"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            SHOULD_RELEASE=true
+          else
+            git fetch --force origin "refs/tags/v$VERSION:refs/tags/v$VERSION" || true
+            TAG_SHA="$(git rev-parse "refs/tags/v$VERSION^{commit}" 2>/dev/null || true)"
+            if [ -n "$TAG_SHA" ]; then
+              REF="refs/tags/v$VERSION"
+              if ! gh release view "v$VERSION" >/dev/null 2>&1; then
+                SHOULD_RELEASE=true
+              fi
+            fi
+          fi
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "should_release=$SHOULD_RELEASE" >> "$GITHUB_OUTPUT"
+          echo "Version: $VERSION; should_release=$SHOULD_RELEASE; ref=$REF"
 
   windows:
     needs: meta
-    if: needs.meta.result == 'success'
+    if: needs.meta.outputs.should_release == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -68,7 +93,7 @@ jobs:
 
   linux:
     needs: meta
-    if: needs.meta.result == 'success'
+    if: needs.meta.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -99,7 +124,7 @@ jobs:
 
   macos-intel:
     needs: meta
-    if: needs.meta.result == 'success'
+    if: needs.meta.outputs.should_release == 'true'
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
@@ -135,7 +160,7 @@ jobs:
 
   macos-arm:
     needs: meta
-    if: needs.meta.result == 'success'
+    if: needs.meta.outputs.should_release == 'true'
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -154,7 +179,7 @@ jobs:
 
   publish:
     needs: [meta, windows, linux, macos-intel, macos-arm]
-    if: success() && needs.meta.result == 'success'
+    if: success() && needs.meta.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
