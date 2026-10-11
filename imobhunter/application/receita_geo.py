@@ -90,6 +90,6 @@ def import_receita_coordinates(
                     INSERT INTO businesses
                     (name,cnpj,cnae,address,state,latitude,longitude,source,updated_at)
                     VALUES (?,?,?,?,?,?,?,?,?)
-                """, (name, cnpj, *values))
+                """, (name, cnpj, *values[1:]))
                 inserted += 1
     return {"matched": matched, "inserted": inserted, "updated": updated, "skipped": skipped}
