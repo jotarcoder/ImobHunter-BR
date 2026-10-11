@@ -4,6 +4,10 @@ on:
   workflow_run:
     workflows: ["Release installers"]
     types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-r2-installers.yml"
   workflow_dispatch:
     inputs:
       release_tag:
@@ -96,7 +100,18 @@ jobs:
             "ImobHunter-BR-Linux.AppImage" \
             "ImobHunter-BR-macOS-Intel.dmg" \
             "ImobHunter-BR-macOS-AppleSilicon.dmg"; do
-            aws s3 cp "$file" "s3://imobhunter-downloads/$file" --endpoint-url "$endpoint" --only-show-errors
-            curl --fail --silent --show-error --location --output /dev/null "$public_base/$file"
-            echo "Public download verified: $file"
+            aws s3 cp "$file" "s3://imobhunter-downloads/$file" --endpoint-url "$endpoint" --only-show-errors \
+              --content-type "application/octet-stream" \
+              --content-disposition "attachment; filename=\"$file\"" \
+              --cache-control "public, max-age=3600"
+            headers_file="$(mktemp)"
+            curl --fail --silent --show-error --location --dump-header "$headers_file" --output /dev/null "$public_base/$file?verify=$GITHUB_RUN_ID"
+            if ! grep -Eiq "^content-disposition:[[:space:]]*attachment" "$headers_file"; then
+              echo "::error::R2 did not return attachment download headers for $file."
+              cat "$headers_file"
+              rm -f "$headers_file"
+              exit 1
+            fi
+            rm -f "$headers_file"
+            echo "Public attachment download verified: $file"
           done
