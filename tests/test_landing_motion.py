@@ -10,11 +10,16 @@ def test_landing_is_institutional_only():
     assert "Política de Privacidade" in html
     assert "Termos de Uso" in html
     assert "Política de Fontes" in html
-    assert "https://github.com/jotarcoder/ImobHunter-BR/releases" in html
+    assert "pub-6bd1ab819504434691f4832d98de3cb6.r2.dev" in html
+    for asset in (
+        "ImobHunter-BR-Setup-Windows.exe",
+        "ImobHunter-BR-Linux.AppImage",
+        "ImobHunter-BR-macOS-Intel.dmg",
+        "ImobHunter-BR-macOS-AppleSilicon.dmg",
+    ):
+        assert asset in html
     assert "motion-reel" in html
     assert "MOVE TO EXPLORE" not in html
-    assert "motion-reel" in html
-    assert "releases/latest/download/ImobHunter-BR-Setup-Windows.exe" in html
     assert 'class="button primary"' in html
     assert 'class="button"' in html
     css = (ROOT / "web" / "styles.css").read_text(encoding="utf-8")
@@ -22,10 +27,10 @@ def test_landing_is_institutional_only():
     assert "--button-rx:0deg" in css
     assert "translateZ(var(--button-z))" in css
     assert "--button-rx" in motion
-    assert ".hero-copy{\n  text-align:center" in css
-    assert "#plataforma,\n#downloads,\n#fontes,\n#privacidade{\n  text-align:center;" in css
+    assert ".hero-copy{\\n  text-align:center" in css
+    assert "#plataforma,\\n#downloads,\\n#fontes,\\n#privacidade{\\n  text-align:center;" in css
     assert "#fontes > .textlink" in css
-    assert ".legalbuttons{\n  justify-content:center;" in css
+    assert ".legalbuttons{\\n  justify-content:center;" in css
     assert ".sourcegrid .source-card strong" in css
     assert "translateZ(30px)" in css
     assert "--field-x" in css
