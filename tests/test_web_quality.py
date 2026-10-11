@@ -22,7 +22,7 @@ class LandingParser(HTMLParser):
             href = attrs.get("href", "")
             if href.startswith("#") and len(href) > 1:
                 self.hash_links.append(href[1:])
-            if attrs.get("data-download-direct") is not None:
+            if "data-download-direct" in attrs:
                 self.download_links.append(href)
         if tag == "link" and attrs.get("href", "").endswith((".css", ".svg")):
             self.local_assets.append(attrs["href"])
