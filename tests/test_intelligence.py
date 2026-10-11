@@ -16,6 +16,7 @@ def test_dossier_prefers_high_confidence_and_keeps_conflict() -> None:
         provenance=[provenance("osm", 0.60)],
     )
     second = PropertyRecord(
+        registry_number="12345",
         cib="ABC1234-5",
         address="Rua A",
         area_m2=105,
@@ -31,5 +32,7 @@ def test_dossier_prefers_high_confidence_and_keeps_conflict() -> None:
     owner = next(fact for fact in dossier.facts if fact.field == "owner_name")
     assert owner.value == "Titular Teste"
     assert owner.provenance.source_id == "sinter_cib"
+    registry = next(fact for fact in dossier.facts if fact.field == "registry_number")
+    assert registry.value == "12345"
     assert any(conflict.field == "area_m2" for conflict in dossier.conflicts)
     assert 0 <= dossier.score <= 100

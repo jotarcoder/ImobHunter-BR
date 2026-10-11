@@ -20,6 +20,7 @@ def test_sigef_reads_json_and_converts_area(tmp_path):
     assert len(result) == 1
     assert result[0].property_id == "SIGEF-001"
     assert result[0].area_m2 == 35000
+    assert result[0].registry_number == "12345"
     assert result[0].owner_name == "Titular Teste"
     assert result[0].attributes["status"] == "CERTIFICADA"
 

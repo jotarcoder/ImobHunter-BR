@@ -80,6 +80,7 @@ class TaxDebt:
 @dataclass(frozen=True)
 class PropertyRecord:
     property_id: str | None = None
+    registry_number: str | None = None
     cib: str | None = None
     address: str | None = None
     city: str | None = None

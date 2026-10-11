@@ -164,8 +164,17 @@ class SIGEFAdapter(SourceAdapter):
         if row.get("_geometry") is not None:
             attributes["geometry"] = row["_geometry"]
 
+        registry_number = str(
+            row.get("registroMatricula")
+            or row.get("registro_matricula")
+            or row.get("matricula")
+            or row.get("numero_matricula")
+            or ""
+        ).strip() or None
+
         return PropertyRecord(
             property_id=code,
+            registry_number=registry_number,
             address=row.get("endereco") or row.get("localizacao") or row.get("address"),
             city=row.get("municipio") or row.get("city"),
             state=row.get("uf") or row.get("state"),
