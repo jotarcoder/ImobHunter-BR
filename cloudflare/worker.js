@@ -57,8 +57,12 @@ export default {
   if(path==="/api/license/activate" && request.method==="POST"){
    const b=await body(request), userId=String(b.user_id||"").trim().toLowerCase(), key=String(b.activation_key||"").trim().toUpperCase();
    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)||!/^[0-9A-F]{64}$/.test(key)) return json({ok:false,error:"ID de usuário ou chave inválidos."},400);
-   const digest=await hashKey(key), row=await env.DB.prepare("SELECT user_id,status,plan,expires_at,deleted_at FROM licenses WHERE user_id=? AND key_hash=?").bind(userId,digest).first();
-   if(!row||row.deleted_at||row.status!=="active"||!row.expires_at||Date.parse(row.expires_at)<=Date.now()) return json({ok:false,authorized:false,error:"Licença não autorizada. Solicite suporte pelo botão de WhatsApp no aplicativo."},403);
+   const row=await env.DB.prepare("SELECT user_id,status,plan,expires_at,deleted_at,key_hash FROM licenses WHERE user_id=?").bind(userId).first();
+   if(!row||row.deleted_at) return json({ok:false,authorized:false,code:"LICENSE_NOT_FOUND",error:"Não encontramos um cadastro válido para este ID. Confira o ID exibido no aplicativo e no painel."},403);
+   if(row.status!=="active") return json({ok:false,authorized:false,code:"LICENSE_NOT_ACTIVE",error:"O cadastro existe, mas a licença não está ativa. Ative a licença no painel administrativo e tente novamente."},403);
+   if(!row.expires_at||!Number.isFinite(Date.parse(row.expires_at))||Date.parse(row.expires_at)<=Date.now()) return json({ok:false,authorized:false,code:"LICENSE_EXPIRED",error:"A validade desta licença terminou ou está inválida. Renove a licença no painel administrativo."},403);
+   const digest=await hashKey(key);
+   if(digest!==row.key_hash) return json({ok:false,authorized:false,code:"ACTIVATION_KEY_MISMATCH",error:"A chave digitada não corresponde à chave atual deste ID. No painel, use “Trocar chave”, copie a chave recém-gerada e tente novamente. A chave anterior deixa de funcionar."},403);
    await env.DB.prepare("UPDATE licenses SET last_seen_at=? WHERE user_id=?").bind(isoNow(),userId).run();
    return json({ok:true,authorized:true,user_id:userId,plan:row.plan,expires_at:row.expires_at,checked_at:isoNow()});
   }
