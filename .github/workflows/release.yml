@@ -1,10 +1,9 @@
 name: Release installers
 
 on:
-  workflow_run:
-    workflows: ["Tag version release"]
-    types: [completed]
-    branches: [main]
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
 
 permissions:
@@ -12,7 +11,6 @@ permissions:
 
 jobs:
   meta:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -20,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
+          ref: ${{ github.ref }}
       - name: Read project version
         id: version
         shell: bash
@@ -40,11 +38,7 @@ jobs:
         id: ref
         shell: bash
         run: |
-          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
-            echo "ref=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "ref=$GITHUB_REF" >> "$GITHUB_OUTPUT"
-          fi
+          echo "ref=$GITHUB_REF" >> "$GITHUB_OUTPUT"
 
   windows:
     needs: meta
