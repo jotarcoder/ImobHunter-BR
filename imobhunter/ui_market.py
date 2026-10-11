@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 
 from .application.market_intelligence import MarketIntelligenceStore
 from .application.receita_import import import_receita_archives, search_receita_establishments
-from .application.receita_geo import import_receita_coordinates
+from .application.receita_geo import import_receita_coordinates, save_geocoded_establishment
 from .application.address_geocoding import CachedAddressGeocoder, GeocodingError
 
 
@@ -298,6 +298,10 @@ class ReceitaBrowseDialog(QDialog):
         search = QPushButton("Pesquisar")
         search.clicked.connect(self._search)
         filters.addWidget(search)
+        geocode_selected = QPushButton("Localizar estabelecimento selecionado")
+        geocode_selected.setToolTip("Geocodifica somente a linha selecionada e grava as coordenadas pelo CNPJ.")
+        geocode_selected.clicked.connect(self._geocode_selected)
+        filters.addWidget(geocode_selected)
         export_geo = QPushButton("Exportar endereços para coordenadas")
         export_geo.clicked.connect(self._export_geocoding_csv)
         filters.addWidget(export_geo)
@@ -311,6 +315,32 @@ class ReceitaBrowseDialog(QDialog):
         self.table.horizontalHeader().setStretchLastSection(True)
         root.addWidget(self.table, 1)
 
+
+    def _geocode_selected(self) -> None:
+        row_index = self.table.currentRow()
+        if row_index < 0 or row_index >= len(self.current_rows):
+            QMessageBox.information(self, 'Localizar estabelecimento', 'Pesquise e selecione uma linha antes de localizar.')
+            return
+        item = self.current_rows[row_index]
+        cnpj = str(item.get('cnpj') or '')
+        street = ' '.join(str(part).strip() for part in (item.get('street_type'), item.get('street'), item.get('street_number'), item.get('complement'), item.get('neighborhood'), item.get('postal_code')) if part and str(part).strip())
+        location = ' '.join(str(part).strip() for part in (item.get('municipality_code'), item.get('state'), 'Brasil') if part and str(part).strip())
+        address = ', '.join(part for part in (street, location) if part)
+        if not street or not item.get('state'):
+            QMessageBox.warning(self, 'Endereço incompleto', 'O cadastro não tem endereço e UF suficientes.')
+            return
+        answer = QMessageBox.question(self, 'Confirmar localização individual', f'Localizar somente este estabelecimento?\n\nCNPJ: {cnpj}\n{address}\n\nA precisão depende do endereço cadastral. Consulta individual, com cache local e atribuição OpenStreetMap.')
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            geocoder = CachedAddressGeocoder(self.database_path, 'ImobHunter-BR/0.1 (aplicativo desktop; contato pelo site institucional)')
+            result = geocoder.geocode(address)
+            saved = save_geocoded_establishment(self.database_path, cnpj, result)
+        except (GeocodingError, OSError, ValueError) as exc:
+            QMessageBox.warning(self, 'Geocodificação', str(exc))
+            return
+        self.status.setText(f"Coordenadas vinculadas ao CNPJ {saved['cnpj']} • {result['attribution']}")
+        QMessageBox.information(self, 'Estabelecimento localizado', f"{saved['name']}\nCNPJ: {saved['cnpj']}\nLatitude: {result['latitude']}\nLongitude: {result['longitude']}\n\nFonte: {result['provider']} — {result['attribution']}\nCoordenadas salvas localmente. Confira a precisão do ponto antes de usá-lo.")
 
     def _export_geocoding_csv(self) -> None:
         if not self.current_rows:
