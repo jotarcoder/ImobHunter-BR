@@ -776,3 +776,17 @@ footer span:hover{
 .policy-content p:last-child{margin-bottom:0}
 @media(max-width:900px){.navlinks{gap:5px}.navlinks a:not(.admin-nav){padding:8px 9px;font-size:13px}.policy-accordions{grid-template-columns:1fr}.policy-content{padding:17px}}
 @media(max-width:700px){.navlinks{display:none}.button{min-height:46px}.policy-accordions{grid-template-columns:1fr}}
+
+
+/* Magnetic cursor: restrained tracking, accessible fallback and tactile attraction. */
+.magnetic-cursor{position:fixed;left:0;top:0;width:34px;height:34px;border:1px solid rgba(53,255,119,.78);border-radius:50%;pointer-events:none;z-index:99999;opacity:0;transform:translate3d(-100px,-100px,0) translate(-50%,-50%);transition:opacity .18s ease,width .18s ease,height .18s ease,border-color .18s ease;will-change:transform;box-shadow:0 0 18px rgba(53,255,119,.12),inset 0 0 12px rgba(53,255,119,.05)}
+.magnetic-cursor:before{content:"";position:absolute;width:4px;height:4px;left:50%;top:50%;border-radius:50%;background:var(--green);transform:translate(-50%,-50%);box-shadow:0 0 12px rgba(53,255,119,.8)}
+.magnetic-cursor:after{content:"";position:absolute;inset:7px;border:1px solid rgba(104,184,255,.32);border-radius:50%}
+.magnetic-cursor.is-visible{opacity:1}
+.magnetic-cursor.is-active{width:48px;height:48px;border-color:rgba(104,184,255,.95);box-shadow:0 0 25px rgba(53,255,119,.18),inset 0 0 14px rgba(104,184,255,.08)}
+body.magnetic-cursor-enabled,body.magnetic-cursor-enabled a,body.magnetic-cursor-enabled button,body.magnetic-cursor-enabled summary{cursor:none!important}
+body.magnetic-cursor-enabled input,body.magnetic-cursor-enabled textarea,[contenteditable="true"]{cursor:text!important}
+body.magnetic-cursor-enabled select{cursor:pointer!important}
+[data-magnetic]{translate:var(--magnetic-x,0px) var(--magnetic-y,0px);transition:translate .22s cubic-bezier(.2,.75,.25,1),border-color .22s,box-shadow .22s}
+[data-magnetic].magnetic-near{border-color:rgba(53,255,119,.48);box-shadow:0 12px 30px rgba(0,0,0,.22),0 0 22px rgba(53,255,119,.075)}
+@media(pointer:coarse),(prefers-reduced-motion:reduce){.magnetic-cursor{display:none!important}body.magnetic-cursor-enabled,body.magnetic-cursor-enabled a,body.magnetic-cursor-enabled button,body.magnetic-cursor-enabled summary{cursor:auto!important}[data-magnetic]{translate:none!important;transition:none!important}}
