@@ -32,15 +32,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
-            if [[ "$WORKFLOW_HEAD_BRANCH" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              tag="$WORKFLOW_HEAD_BRANCH"
-            else
-              # Manual release runs use the latest release created by the successful workflow.
-              tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
-            fi
-          else
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             tag="$INPUT_TAG"
+          else
+            # Push and completed-release events use the latest published release.
+            tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
           fi
           if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::Invalid release tag: expected vMAJOR.MINOR.PATCH."
