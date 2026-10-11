@@ -107,3 +107,81 @@ def import_receita_coordinates(
                     """, (name, cnpj, *values[1:]))
                     inserted += 1
     return {"matched": matched, "inserted": inserted, "updated": updated, "skipped": skipped}
+
+
+def save_geocoded_establishment(
+    database_path: str | Path,
+    cnpj: str,
+    geocoding_result: dict,
+) -> dict[str, str]:
+    """Persist coordinates for one explicitly selected Receita establishment, keyed by CNPJ."""
+    import math
+
+    normalized_cnpj = _digits(cnpj)
+    if len(normalized_cnpj) != 14:
+        raise ValueError("Selecione um estabelecimento com CNPJ completo válido.")
+    try:
+        latitude = float(geocoding_result["latitude"])
+        longitude = float(geocoding_result["longitude"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("O resultado de geocodificação não contém coordenadas válidas.") from exc
+    if not (math.isfinite(latitude) and math.isfinite(longitude)
+            and -90 <= latitude <= 90 and -180 <= longitude <= 180):
+        raise ValueError("As coordenadas retornadas estão fora dos limites válidos.")
+
+    db_path = Path(database_path)
+    if not db_path.exists():
+        raise ValueError("Importe primeiro os ZIPs oficiais do CNPJ.")
+    with sqlite3.connect(db_path) as db:
+        db.row_factory = sqlite3.Row
+        tables = {row["name"] for row in db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )}
+        if not {"rf_establishments", "rf_companies"}.issubset(tables):
+            raise ValueError("Importe primeiro os ZIPs oficiais do CNPJ.")
+        establishment = db.execute(
+            """SELECT e.*, c.legal_name FROM rf_establishments e
+               LEFT JOIN rf_companies c ON c.cnpj_base=e.cnpj_base WHERE e.cnpj=?""",
+            (normalized_cnpj,),
+        ).fetchone()
+        if establishment is None:
+            raise ValueError("CNPJ não encontrado na base local da Receita Federal.")
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS businesses (
+                id INTEGER PRIMARY KEY, name TEXT NOT NULL, cnpj TEXT DEFAULT '',
+                cnae TEXT DEFAULT '', address TEXT DEFAULT '', city TEXT DEFAULT '',
+                state TEXT DEFAULT '', latitude REAL, longitude REAL,
+                revenue_reported REAL, revenue_period TEXT DEFAULT '',
+                revenue_estimate REAL, estimate_method TEXT DEFAULT '',
+                source TEXT DEFAULT '', updated_at TEXT DEFAULT ''
+            )
+        """)
+        address = " ".join(str(p).strip() for p in (
+            establishment["street_type"], establishment["street"],
+            establishment["street_number"], establishment["complement"],
+            establishment["neighborhood"], establishment["postal_code"],
+        ) if p and str(p).strip())
+        name = establishment["trade_name"] or establishment["legal_name"] or normalized_cnpj
+        source = f'{geocoding_result.get("provider", "Geocodificação")}; {geocoding_result.get("attribution", "")}'.strip("; ")
+        updated_at = str(geocoding_result.get("cached_at") or "")
+        existing = db.execute(
+            "SELECT id FROM businesses WHERE cnpj=? ORDER BY id LIMIT 1", (normalized_cnpj,)
+        ).fetchone()
+        values = (name, establishment["main_cnae"], address, establishment["state"],
+                  latitude, longitude, source, updated_at)
+        if existing:
+            db.execute(
+                """UPDATE businesses SET name=?,cnae=?,address=?,state=?,latitude=?,
+                   longitude=?,source=?,updated_at=? WHERE id=?""",
+                (*values, existing["id"]),
+            )
+        else:
+            db.execute(
+                """INSERT INTO businesses
+                   (name,cnpj,cnae,address,state,latitude,longitude,source,updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (name, normalized_cnpj, *values[1:]),
+            )
+    return {"cnpj": normalized_cnpj, "name": name, "address": address,
+            "provider": str(geocoding_result.get("provider") or "Geocodificação"),
+            "attribution": str(geocoding_result.get("attribution") or "")}
