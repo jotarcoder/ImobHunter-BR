@@ -116,7 +116,24 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install -e ".[desktop]" pyinstaller
       - run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets:imobhunter/assets" packaging/entrypoint.py
-      - run: hdiutil create -volname ImobHunter-BR -srcfolder dist/ImobHunter-BR.app -ov -format UDZO ImobHunter-BR-macOS-Intel.dmg
+      - name: Package macOS Intel DMG (retry transient disk-image errors)
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f ImobHunter-BR-macOS-Intel.dmg ImobHunter-BR-macOS-Intel.tmp.dmg
+          for attempt in 1 2 3; do
+            if hdiutil create -volname ImobHunter-BR -srcfolder dist/ImobHunter-BR.app -ov -format UDZO ImobHunter-BR-macOS-Intel.tmp.dmg; then
+              mv ImobHunter-BR-macOS-Intel.tmp.dmg ImobHunter-BR-macOS-Intel.dmg
+              exit 0
+            fi
+            rm -f ImobHunter-BR-macOS-Intel.tmp.dmg
+            if [ "$attempt" -lt 3 ]; then
+              echo "hdiutil falhou na tentativa $attempt; aguardando antes de repetir..."
+              sleep 5
+            fi
+          done
+          echo "::error::Não foi possível criar o DMG Intel após 3 tentativas."
+          exit 1
       - uses: actions/upload-artifact@v4
         with:
           name: ImobHunter-BR-macOS-Intel
