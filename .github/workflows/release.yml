@@ -1,14 +1,9 @@
 name: Release installers
 
 on:
-  workflow_dispatch:
   push:
     tags:
       - "v*.*.*"
-  workflow_run:
-    workflows: ["Tag version release"]
-    types: [completed]
-    branches: [main]
 
 permissions:
   contents: write
@@ -146,7 +141,7 @@ jobs:
 
   publish:
     needs: [meta, windows, linux, macos-intel, macos-arm]
-    if: needs.meta.result == 'success'
+    if: success() && needs.meta.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

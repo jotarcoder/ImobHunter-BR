@@ -4,13 +4,12 @@ on:
   workflow_run:
     workflows: ["Release installers"]
     types: [completed]
-    branches: [main]
   workflow_dispatch:
     inputs:
       release_tag:
         description: GitHub release tag to publish
         required: true
-        default: v0.1.9
+        default: v0.1.10
 
 permissions:
   contents: read
@@ -25,15 +24,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           INPUT_TAG: ${{ inputs.release_tag }}
+          WORKFLOW_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
         shell: bash
         run: |
           set -euo pipefail
           if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
-            tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+            if [[ "$WORKFLOW_HEAD_BRANCH" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              tag="$WORKFLOW_HEAD_BRANCH"
+            else
+              # Manual release runs use the latest release created by the successful workflow.
+              tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+            fi
           else
             tag="$INPUT_TAG"
           fi
-          test -n "$tag"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid release tag: expected vMAJOR.MINOR.PATCH."
+            exit 1
+          fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "Publishing installers from $tag"
 
@@ -64,6 +72,13 @@ jobs:
           set -euo pipefail
           if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
             echo "::error::Missing R2 credentials in repository secrets R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY."
+            exit 1
+          fi
+          # GitHub secrets can be pasted with a trailing newline; normalize without logging credentials.
+          AWS_ACCESS_KEY_ID="$(printf %s "$AWS_ACCESS_KEY_ID" | tr -d "\r\n")"
+          AWS_SECRET_ACCESS_KEY="$(printf %s "$AWS_SECRET_ACCESS_KEY" | tr -d "\r\n")"
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "::error::R2 credentials are empty after whitespace normalization."
             exit 1
           fi
           aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
