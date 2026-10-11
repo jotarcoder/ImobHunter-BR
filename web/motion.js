@@ -119,7 +119,7 @@
     });
   }
 
-  // Magnetic cursor is decorative only; native pointer remains on touch and reduced-motion setups.
+  // Magnetic cursor: decorative only; native pointer remains on touch and reduced-motion setups.
   if (!reduce.matches && finePointer.matches) {
     const cursor = document.createElement('div');
     cursor.className = 'magnetic-cursor';
