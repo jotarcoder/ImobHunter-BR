@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from html import escape
 from pathlib import Path
 import sys
 
@@ -449,10 +450,12 @@ class MainWindow(QMainWindow):
             "<h3>Informações consolidadas</h3>",
         ]
         for fact in dossier.facts:
+            if fact.field == "registry_number":
+                continue
             lines.append(
-                f"<p><b>{fact.field}</b><br>"
-                f"{fact.value}<br>"
-                f"<small>Fonte: {fact.provenance.source_id} · "
+                f"<p><b>{escape(fact.field)}</b><br>"
+                f"{escape(str(fact.value))}<br>"
+                f"<small>Fonte: {escape(fact.provenance.source_id)} · "
                 f"Confiança: {fact.provenance.confidence:.0%}</small></p>"
             )
         if dossier.conflicts:
@@ -462,13 +465,17 @@ class MainWindow(QMainWindow):
                 lines.append(f"<p><b>{conflict.field}:</b> {values}</p>")
         else:
             lines.append("<p>Nenhum conflito identificado entre os dados consolidados.</p>")
-        registry_number = next(
-            (str(fact.value) for fact in dossier.facts if fact.field == "registry_number"),
+        registry_fact = next(
+            (fact for fact in dossier.facts if fact.field == "registry_number"),
             None,
         )
-        if registry_number:
-            lines.insert(2, f"<p><b>Matrícula do imóvel:</b> {registry_number}</p>")
-            lines.insert(3, "<p><small>Confirme o número e a situação diretamente no registro oficial.</small></p>")
+        if registry_fact:
+            lines.insert(
+                2,
+                f"<p><b>Matrícula do imóvel:</b> {escape(str(registry_fact.value))}<br>"
+                f"<small>Fonte: {escape(registry_fact.provenance.source_id)} · "
+                "confirme o número e a situação no registro oficial.</small></p>",
+            )
         else:
             lines.insert(
                 2,
