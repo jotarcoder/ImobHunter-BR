@@ -790,3 +790,80 @@ body.magnetic-cursor-enabled select{cursor:pointer!important}
 [data-magnetic]{translate:var(--magnetic-x,0px) var(--magnetic-y,0px);transition:translate .22s cubic-bezier(.2,.75,.25,1),border-color .22s,box-shadow .22s}
 [data-magnetic].magnetic-near{border-color:rgba(53,255,119,.48);box-shadow:0 12px 30px rgba(0,0,0,.22),0 0 22px rgba(53,255,119,.075)}
 @media(pointer:coarse),(prefers-reduced-motion:reduce){.magnetic-cursor{display:none!important}body.magnetic-cursor-enabled,body.magnetic-cursor-enabled a,body.magnetic-cursor-enabled button,body.magnetic-cursor-enabled summary{cursor:auto!important}[data-magnetic]{translate:none!important;transition:none!important}}
+
+
+/* PREMIUM MOTION PASS — editorial rhythm, scroll-scrubbed depth, restrained luxury. */
+:root{--green:#62f5a0;--line:rgba(144,177,197,.16)}
+html{scroll-padding-top:92px}
+body{background:#050b12;letter-spacing:-.008em}
+body:before{background:radial-gradient(ellipse at 72% 12%,rgba(98,245,160,.065),transparent 31%),radial-gradient(ellipse at 16% 52%,rgba(62,109,154,.09),transparent 34%)}
+nav{padding-block:17px;border-bottom-color:rgba(158,190,208,.12);background:rgba(5,11,18,.76)}
+.brand{letter-spacing:-.045em}
+.hero{position:relative;min-height:min(860px,calc(100svh - 66px));padding-top:clamp(64px,8vw,118px);padding-bottom:clamp(64px,8vw,118px)}
+.hero:after{content:"IMOBHUNTER / INTELIGÊNCIA IMOBILIÁRIA";position:absolute;left:5vw;bottom:22px;color:rgba(154,178,195,.35);font:600 9px/1.4 Inter,Arial,sans-serif;letter-spacing:.22em}
+.hero-copy{text-align:left;margin:0;max-width:560px}
+.hero-copy .eyebrow,.hero-copy .lead,.hero-copy .hero-note{margin-left:0;margin-right:0}
+.hero-copy .actions{justify-content:flex-start}
+.hero h1{font-size:clamp(48px,5.3vw,78px);letter-spacing:-.068em;line-height:.99;font-weight:720}
+.hero h1 em{color:#d8f7e5;background:linear-gradient(100deg,#f1fff7 0%,#8cf3b6 52%,#4cd58b 100%);background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.eyebrow{font-size:10px;letter-spacing:.19em;color:#7debb0}
+.lead{font-size:clamp(16px,1.4vw,19px);line-height:1.75;color:#a6b6c4;max-width:490px}
+.hero-note{font-size:11px;color:#718493}
+.hero-stage{min-height:clamp(480px,48vw,660px)}
+.stage-glow{opacity:.035;filter:blur(90px)}
+.motion-reel{border-radius:10px;box-shadow:0 18px 46px rgba(0,0,0,.3);animation-duration:8s}
+.floating-app{border-radius:14px;box-shadow:0 50px 130px rgba(0,0,0,.55),0 1px 0 rgba(255,255,255,.05) inset;animation:none;transform:translate3d(0,var(--scroll-drift,0px),0) rotateX(var(--tilt-x,0deg)) rotateY(var(--tilt-y,0deg))}
+.motion-reel{translate:0 var(--scroll-drift,0px)}
+.depth-section{position:relative;isolation:isolate;padding-block:clamp(76px,9vw,132px);border-top:1px solid rgba(149,179,198,.075)}
+.depth-section:before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(ellipse at 50% 0%,rgba(90,144,167,.055),transparent 52%);opacity:.7}
+.depth-section:after{opacity:.14}
+.depth-section h2{font-size:clamp(32px,4vw,55px);letter-spacing:-.06em;line-height:1.06;font-weight:690;max-width:920px}
+.section-lead{max-width:760px;color:#9baebc;line-height:1.8}
+.cards article,.download,.sourcegrid .source-card{border-color:rgba(139,172,194,.16);background:linear-gradient(145deg,rgba(15,29,42,.88),rgba(7,15,24,.96));box-shadow:0 16px 42px rgba(0,0,0,.16),inset 0 1px rgba(255,255,255,.035);border-radius:14px}
+.cards article:hover,.download:hover,.sourcegrid .source-card:hover{border-color:rgba(125,235,176,.38);box-shadow:0 24px 60px rgba(0,0,0,.3),0 0 28px rgba(98,245,160,.035)}
+.button{border-radius:9px;min-height:49px;padding:13px 19px;font-size:13px;letter-spacing:-.01em}
+.button.primary{background:#a4f5c4;color:#07130d;border-color:#a4f5c4;box-shadow:0 8px 26px rgba(98,245,160,.12)}
+.button.primary:hover{background:#c5ffdc;border-color:#c5ffdc}
+.button:not(.primary){background:rgba(13,25,36,.68);border-color:rgba(151,182,201,.24);color:#d5e2ea}
+.navlinks a:not(.admin-nav){background:transparent;border-color:transparent;border-radius:7px;color:#a5b5c2}
+.navlinks a:not(.admin-nav):hover{background:rgba(255,255,255,.035);border-color:rgba(151,182,201,.18);color:#e7f6ee;box-shadow:none}
+.download strong{font-size:20px;letter-spacing:-.04em}
+.download small{color:#9debb9}
+.sourcegrid .source-card{min-height:148px}
+footer{border-top-color:rgba(149,179,198,.1);color:#7f929f}
+.scroll-progress{position:fixed;top:0;left:0;right:0;height:2px;z-index:1000;transform:scaleX(0);transform-origin:left center;background:linear-gradient(90deg,#a4f5c4,#5ecbff);box-shadow:0 0 14px rgba(98,245,160,.35);pointer-events:none}
+.reveal-ready{opacity:0;transform:translate3d(0,22px,0);transition:opacity .72s cubic-bezier(.2,.7,.2,1),transform .82s cubic-bezier(.2,.7,.2,1);transition-delay:var(--reveal-delay,0ms)}
+.reveal-ready.is-visible{opacity:1;transform:translate3d(0,var(--section-drift,0px),0)}
+.hero h1.reveal-ready{transform:translate3d(0,16px,0);transition-duration:.85s}
+.hero h1.reveal-ready.is-visible{transform:translate3d(0,0,0)}
+.hero-stage{--scene-progress:0}
+@media(min-width:1100px){
+  .hero{grid-template-columns:minmax(320px,.78fr) minmax(540px,1.22fr);gap:clamp(28px,4vw,72px)}
+}
+@media(max-width:1000px){
+  .hero{grid-template-columns:1fr;gap:20px;min-height:auto;padding-top:70px}
+  .hero-copy{max-width:760px;text-align:center;margin-inline:auto}
+  .hero-copy .eyebrow,.hero-copy .lead,.hero-copy .hero-note{margin-inline:auto}
+  .hero-copy .actions{justify-content:center}
+  .hero-stage{width:100%;min-height:500px}
+  .hero:after{display:none}
+}
+@media(max-width:700px){
+  .hero{padding:54px 5vw 45px}
+  .hero h1{font-size:clamp(43px,11vw,62px)}
+  .hero-stage{min-height:370px;overflow:hidden}
+  .floating-app{width:min(570px,94%);min-height:0}
+  .demo-body{padding:10px}
+  .demo-dashboard{grid-template-columns:1fr .72fr}
+  .dashboard-map,.insight-panel{min-height:150px}
+  .motion-reel{width:112px;height:92px;padding:9px}
+  .reel-a{left:-1%;top:4%}.reel-b{right:-1%;top:7%}.reel-c{left:0;bottom:2%}
+  .depth-section{padding-block:66px}
+}
+@media(pointer:coarse){.magnetic-cursor{display:none!important}}
+@media(prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .reveal-ready,.reveal-ready.is-visible{opacity:1;transform:none;transition:none}
+  .scroll-progress{display:none}
+  .motion-reel,.floating-app{animation:none;translate:none}
+}
