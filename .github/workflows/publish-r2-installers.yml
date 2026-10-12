@@ -4,10 +4,7 @@ on:
   workflow_run:
     workflows: ["Release installers"]
     types: [completed]
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/publish-r2-installers.yml"
+
   workflow_dispatch:
     inputs:
       release_tag:
@@ -20,7 +17,7 @@ permissions:
 
 jobs:
   publish:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'pull_request')
     runs-on: ubuntu-latest
     steps:
       - name: Select release tag
