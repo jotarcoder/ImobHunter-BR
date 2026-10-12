@@ -148,7 +148,7 @@ class SourceSettingsDialog(QDialog):
             sinter = self.registry.get("sinter_cib")
             if sinter is not None:
                 sinter.api_token = token
-        except Exception:
+        except (ImportError, OSError, RuntimeError, ValueError):
             # Missing/unavailable OS keyring is expected on some portable systems.
             self.sinter_token.clear()
 
@@ -160,7 +160,7 @@ class SourceSettingsDialog(QDialog):
             else:
                 keyring.delete_password("ImobHunter-BR", "sinter_cib_api_token")
             return True
-        except Exception:
+        except (ImportError, OSError, RuntimeError, ValueError):
             return False
 
     def _validate(self) -> None:
@@ -191,7 +191,7 @@ class SourceSettingsDialog(QDialog):
         try:
             import keyring
             return keyring.get_password("ImobHunter-BR", "sinter_cib_api_token") or ""
-        except Exception:
+        except (ImportError, OSError, RuntimeError, ValueError):
             return ""
 
     def _save(self) -> None:
@@ -209,7 +209,7 @@ class SourceSettingsDialog(QDialog):
             self.settings.setValue(f"sources/{source_id}/path", value)
             source = self.registry.get(source_id)
             if source is not None and hasattr(source, "data_path"):
-                setattr(source, "data_path", Path(value).expanduser() if value else None)
+                source.data_path = Path(value).expanduser() if value else None
 
         endpoint = self.geosampa_url.text().strip().rstrip("/")
         self.settings.setValue("sources/geosampa/endpoint", endpoint)
