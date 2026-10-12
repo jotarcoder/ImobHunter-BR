@@ -60,7 +60,9 @@ jobs:
             git fetch --force origin "refs/tags/v$VERSION:refs/tags/v$VERSION" || true
             TAG_SHA="$(git rev-parse "refs/tags/v$VERSION^{commit}" 2>/dev/null || true)"
             if [ -n "$TAG_SHA" ]; then
-              REF="refs/tags/v$VERSION"
+              # Build from the triggering commit, not the tag's historical target.
+              # This prevents a prematurely-created tag from building stale metadata.
+              REF="$GITHUB_SHA"
               if ! gh release view "v$VERSION" >/dev/null 2>&1; then
                 SHOULD_RELEASE=true
               fi
