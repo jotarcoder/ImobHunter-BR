@@ -333,7 +333,7 @@ class MainWindow(QMainWindow):
                 lines.append(f"• {source.name}: {label}")
                 if status.message:
                     lines.append(f"  {status.message}")
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError, TypeError) as exc:
                 lines.append(f"• {source.name}: falha ao verificar status ({exc})")
             lines.append("")
         lines.append(
