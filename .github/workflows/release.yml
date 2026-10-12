@@ -50,7 +50,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           SHOULD_RELEASE=false
-          REF="$GITHUB_SHA"
+          REF="$(git rev-parse HEAD)"
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             SHOULD_RELEASE=true
           elif [ "$EVENT_NAME" = "pull_request" ]; then
