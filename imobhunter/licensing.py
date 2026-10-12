@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-DEFAULT_LICENSE_API = "https://imobhunter-license.imobhunterbr.workers.dev"
+DEFAULT_LICENSE_API = "https://imobhunter-br.pages.dev"
 CONTACT_PHONE = "+55 (11) 99903-7737"
 
 
