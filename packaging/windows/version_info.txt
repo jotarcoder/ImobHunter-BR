@@ -16,11 +16,11 @@ VSVersionInfo(
         [
           StringStruct('CompanyName', 'ImobHunter-BR'),
           StringStruct('FileDescription', 'ImobHunter-BR - Inteligência imobiliária'),
-          StringStruct('FileVersion', '0.1.14'),
+          StringStruct('FileVersion', '0.1.15'),
           StringStruct('InternalName', 'ImobHunter-BR'),
           StringStruct('OriginalFilename', 'ImobHunter-BR.exe'),
           StringStruct('ProductName', 'ImobHunter-BR'),
-          StringStruct('ProductVersion', '0.1.14')
+          StringStruct('ProductVersion', '0.1.15')
         ]
       )
     ]),
