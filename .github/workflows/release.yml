@@ -3,6 +3,10 @@ name: Release installers
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/release.yml"
   workflow_run:
     workflows: ["Tag version release"]
     types: [completed]
@@ -14,7 +18,7 @@ permissions:
 
 jobs:
   meta:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.event_name == 'pull_request' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -23,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
+          ref: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.sha || github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
           fetch-depth: 0
           fetch-tags: true
       - name: Read project version
@@ -51,7 +55,8 @@ jobs:
         run: |
           SHOULD_RELEASE=false
           REF="$(git rev-parse HEAD)"
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$EVENT_NAME" = "push" ]; then
+            # Explicit rebuild from the current main commit, including replacing assets on an existing tag.
             SHOULD_RELEASE=true
           elif [ "$EVENT_NAME" = "pull_request" ]; then
             # Pull requests may validate packaging, but must never publish a release.
@@ -217,6 +222,21 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: release
+      - name: Remove existing assets before replacing this release version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ needs.meta.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            for asset in "ImobHunter-BR-Setup-Windows.exe" "ImobHunter-BR-Linux.AppImage" "ImobHunter-BR-macOS-Intel.dmg" "ImobHunter-BR-macOS-AppleSilicon.dmg"; do
+              if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -Fxq "$asset"; then
+                gh release delete-asset "$TAG" "$asset" --repo "$GITHUB_REPOSITORY" --yes
+                echo "Removed old release asset: $asset"
+              fi
+            done
+          fi
       - uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ needs.meta.outputs.version }}
