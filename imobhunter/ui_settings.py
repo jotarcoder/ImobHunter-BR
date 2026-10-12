@@ -148,7 +148,7 @@ class SourceSettingsDialog(QDialog):
             sinter = self.registry.get("sinter_cib")
             if sinter is not None:
                 sinter.api_token = token
-        except (ImportError, OSError, RuntimeError, ValueError):
+        except Exception:  # noqa: BLE001 - keyring backends expose different exception types.
             # Missing/unavailable OS keyring is expected on some portable systems.
             self.sinter_token.clear()
 
@@ -160,7 +160,7 @@ class SourceSettingsDialog(QDialog):
             else:
                 keyring.delete_password("ImobHunter-BR", "sinter_cib_api_token")
             return True
-        except (ImportError, OSError, RuntimeError, ValueError):
+        except Exception:  # noqa: BLE001 - keyring backend errors vary by platform.
             return False
 
     def _validate(self) -> None:
@@ -191,7 +191,7 @@ class SourceSettingsDialog(QDialog):
         try:
             import keyring
             return keyring.get_password("ImobHunter-BR", "sinter_cib_api_token") or ""
-        except (ImportError, OSError, RuntimeError, ValueError):
+        except Exception:  # noqa: BLE001 - keyring backend errors vary by platform.
             return ""
 
     def _save(self) -> None:
@@ -235,3 +235,33 @@ class SourceSettingsDialog(QDialog):
             )
         QMessageBox.information(self, "Configurações salvas", "As configurações foram aplicadas à pesquisa nesta sessão.")
         self.accept()
+
+
+
+def apply_saved_source_settings(registry) -> None:
+    """Apply per-user paths and endpoints before the first search of a new session."""
+    settings = QSettings("ImobHunter", "ImobHunter-BR")
+    for source_id, _label, attr, _file_types in SOURCE_FILES:
+        source = registry.get(source_id)
+        if source is None or not hasattr(source, attr):
+            continue
+        value = str(settings.value(f"sources/{source_id}/path", "") or "").strip()
+        if value:
+            source.data_path = Path(value).expanduser()
+
+    geosampa = registry.get("geosampa")
+    if geosampa is not None:
+        endpoint = str(settings.value("sources/geosampa/endpoint", "") or "").strip()
+        if endpoint:
+            geosampa.endpoint = endpoint
+
+    sinter = registry.get("sinter_cib")
+    if sinter is not None:
+        endpoint = str(settings.value("sources/sinter_cib/api_base_url", "") or "").strip()
+        if endpoint:
+            sinter.api_base_url = endpoint
+        try:
+            import keyring
+            sinter.api_token = keyring.get_password("ImobHunter-BR", "sinter_cib_api_token") or ""
+        except Exception:  # noqa: BLE001 - keyring backend errors vary by platform.
+            sinter.api_token = ""
