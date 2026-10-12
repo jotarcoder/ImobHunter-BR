@@ -53,6 +53,9 @@ jobs:
           REF="$GITHUB_SHA"
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             SHOULD_RELEASE=true
+          elif [ "$EVENT_NAME" = "pull_request" ]; then
+            # Pull requests may validate packaging, but must never publish a release.
+            SHOULD_RELEASE=false
           else
             git fetch --force origin "refs/tags/v$VERSION:refs/tags/v$VERSION" || true
             TAG_SHA="$(git rev-parse "refs/tags/v$VERSION^{commit}" 2>/dev/null || true)"
