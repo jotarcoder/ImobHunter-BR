@@ -1,6 +1,6 @@
 ; ImobHunter-BR Windows installer
 #define MyAppName "ImobHunter-BR"
-#define MyAppVersion "0.0.0" ; fallback only; CI overrides from pyproject.toml
+#define MyAppVersion "0.1.14" ; CI overrides from pyproject.toml
 #define MyAppPublisher "ImobHunter-BR"
 #define MyAppExeName "ImobHunter-BR.exe"
 
@@ -8,7 +8,14 @@
 AppId={{8A1C8C1E-6A25-4B54-9E0E-7A6B2C9F31D4}}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
+VersionInfoVersion={#MyAppVersion}
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoDescription=ImobHunter-BR - Inteligência imobiliária
+VersionInfoProductName={#MyAppName}
+VersionInfoProductVersion={#MyAppVersion}
+VersionInfoOriginalFileName=ImobHunter-BR-Setup-Windows.exe
 DefaultDirName={autopf}\ImobHunter-BR
 DefaultGroupName=ImobHunter-BR
 OutputBaseFilename=ImobHunter-BR-Setup-Windows
