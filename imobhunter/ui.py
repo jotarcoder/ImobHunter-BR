@@ -343,7 +343,7 @@ class MainWindow(QMainWindow):
         dialog = QMessageBox(self)
         dialog.setWindowTitle("Fontes de dados")
         dialog.setIcon(QMessageBox.Icon.Information)
-        dialog.setText("\\n".join(lines))
+        dialog.setText("\n".join(lines))
         dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
         dialog.exec()
 
