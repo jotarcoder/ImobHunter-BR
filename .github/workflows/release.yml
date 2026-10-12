@@ -137,7 +137,7 @@ jobs:
 
   linux:
     needs: meta
-    if: needs.meta.outputs.should_release == 'true'
+    if: github.event_name == 'pull_request' || needs.meta.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -148,6 +148,11 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install -e ".[desktop]" pyinstaller
       - run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets:imobhunter/assets" --add-data "data/coverage/ddd.json:data/coverage" packaging/entrypoint.py
+      - name: Verify bundled HTTPS certificate authorities
+        run: |
+          CA_BUNDLE="$(find dist/ImobHunter-BR -type f -name cacert.pem -print -quit)"
+          test -n "$CA_BUNDLE" || { echo "::error::PyInstaller did not bundle certifi cacert.pem on Linux"; exit 1; }
+          echo "HTTPS CA bundle included: $CA_BUNDLE"
       - name: Build AppImage
         run: |
           mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/scalable/apps
@@ -169,7 +174,7 @@ jobs:
 
   macos-intel:
     needs: meta
-    if: needs.meta.outputs.should_release == 'true'
+    if: github.event_name == 'pull_request' || needs.meta.outputs.should_release == 'true'
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
@@ -179,7 +184,12 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m pip install -e ".[desktop]" pyinstaller
-      - run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets:imobhunter/assets" packaging/entrypoint.py
+      - run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets:imobhunter/assets" --add-data "data/coverage/ddd.json:data/coverage" packaging/entrypoint.py
+      - name: Verify bundled HTTPS certificate authorities
+        run: |
+          CA_BUNDLE="$(find dist/ImobHunter-BR.app -type f -name cacert.pem -print -quit)"
+          test -n "$CA_BUNDLE" || { echo "::error::PyInstaller did not bundle certifi cacert.pem on macOS Intel"; exit 1; }
+          echo "HTTPS CA bundle included: $CA_BUNDLE"
       - name: Package macOS Intel DMG (retry transient disk-image errors)
         shell: bash
         run: |
@@ -206,7 +216,7 @@ jobs:
 
   macos-arm:
     needs: meta
-    if: needs.meta.outputs.should_release == 'true'
+    if: github.event_name == 'pull_request' || needs.meta.outputs.should_release == 'true'
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -217,6 +227,11 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install -e ".[desktop]" pyinstaller
       - run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets:imobhunter/assets" --add-data "data/coverage/ddd.json:data/coverage" packaging/entrypoint.py
+      - name: Verify bundled HTTPS certificate authorities
+        run: |
+          CA_BUNDLE="$(find dist/ImobHunter-BR.app -type f -name cacert.pem -print -quit)"
+          test -n "$CA_BUNDLE" || { echo "::error::PyInstaller did not bundle certifi cacert.pem on macOS Apple Silicon"; exit 1; }
+          echo "HTTPS CA bundle included: $CA_BUNDLE"
       - run: hdiutil create -volname ImobHunter-BR -srcfolder dist/ImobHunter-BR.app -ov -format UDZO ImobHunter-BR-macOS-AppleSilicon.dmg
       - uses: actions/upload-artifact@v4
         with:
