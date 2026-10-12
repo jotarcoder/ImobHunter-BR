@@ -56,7 +56,7 @@ export default {
   if(path==="/admin") return new Response(adminPage(),{headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store","Content-Security-Policy":"default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"}});
   if(path==="/api/license/activate" && request.method==="POST"){
    const b=await body(request), userId=String(b.user_id||"").trim().toLowerCase(), key=String(b.activation_key||"").trim().toUpperCase();
-   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)||!/^[0-9A-F]{64}$/.test(key)) return json({ok:false,error:"ID de usuário ou chave inválidos."},400);
+   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)||!/^[0-9A-F]{64}$/.test(key)) return json({ok:false,authorized:false,code:"INVALID_ACTIVATION_REQUEST",error:"ID de usuário ou chave inválidos. Confira o ID da instalação e copie a chave completa."},400);
    const row=await env.DB.prepare("SELECT user_id,status,plan,expires_at,deleted_at,key_hash FROM licenses WHERE user_id=?").bind(userId).first();
    if(!row||row.deleted_at){ await audit(env,"license_api","activation_rejected",userId,{code:"LICENSE_NOT_FOUND"}); return json({ok:false,authorized:false,code:"LICENSE_NOT_FOUND",error:"Não encontramos um cadastro válido para este ID. Confira o ID exibido no aplicativo e no painel."},403); }
    if(row.status!=="active"){ await audit(env,"license_api","activation_rejected",userId,{code:"LICENSE_NOT_ACTIVE",status:row.status}); return json({ok:false,authorized:false,code:"LICENSE_NOT_ACTIVE",error:"O cadastro existe, mas a licença não está ativa. Ative a licença no painel administrativo e tente novamente."},403); }
