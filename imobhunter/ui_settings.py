@@ -240,6 +240,15 @@ class SourceSettingsDialog(QDialog):
         sinter_url = self.sinter_url.text().strip()
         if sinter_url and (urlparse(sinter_url).scheme not in {"http", "https"} or not urlparse(sinter_url).netloc):
             problems.append("SINTER/CIB: URL-base inválida.")
+        wfs_endpoint = self.wfs_fields["endpoint"].text().strip()
+        wfs_layer = self.wfs_fields["layer"].text().strip()
+        if bool(wfs_endpoint) != bool(wfs_layer):
+            problems.append("WFS municipal: informe endpoint e camada juntos.")
+        if wfs_endpoint and (urlparse(wfs_endpoint).scheme not in {"http", "https"} or not urlparse(wfs_endpoint).netloc):
+            problems.append("WFS municipal: endpoint HTTP/HTTPS inválido.")
+        catalog_path = self.inde_catalog_path.text().strip()
+        if catalog_path and not Path(catalog_path).expanduser().is_file():
+            problems.append("INDE: arquivo de catálogo não encontrado.")
         if sinter_url and not (self.sinter_token.text().strip() or self._existing_token()):
             problems.append("SINTER/CIB: URL preenchida, mas falta o token autorizado.")
         if problems:
@@ -261,6 +270,15 @@ class SourceSettingsDialog(QDialog):
 
     def _save(self) -> None:
         problems = []
+        catalog_path = self.inde_catalog_path.text().strip()
+        if catalog_path and not Path(catalog_path).expanduser().is_file():
+            problems.append("INDE: arquivo de catálogo não encontrado.")
+        wfs_endpoint = self.wfs_fields["endpoint"].text().strip()
+        wfs_layer = self.wfs_fields["layer"].text().strip()
+        if bool(wfs_endpoint) != bool(wfs_layer):
+            problems.append("WFS municipal: informe endpoint e camada juntos.")
+        if wfs_endpoint and (urlparse(wfs_endpoint).scheme not in {"http", "https"} or not urlparse(wfs_endpoint).netloc):
+            problems.append("WFS municipal: endpoint HTTP/HTTPS inválido.")
         for source_id, field in self.path_fields.items():
             value = field.text().strip()
             if value and not Path(value).expanduser().is_file():
@@ -298,10 +316,6 @@ class SourceSettingsDialog(QDialog):
             self.settings.setValue(f"sources/municipal_wfs/{key}", value)
             if wfs is not None and hasattr(wfs, key):
                 setattr(wfs, key, value)
-        catalog_path = self.inde_catalog_path.text().strip()
-        if catalog_path and not Path(catalog_path).expanduser().is_file():
-            QMessageBox.warning(self, "Catálogo INDE", "O arquivo de catálogo selecionado não existe.")
-            return
         self.settings.setValue("sources/inde/catalog_path", catalog_path)
         self.settings.sync()
         if token and not token_saved:
