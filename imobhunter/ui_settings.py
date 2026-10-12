@@ -99,6 +99,39 @@ class SourceSettingsDialog(QDialog):
         self.sinter_token.setPlaceholderText("Token de acesso (opcional; não exibido novamente)")
         form.addRow("SINTER/CIB — token", self.sinter_token)
 
+        municipal_wfs = registry.get("municipal_wfs")
+        self.wfs_fields = {}
+        wfs_definitions = (
+            ("endpoint", "Endpoint WFS municipal", "https://servicos.exemplo.gov.br/geoserver/ows"),
+            ("layer", "Camada WFS", "workspace:camada"),
+            ("address_field", "Campo de logradouro", "logradouro"),
+            ("number_field", "Campo de número", "numero"),
+            ("block_field", "Campo de quadra", "quadra"),
+            ("lot_field", "Campo de lote", "lote"),
+            ("area_field", "Campo de área (m²)", "area_m2"),
+            ("id_field", "Campo identificador", "id"),
+        )
+        for key, label, placeholder in wfs_definitions:
+            field = QLineEdit(str(
+                getattr(municipal_wfs, key, "") or
+                self.settings.value(f"sources/municipal_wfs/{key}", "")
+            ))
+            field.setPlaceholderText(placeholder)
+            self.wfs_fields[key] = field
+            form.addRow(label, field)
+
+        inde_path = QLineEdit(str(self.settings.value("sources/inde/catalog_path", "")))
+        inde_path.setPlaceholderText("Catálogo INDE autorizado local (CSV/JSON)")
+        self.inde_catalog_path = inde_path
+        inde_browse = QPushButton("Selecionar catálogo INDE…")
+        inde_browse.clicked.connect(
+            lambda checked=False, f=inde_path: self._browse(f, "CSV ou JSON")
+        )
+        inde_row = QHBoxLayout()
+        inde_row.addWidget(inde_path, 1)
+        inde_row.addWidget(inde_browse)
+        form.addRow("Catálogo de geosserviços INDE", inde_row)
+
         scroll.setWidget(host)
         root.addWidget(scroll, 1)
 
@@ -226,6 +259,18 @@ class SourceSettingsDialog(QDialog):
 
         token = self.sinter_token.text().strip()
         token_saved = self._save_token(token) if token else True
+
+        wfs = self.registry.get("municipal_wfs")
+        for key, field in self.wfs_fields.items():
+            value = field.text().strip()
+            self.settings.setValue(f"sources/municipal_wfs/{key}", value)
+            if wfs is not None and hasattr(wfs, key):
+                setattr(wfs, key, value)
+        catalog_path = self.inde_catalog_path.text().strip()
+        if catalog_path and not Path(catalog_path).expanduser().is_file():
+            QMessageBox.warning(self, "Catálogo INDE", "O arquivo de catálogo selecionado não existe.")
+            return
+        self.settings.setValue("sources/inde/catalog_path", catalog_path)
         self.settings.sync()
         if token and not token_saved:
             QMessageBox.warning(
@@ -265,3 +310,10 @@ def apply_saved_source_settings(registry) -> None:
             sinter.api_token = keyring.get_password("ImobHunter-BR", "sinter_cib_api_token") or ""
         except Exception:  # noqa: BLE001 - keyring backend errors vary by platform.
             sinter.api_token = ""
+
+    wfs = registry.get("municipal_wfs")
+    if wfs is not None:
+        for key in ("endpoint", "layer", "address_field", "number_field", "block_field", "lot_field", "area_field", "id_field"):
+            value = str(settings.value(f"sources/municipal_wfs/{key}", "") or "").strip()
+            if value:
+                setattr(wfs, key, value)
