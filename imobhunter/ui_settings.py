@@ -71,6 +71,8 @@ class SourceSettingsDialog(QDialog):
             field = QLineEdit(str(current or self.settings.value(f"sources/{source_id}/path", "")))
             field.setPlaceholderText(f"Selecione arquivo de dados ({file_types})")
             self.path_fields[source_id] = field
+            if str(field.text()).strip():
+                setattr(source, attr, Path(field.text()).expanduser())
             browse = QPushButton("Selecionar…")
             browse.clicked.connect(lambda checked=False, f=field, t=file_types: self._browse(f, t))
             row = QHBoxLayout()
@@ -141,7 +143,11 @@ class SourceSettingsDialog(QDialog):
     def _load_saved_token(self) -> None:
         try:
             import keyring
-            self.sinter_token.setText(keyring.get_password("ImobHunter-BR", "sinter_cib_api_token") or "")
+            token = keyring.get_password("ImobHunter-BR", "sinter_cib_api_token") or ""
+            self.sinter_token.setText(token)
+            sinter = self.registry.get("sinter_cib")
+            if sinter is not None:
+                sinter.api_token = token
         except Exception:
             # Missing/unavailable OS keyring is expected on some portable systems.
             self.sinter_token.clear()
