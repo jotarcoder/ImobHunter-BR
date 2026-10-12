@@ -100,9 +100,20 @@ jobs:
       - name: Build executable
         shell: powershell
         run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --version-file packaging/windows/version_info.txt --add-data "imobhunter/assets;imobhunter/assets" --add-data "data/coverage/ddd.json;data/coverage" packaging/entrypoint.py
-      - name: Build installer
+      - name: Build installer and verify its embedded version
         shell: powershell
-        run: iscc /DMyAppVersion=${{ needs.meta.outputs.version }} packaging/windows/ImobHunter-BR.iss
+        run: |
+          $expectedVersion = (Select-String -Path pyproject.toml -Pattern '^version = "([^"]+)"$').Matches.Groups[1].Value
+          iscc "/DMyAppVersion=$expectedVersion" packaging/windows/ImobHunter-BR.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+          $setupPath = "packaging/windows/Output/ImobHunter-BR-Setup-Windows.exe"
+          if (-not (Test-Path $setupPath)) { throw "Installer not generated: $setupPath" }
+          $setupInfo = (Get-Item $setupPath).VersionInfo
+          $actualVersion = ([string]$setupInfo.ProductVersion).Trim()
+          if ($actualVersion -notmatch "^$([regex]::Escape($expectedVersion))(\.0)?$") {
+            throw "Installer version mismatch: expected=$expectedVersion; ProductVersion=$actualVersion; FileVersion=$($setupInfo.FileVersion)"
+          }
+          Write-Host "Installer metadata verified: ProductVersion=$actualVersion; FileVersion=$($setupInfo.FileVersion)"
       - uses: actions/upload-artifact@v4
         with:
           name: ImobHunter-BR-Windows

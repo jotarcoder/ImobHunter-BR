@@ -16,7 +16,7 @@ O ImobHunter-BR foi projetado para corretores, imobiliárias, construtores e cap
 ## Downloads
 | Plataforma | Download |
 |---|---|
-| Windows | [Instalador .exe](https://pub-6bd1ab819504434691f4832d98de3cb6.r2.dev/ImobHunter-BR-Setup-Windows.exe) |
+| Windows | [Instalador .exe](https://pub-6bd1ab819504434691f4832d98de3cb6.r2.dev/ImobHunter-BR-Setup-Windows-0.1.16.exe) |
 | Linux | [AppImage](https://pub-6bd1ab819504434691f4832d98de3cb6.r2.dev/ImobHunter-BR-Linux.AppImage) |
 | macOS Intel | [.dmg](https://pub-6bd1ab819504434691f4832d98de3cb6.r2.dev/ImobHunter-BR-macOS-Intel.dmg) |
 | macOS Apple Silicon | [.dmg](https://pub-6bd1ab819504434691f4832d98de3cb6.r2.dev/ImobHunter-BR-macOS-AppleSilicon.dmg) |
