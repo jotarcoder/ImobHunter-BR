@@ -24,6 +24,7 @@ from .application.coverage import DDDCoverageRegistry, load_ddd_coverage
 from .application.search import SearchResult, SearchService
 from .domain.models import SearchRequest
 from .ui_market import MarketIntelligenceDialog
+from .ui_settings import SourceSettingsDialog
 
 
 APP_STYLE = """
