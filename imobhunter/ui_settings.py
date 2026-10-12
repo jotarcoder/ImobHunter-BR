@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.parse import urlparse
 
-import httpx
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import (
     QDialog, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
@@ -82,8 +81,9 @@ class SourceSettingsDialog(QDialog):
 
         geosampa = registry.get("geosampa")
         self.geosampa_url = QLineEdit(
-            str(getattr(geosampa, "endpoint", "") or self.settings.value(
-                "sources/geosampa/endpoint", "https://wfs.geosampa.prefeitura.sp.gov.br/geoserver/geoportal/ows"
+            str(self.settings.value(
+                "sources/geosampa/endpoint",
+                getattr(geosampa, "endpoint", "https://wfs.geosampa.prefeitura.sp.gov.br/geoserver/geoportal/ows"),
             ))
         )
         form.addRow("GeoSampa — endpoint WFS", self.geosampa_url)
