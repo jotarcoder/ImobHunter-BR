@@ -53,7 +53,9 @@ def activate(user_id: str, activation_key: str, api_url: str | None = None) -> d
     if len(key) != 64 or any(char not in "0123456789ABCDEF" for char in key):
         raise LicenseError("A chave precisa conter 64 caracteres hexadecimais. Copie novamente a chave completa no painel administrativo.")
 
-    base = (api_url or os.environ.get("IMOBHUNTER_LICENSE_API") or DEFAULT_LICENSE_API).rstrip("/")
+    # Always use the canonical Worker in production. An inherited machine-level
+    # environment variable must not silently redirect the license request.
+    base = (api_url or DEFAULT_LICENSE_API).rstrip("/")
     payload = json.dumps({"user_id": normalized_id, "activation_key": key}).encode()
     request = Request(
         f"{base}/api/license/activate",
@@ -65,7 +67,8 @@ def activate(user_id: str, activation_key: str, api_url: str | None = None) -> d
         with urlopen(request, timeout=8) as response:
             result = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
-        # Preserve non-JSON bodies to distinguish a Worker denial from a proxy/WAF 403.
+        # Preserve non-JSON bodies and Cloudflare request identifiers to distinguish
+        # an application-level denial from an upstream security/edge rejection.
         try:
             raw_body = exc.read()
         except OSError:
@@ -85,12 +88,20 @@ def activate(user_id: str, activation_key: str, api_url: str | None = None) -> d
         else:
             headers = getattr(exc, "headers", None)
             content_type = headers.get("Content-Type", "desconhecido") if headers else "desconhecido"
+            ray_id = (headers.get("CF-Ray", "") if headers else "").strip()
+            server = (headers.get("Server", "") if headers else "").strip()
             snippet = " ".join(body_text.split())[:180]
-            code = "RESPOSTA_NAO_JSON" if body_text else "RESPOSTA_VAZIA"
+            code = "BLOQUEIO_CLOUDFLARE" if ray_id or server.lower() == "cloudflare" else ("RESPOSTA_NAO_JSON" if body_text else "RESPOSTA_VAZIA")
+            details = []
+            if ray_id:
+                details.append(f"CF-Ray: {ray_id}")
+            if server:
+                details.append(f"Servidor: {server}")
+            suffix = f" {'; '.join(details)}." if details else ""
             if snippet:
-                message = f"O servidor recusou a ativação com uma resposta não JSON (Content-Type: {content_type}). Trecho: {snippet}"
+                message = f"O endpoint de ativação recusou a requisição antes de retornar JSON (Content-Type: {content_type}). Trecho: {snippet}.{suffix}"
             else:
-                message = f"O servidor recusou a ativação sem corpo JSON (Content-Type: {content_type})."
+                message = f"O endpoint de ativação retornou HTTP {exc.code} sem corpo JSON (Content-Type: {content_type}).{suffix}"
         raise LicenseError(f"[HTTP {exc.code} · {code}] {message}") from exc
     except (URLError, TimeoutError, OSError, ValueError) as exc:
         raise LicenseError(
