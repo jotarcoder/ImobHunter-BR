@@ -3,6 +3,23 @@ main = "worker.js"
 compatibility_date = "2026-10-09"
 workers_dev = true
 
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
+
+[observability.traces]
+enabled = false
+head_sampling_rate = 1
+persist = true
+
+[observability.issue_detection]
+enabled = false
+
 [[d1_databases]]
 binding = "DB"
 database_name = "imobhunter-licenses"
