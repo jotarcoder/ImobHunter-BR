@@ -351,7 +351,7 @@ class MainWindow(QMainWindow):
         QMessageBox.information(
             self,
             "Configurações",
-            "O processamento e o histórico de pesquisas ficam no computador.\\n\\n"
+            "O processamento e o histórico de pesquisas ficam no computador.\n\n"
             "Os módulos avançados de configuração ainda não possuem uma tela de gerenciamento. "
             "Consulte Fontes para ver quais integrações estão disponíveis, quais exigem arquivos "
             "locais e quais ainda não foram configuradas."
