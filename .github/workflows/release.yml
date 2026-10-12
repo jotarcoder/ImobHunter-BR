@@ -107,6 +107,14 @@ jobs:
       - name: Build executable
         shell: powershell
         run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --version-file packaging/windows/version_info.txt --add-data "imobhunter/assets;imobhunter/assets" --add-data "data/coverage/ddd.json;data/coverage" packaging/entrypoint.py
+      - name: Verify bundled HTTPS certificate authorities
+        shell: powershell
+        run: |
+          $caBundle = Get-ChildItem -Path "dist/ImobHunter-BR" -Filter "cacert.pem" -Recurse | Select-Object -First 1
+          if (-not $caBundle) {
+            throw "PyInstaller did not bundle certifi's cacert.pem; HTTPS license activation would fail before reaching the Worker."
+          }
+          Write-Host "HTTPS CA bundle included: $($caBundle.FullName)"
       - name: Build installer and verify its embedded version
         shell: powershell
         run: |
