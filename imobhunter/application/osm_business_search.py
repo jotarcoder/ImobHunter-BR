@@ -48,7 +48,7 @@ def fetch_osm_businesses(
         if owned:
             http.close()
     if not isinstance(payload, dict) or not isinstance(payload.get("elements"), list):
-        raise RuntimeError("A fonte de mapas retornou uma resposta inválida.")
+        raise TypeError("A fonte de mapas retornou uma resposta inválida.")
     places: list[dict[str, Any]] = []
     for element in payload["elements"]:
         if not isinstance(element, dict):
