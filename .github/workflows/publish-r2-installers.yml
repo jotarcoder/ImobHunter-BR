@@ -83,6 +83,8 @@ jobs:
           aws configure set region auto
 
       - name: Upload installers to public R2 bucket
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
         shell: bash
         run: |
           set -euo pipefail
