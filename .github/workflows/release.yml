@@ -109,7 +109,7 @@ jobs:
           $setupPath = "packaging/windows/Output/ImobHunter-BR-Setup-Windows.exe"
           if (-not (Test-Path $setupPath)) { throw "Installer not generated: $setupPath" }
           $setupInfo = (Get-Item $setupPath).VersionInfo
-          $actualVersion = $setupInfo.ProductVersion
+          $actualVersion = ([string]$setupInfo.ProductVersion).Trim()
           if ($actualVersion -notmatch "^$([regex]::Escape($expectedVersion))(\.0)?$") {
             throw "Installer version mismatch: expected=$expectedVersion; ProductVersion=$actualVersion; FileVersion=$($setupInfo.FileVersion)"
           }
