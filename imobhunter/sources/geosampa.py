@@ -104,13 +104,20 @@ class GeoSampaAdapter(SourceAdapter):
             return []
 
         normalized = normalize_request(request)
-        if not normalized.street_name or not normalized.number:
-            return []
-
-        filters = [
-            f"nm_logradouro_completo ILIKE '%{_escape_cql(normalized.street_name)}%'",
-            f"cd_numero_porta='{_escape_cql(normalized.number)}'",
-        ]
+        block = (request.block or "").strip()
+        lot = (request.lot or "").strip()
+        if block and lot:
+            filters = [
+                f"cd_quadra_fiscal='{_escape_cql(block)}'",
+                f"cd_lote='{_escape_cql(lot)}'",
+            ]
+        else:
+            if not normalized.street_name or not normalized.number:
+                return []
+            filters = [
+                f"nm_logradouro_completo ILIKE '%{_escape_cql(normalized.street_name)}%'",
+                f"cd_numero_porta='{_escape_cql(normalized.number)}'",
+            ]
         cql_filter = " AND ".join(filters)
         params = {
             "service": "WFS",
