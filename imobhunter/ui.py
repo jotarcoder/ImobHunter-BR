@@ -243,11 +243,16 @@ class MainWindow(QMainWindow):
         self.block.setMaximumWidth(190)
         self.lot = QLineEdit()
         self.lot.setPlaceholderText("Lote (opcional)")
-        self.lot.setMaximumWidth(190)
-        parcel_hint = QLabel("Use endereço + número ou preencha quadra + lote.")
+        self.lot.setMaximumWidth(150)
+        self.block.setMaximumWidth(150)
+        self.cib = QLineEdit()
+        self.cib.setPlaceholderText("Código CIB (opcional)")
+        self.cib.setMaximumWidth(180)
+        parcel_hint = QLabel("Endereço, quadra+lote ou CIB.")
         parcel_hint.setObjectName("muted")
         parcel_row.addWidget(self.block)
         parcel_row.addWidget(self.lot)
+        parcel_row.addWidget(self.cib)
         parcel_row.addWidget(parcel_hint, 1)
         hero_layout.addLayout(parcel_row)
 
@@ -392,13 +397,15 @@ class MainWindow(QMainWindow):
         state = self.state.text().strip().upper()
         block = self.block.text().strip() or None
         lot = self.lot.text().strip() or None
+        cib = self.cib.text().strip() or None
         has_address = bool(address and city and len(state) == 2)
         has_parcel = bool(block and lot and city and len(state) == 2)
-        if not (has_address or has_parcel):
+        has_cib = bool(cib)
+        if not (has_address or has_parcel or has_cib):
             QMessageBox.warning(
                 self,
                 "Dados incompletos",
-                "Informe endereço, cidade e UF, ou quadra + lote, cidade e UF.",
+                "Informe endereço + cidade + UF, quadra + lote + cidade + UF, ou um código CIB.",
             )
             return
         if bool(block) != bool(lot):
@@ -416,6 +423,7 @@ class MainWindow(QMainWindow):
             state=state,
             block=block,
             lot=lot,
+            cib=cib,
         )
         self.search_button.setEnabled(False)
         self.search_status.setText("Consultando fontes configuradas…")
