@@ -113,3 +113,22 @@ def test_activation_converts_network_errors_to_license_error() -> None:
         pytest.raises(LicenseError, match="Não foi possível validar a licença"),
     ):
         activate("00000000-0000-4000-8000-000000000001", "A" * 64)
+
+
+
+def test_activation_denial_exposes_non_json_proxy_response() -> None:
+    error = HTTPError(
+        "https://license.example/api/license/activate",
+        403,
+        "Forbidden",
+        {"Content-Type": "text/html; charset=UTF-8"},
+        BytesIO(b"<html><title>Access denied</title><body>Request blocked</body></html>"),
+    )
+    with (
+        patch("imobhunter.licensing.urlopen", side_effect=error),
+        pytest.raises(
+            LicenseError,
+            match=r"HTTP 403.*RESPOSTA_NAO_JSON.*Content-Type: text/html.*Access denied",
+        ),
+    ):
+        activate("00000000-0000-4000-8000-000000000001", "A" * 64, "https://license.example")
