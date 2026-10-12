@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import json
 import os
+import ssl
 import uuid
+
+import certifi
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -64,7 +67,11 @@ def activate(user_id: str, activation_key: str, api_url: str | None = None) -> d
         method="POST",
     )
     try:
-        with urlopen(request, timeout=8) as response:
+        with urlopen(
+            request,
+            timeout=8,
+            context=ssl.create_default_context(cafile=certifi.where()),
+        ) as response:
             result = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         # Preserve non-JSON bodies and Cloudflare request identifiers to distinguish
@@ -103,9 +110,33 @@ def activate(user_id: str, activation_key: str, api_url: str | None = None) -> d
             else:
                 message = f"O endpoint de ativação retornou HTTP {exc.code} sem corpo JSON (Content-Type: {content_type}).{suffix}"
         raise LicenseError(f"[HTTP {exc.code} · {code}] {message}") from exc
-    except (URLError, TimeoutError, OSError, ValueError) as exc:
+    except URLError as exc:
+        reason = exc.reason
+        if isinstance(reason, ssl.SSLCertVerificationError):
+            detail = (
+                "A validação do certificado HTTPS falhou. O pacote de certificados "
+                "não foi localizado ou não pôde ser validado."
+            )
+        elif isinstance(reason, ssl.SSLError):
+            detail = f"Falha na negociação HTTPS: {str(reason)[:220]}"
+        elif isinstance(reason, TimeoutError):
+            detail = "A conexão expirou antes de o servidor responder."
+        else:
+            reason_text = " ".join(str(reason).split())[:220] or type(reason).__name__
+            detail = f"Falha de rede antes de receber resposta do servidor: {reason_text}"
+        raise LicenseError(f"Não foi possível validar a licença. {detail}") from exc
+    except TimeoutError as exc:
         raise LicenseError(
-            "Não foi possível validar a licença no servidor. Verifique a conexão e tente novamente."
+            "A validação da licença expirou após 8 segundos. Verifique a conexão e tente novamente."
+        ) from exc
+    except ValueError as exc:
+        raise LicenseError(
+            "O servidor de licenças retornou uma resposta que não é JSON válido."
+        ) from exc
+    except OSError as exc:
+        detail = " ".join(str(exc).split())[:220] or type(exc).__name__
+        raise LicenseError(
+            f"Falha local de rede ao validar a licença: {detail}"
         ) from exc
     if result.get("authorized") is not True:
         code = str(result.get("code") or "SEM_CODIGO")

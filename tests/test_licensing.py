@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import ssl
 import uuid
 from io import BytesIO
 from urllib.error import HTTPError
@@ -22,7 +23,8 @@ def test_default_activation_uses_direct_worker_endpoint() -> None:
         def read(self):
             return b'{"authorized":true,"plan":"annual"}'
 
-    def fake_urlopen(request, timeout):
+    def fake_urlopen(request, timeout, context):
+        assert isinstance(context, ssl.SSLContext)
         assert request.full_url == f"{DEFAULT_LICENSE_API}/api/license/activate"
         assert "workers.dev" in request.full_url
         assert "pages.dev" not in request.full_url
@@ -64,11 +66,13 @@ def test_activation_sends_normalized_user_id_and_hex_key() -> None:
         def read(self):
             return b'{"authorized":true,"plan":"annual"}'
 
-    def fake_urlopen(request, timeout):
+    def fake_urlopen(request, timeout, context):
+        assert isinstance(context, ssl.SSLContext)
         assert request.full_url == "https://license.example/api/license/activate"
         assert request.get_method() == "POST"
         assert request.get_header("Content-type") == "application/json"
         assert timeout == 8
+        assert isinstance(context, ssl.SSLContext)
         assert json.loads(request.data) == {
             "user_id": "00000000-0000-4000-8000-000000000001",
             "activation_key": "A" * 64,
@@ -132,7 +136,7 @@ def test_activation_rejects_success_http_without_authorized_true() -> None:
 def test_activation_converts_network_errors_to_license_error() -> None:
     with (
         patch("imobhunter.licensing.urlopen", side_effect=TimeoutError("timed out")),
-        pytest.raises(LicenseError, match="Não foi possível validar a licença"),
+        pytest.raises(LicenseError, match="validação da licença expirou"),
     ):
         activate("00000000-0000-4000-8000-000000000001", "A" * 64)
 
