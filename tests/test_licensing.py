@@ -8,7 +8,29 @@ from unittest.mock import patch
 
 import pytest
 
-from imobhunter.licensing import LicenseError, activate, get_user_id
+from imobhunter.licensing import DEFAULT_LICENSE_API, LicenseError, activate, get_user_id
+
+
+def test_default_activation_uses_direct_worker_endpoint() -> None:
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return b'{"authorized":true,"plan":"annual"}'
+
+    def fake_urlopen(request, timeout):
+        assert request.full_url == f"{DEFAULT_LICENSE_API}/api/license/activate"
+        assert "workers.dev" in request.full_url
+        assert "pages.dev" not in request.full_url
+        return Response()
+
+    with patch("imobhunter.licensing.urlopen", fake_urlopen):
+        result = activate("00000000-0000-4000-8000-000000000001", "A" * 64)
+    assert result["authorized"] is True
 
 
 def test_user_id_is_persistent_and_uuid(monkeypatch, tmp_path) -> None:
@@ -113,7 +135,6 @@ def test_activation_converts_network_errors_to_license_error() -> None:
         pytest.raises(LicenseError, match="Não foi possível validar a licença"),
     ):
         activate("00000000-0000-4000-8000-000000000001", "A" * 64)
-
 
 
 def test_activation_denial_exposes_non_json_proxy_response() -> None:
