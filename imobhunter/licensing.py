@@ -65,12 +65,32 @@ def activate(user_id: str, activation_key: str, api_url: str | None = None) -> d
         with urlopen(request, timeout=8) as response:
             result = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
+        # Preserve non-JSON bodies to distinguish a Worker denial from a proxy/WAF 403.
         try:
-            result = json.loads(exc.read().decode("utf-8"))
-        except (ValueError, OSError):
+            raw_body = exc.read()
+        except OSError:
+            raw_body = b""
+        body_text = raw_body.decode("utf-8", errors="replace").strip()
+        try:
+            parsed = json.loads(body_text) if body_text else {}
+            result = parsed if isinstance(parsed, dict) else {}
+        except ValueError:
             result = {}
-        message = str(result.get("error") or "O servidor recusou a ativação sem informar o motivo.")
-        code = str(result.get("code") or "SEM_CODIGO")
+
+        code = str(result.get("code") or "").strip()
+        message = str(result.get("error") or "").strip()
+        if code or message:
+            code = code or "ERRO_SEM_CODIGO"
+            message = message or "O servidor recusou a ativação sem informar o motivo."
+        else:
+            headers = getattr(exc, "headers", None)
+            content_type = headers.get("Content-Type", "desconhecido") if headers else "desconhecido"
+            snippet = " ".join(body_text.split())[:180]
+            code = "RESPOSTA_NAO_JSON" if body_text else "RESPOSTA_VAZIA"
+            if snippet:
+                message = f"O servidor recusou a ativação com uma resposta não JSON (Content-Type: {content_type}). Trecho: {snippet}"
+            else:
+                message = f"O servidor recusou a ativação sem corpo JSON (Content-Type: {content_type})."
         raise LicenseError(f"[HTTP {exc.code} · {code}] {message}") from exc
     except (URLError, TimeoutError, OSError, ValueError) as exc:
         raise LicenseError(
