@@ -130,6 +130,9 @@ class SourceSettingsDialog(QDialog):
         inde_row = QHBoxLayout()
         inde_row.addWidget(inde_path, 1)
         inde_row.addWidget(inde_browse)
+        inde_list = QPushButton("Listar serviços")
+        inde_list.clicked.connect(self._show_inde_catalog)
+        inde_row.addWidget(inde_list)
         form.addRow("Catálogo de geosserviços INDE", inde_row)
 
         scroll.setWidget(host)
@@ -159,6 +162,35 @@ class SourceSettingsDialog(QDialog):
         root.addLayout(buttons)
 
         self._load_saved_token()
+
+    def _show_inde_catalog(self) -> None:
+        path = Path(self.inde_catalog_path.text().strip()).expanduser()
+        if not path.is_file():
+            QMessageBox.information(
+                self, "Catálogo INDE",
+                "Selecione um catálogo INDE em CSV/JSON obtido de uma fonte autorizada."
+            )
+            return
+        try:
+            from .sources.inde import INDECatalog
+            services = INDECatalog(path).load()
+        except (OSError, ValueError, TypeError) as exc:
+            QMessageBox.warning(self, "Catálogo INDE", f"Não foi possível ler o catálogo: {exc}")
+            return
+        if not services:
+            QMessageBox.information(self, "Catálogo INDE", "O catálogo não contém geosserviços.")
+            return
+        lines = [
+            f"{item.title} | {item.service_type or 'tipo não informado'}"
+            f"\nCamada: {item.layer or 'não informada'}"
+            f"\nURL: {item.url or 'não informada'}"
+            for item in services[:80]
+        ]
+        suffix = f"\n\nExibindo 80 de {len(services)} serviços." if len(services) > 80 else ""
+        QMessageBox.information(
+            self, f"Serviços INDE ({len(services)})",
+            "\n\n".join(lines) + suffix
+        )
 
     def _browse(self, field: QLineEdit, file_types: str) -> None:
         if "ZIP" in file_types and "CSV" in file_types:
