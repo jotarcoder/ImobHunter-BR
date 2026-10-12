@@ -1,4 +1,4 @@
-"""Online license gate for ImobHunter desktop. No admin secret is embedded here."""
+""""Online license gate for ImobHunter desktop. No admin secret is embedded here."""
 from __future__ import annotations
 
 import json
@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-DEFAULT_LICENSE_API = "https://imobhunter-br.pages.dev"
+DEFAULT_LICENSE_API = "https://imobhunter-license.imobhunterbr.workers.dev"
 CONTACT_PHONE = "+55 (11) 99903-7737"
 
 
@@ -53,8 +53,8 @@ def activate(user_id: str, activation_key: str, api_url: str | None = None) -> d
     if len(key) != 64 or any(char not in "0123456789ABCDEF" for char in key):
         raise LicenseError("A chave precisa conter 64 caracteres hexadecimais. Copie novamente a chave completa no painel administrativo.")
 
-    # Always use the canonical Worker in production. An inherited machine-level
-    # environment variable must not silently redirect the license request.
+    # Use the Worker endpoint directly. The Pages proxy adds an unnecessary
+    # Cloudflare edge hop that can reject desktop activation before JSON is returned.
     base = (api_url or DEFAULT_LICENSE_API).rstrip("/")
     payload = json.dumps({"user_id": normalized_id, "activation_key": key}).encode()
     request = Request(
