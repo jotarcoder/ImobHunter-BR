@@ -153,7 +153,7 @@ class MainWindow(QMainWindow):
 
         self.nav_coverage = QPushButton("▦  Cobertura")
         self.nav_coverage.setObjectName("nav")
-        self.nav_coverage.clicked.connect(lambda: self.coverage_scroll.setFocus())
+        self.nav_coverage.clicked.connect(self._focus_coverage)
         side.addWidget(self.nav_coverage)
 
         self.nav_market = QPushButton("⌖  Inteligência de Mercado")
@@ -307,20 +307,54 @@ class MainWindow(QMainWindow):
         dialog = MarketIntelligenceDialog(self)
         dialog.exec()
 
-    def _show_sources(self) -> None:
-        QMessageBox.information(
-            self,
-            "Fontes",
-            "O ImobHunter consulta apenas fontes configuradas e autorizadas. "
-            "A tela de resultados informa as fontes utilizadas e o nível de confiança."
+    def _focus_coverage(self) -> None:
+        # Bring the actual DDD controls into keyboard focus and provide visible feedback.
+        first_button = self.coverage_scroll.widget().findChild(QPushButton, "ddd")
+        if first_button is not None:
+            self.coverage_scroll.ensureWidgetVisible(first_button)
+            first_button.setFocus(Qt.FocusReason.OtherFocusReason)
+        self.search_status.setText(
+            f"Cobertura carregada: {len(self.coverage.all())} DDDs cadastrados. "
+            "Clique em um DDD para selecionar a região."
         )
+        self.metric_region.set_value("Selecione um DDD")
+
+    def _show_sources(self) -> None:
+        lines = ["Fontes registradas no aplicativo:", ""]
+        for source in self.service.registry.all():
+            try:
+                status = source.status()
+                label = {
+                    "available": "Disponível",
+                    "ok": "Disponível",
+                    "not_configured": "Não configurada",
+                    "error": "Erro de configuração",
+                }.get(status.status, status.status)
+                lines.append(f"• {source.name}: {label}")
+                if status.message:
+                    lines.append(f"  {status.message}")
+            except Exception as exc:
+                lines.append(f"• {source.name}: falha ao verificar status ({exc})")
+            lines.append("")
+        lines.append(
+            "A presença na lista não garante que a fonte tenha dados para todo endereço. "
+            "A pesquisa mostra os resultados e falhas de cada fonte."
+        )
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Fontes de dados")
+        dialog.setIcon(QMessageBox.Icon.Information)
+        dialog.setText("\\n".join(lines))
+        dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
+        dialog.exec()
 
     def _show_settings(self) -> None:
         QMessageBox.information(
             self,
             "Configurações",
-            "A configuração avançada será liberada conforme os módulos do sistema forem ativados. "
-            "Por enquanto, o aplicativo mantém o processamento local e o banco de pesquisa no computador."
+            "O processamento e o histórico de pesquisas ficam no computador.\\n\\n"
+            "Os módulos avançados de configuração ainda não possuem uma tela de gerenciamento. "
+            "Consulte Fontes para ver quais integrações estão disponíveis, quais exigem arquivos "
+            "locais e quais ainda não foram configuradas."
         )
 
     def _populate_coverage(self) -> None:
@@ -366,6 +400,7 @@ class MainWindow(QMainWindow):
     def _search_finished(self, result: SearchResult) -> None:
         self.search_button.setEnabled(True)
         sources = result.sources
+        self._last_search_sources = sources
         found = len(result.records)
         active = sum(source.status in {"ok", "no_results"} for source in sources)
         self.metric_properties.set_value(str(found))
@@ -390,7 +425,21 @@ class MainWindow(QMainWindow):
             if widget is not None:
                 widget.deleteLater()
         if not dossiers:
-            self.dossier_layout.addWidget(QLabel("Nenhum dossiê consolidado para esta pesquisa."))
+            message = QLabel(
+                "Nenhum dossiê foi consolidado. Isso não significa necessariamente que o endereço "
+                "não exista: as fontes podem não cobrir a cidade, não ter dados para esse número "
+                "ou ter falhado durante a consulta."
+            )
+            message.setWordWrap(True)
+            self.dossier_layout.addWidget(message)
+            for source in getattr(self, "_last_search_sources", ()):
+                detail = QLabel(
+                    f"{source.name} — {source.status}: "
+                    f"{source.message or (str(source.records_count) + ' registro(s)')}"
+                )
+                detail.setWordWrap(True)
+                detail.setObjectName("muted")
+                self.dossier_layout.addWidget(detail)
             return
         for index, dossier in enumerate(dossiers, 1):
             card = QFrame()
