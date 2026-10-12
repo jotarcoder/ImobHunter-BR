@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QFileDialog, QHBoxLayout, QInputDialog, QLabel,
     QLineEdit, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem,
@@ -14,6 +14,29 @@ from .application.market_intelligence import MarketIntelligenceStore
 from .application.receita_import import import_receita_archives, search_receita_establishments
 from .application.receita_geo import import_receita_coordinates, save_geocoded_establishment
 from .application.address_geocoding import CachedAddressGeocoder, GeocodingError
+
+
+class _OnlineSearchSignals(QObject):
+    finished = Signal(list)
+    failed = Signal(str)
+
+
+class _OnlineSearchWorker(QRunnable):
+    def __init__(self, latitude: float, longitude: float, radius_km: float) -> None:
+        super().__init__()
+        self.latitude = latitude
+        self.longitude = longitude
+        self.radius_km = radius_km
+        self.signals = _OnlineSearchSignals()
+
+    def run(self) -> None:
+        try:
+            from .application.osm_business_search import fetch_osm_businesses
+            places = fetch_osm_businesses(self.latitude, self.longitude, self.radius_km)
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            self.signals.failed.emit(str(exc))
+            return
+        self.signals.finished.emit(places)
 
 
 class MarketIntelligenceDialog(QDialog):
@@ -86,10 +109,10 @@ class MarketIntelligenceDialog(QDialog):
         browse_button = QPushButton("Consultar base oficial")
         browse_button.clicked.connect(self._browse_receita)
         actions.addWidget(browse_button)
-        online_button = QPushButton("Buscar empresas online")
-        online_button.setToolTip("Consulta estabelecimentos mapeados no OpenStreetMap dentro do raio informado.")
-        online_button.clicked.connect(self._search_online)
-        actions.addWidget(online_button)
+        self.online_button = QPushButton("Buscar empresas online")
+        self.online_button.setToolTip("Consulta estabelecimentos mapeados no OpenStreetMap dentro do raio informado.")
+        self.online_button.clicked.connect(self._search_online)
+        actions.addWidget(self.online_button)
         export_button = QPushButton("Exportar resultados CSV")
         export_button.clicked.connect(self._export_csv)
         actions.addWidget(export_button)
@@ -217,20 +240,46 @@ class MarketIntelligenceDialog(QDialog):
             lon = float(self.longitude.text().strip().replace(",", "."))
             radius = float(self.radius.text().strip().replace(",", "."))
             if not (0 < radius <= 25):
-                raise ValueError("A busca online aceita raio entre 0 e 25 km para proteger o serviço público.")
-            from imobhunter.application.osm_business_search import fetch_osm_businesses
-            self.status.setText("Consultando empresas mapeadas no OpenStreetMap…")
-            from PySide6.QtWidgets import QApplication
-            QApplication.processEvents()
-            places = fetch_osm_businesses(lat, lon, radius)
+                raise ValueError("A busca online aceita raio entre 0 e 25 km.")
+            if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                raise ValueError("Coordenadas inválidas. Localize um endereço antes de pesquisar.")
+        except ValueError as exc:
+            QMessageBox.warning(self, "Busca online de empresas", str(exc))
+            return
+
+        self.online_button.setEnabled(False)
+        self.status.setText("Consultando OpenStreetMap em segundo plano…")
+        self._online_worker = _OnlineSearchWorker(lat, lon, radius)
+        self._online_worker.signals.finished.connect(
+            lambda places, r=radius: self._online_search_finished(places, r)
+        )
+        self._online_worker.signals.failed.connect(self._online_search_failed)
+        QThreadPool.globalInstance().start(self._online_worker)
+
+    def _online_search_finished(self, places: list[dict], radius: float) -> None:
+        try:
             imported = self.store.import_osm_businesses(places)
             self._search()
+            count = len(self.results)
+            if not places:
+                detail = "A fonte não retornou estabelecimentos mapeados para este raio."
+            elif count == 0:
+                detail = "Os locais retornados não ficaram dentro do raio após a validação."
+            else:
+                detail = f"{count} empresa(s) no raio de {radius:g} km."
             self.status.setText(
-                f"{len(self.results)} empresa(s) encontradas no raio de {radius:g} km. "
-                f"{imported} novo(s) registro(s) local(is) • © OpenStreetMap"
+                f"{detail} {imported} novo(s) registro(s) salvo(s) localmente • © OpenStreetMap"
             )
-        except (ValueError, OSError, RuntimeError) as exc:
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            self.status.setText("A consulta terminou, mas não foi possível salvar os resultados.")
             QMessageBox.warning(self, "Busca online de empresas", str(exc))
+        finally:
+            self.online_button.setEnabled(True)
+
+    def _online_search_failed(self, message: str) -> None:
+        self.online_button.setEnabled(True)
+        self.status.setText("A consulta online falhou; o restante do aplicativo continua disponível.")
+        QMessageBox.warning(self, "Busca online de empresas", message)
 
     def _search(self) -> None:
         try:
