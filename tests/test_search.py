@@ -115,3 +115,30 @@ def test_search_isolates_source_network_failure(tmp_path: Path) -> None:
         ("records", "ok"),
     ]
     assert "network unavailable" in (result.sources[0].message or "")
+
+
+class StatusFailingSource(SourceAdapter):
+    source_id = "status_failing"
+    name = "Status Failing"
+    category = "test"
+
+    def status(self) -> SourceStatus:
+        raise TypeError("broken source metadata")
+
+    def search(self, request: SearchRequest) -> list[PropertyRecord]:
+        return []
+
+
+def test_search_isolates_source_status_failure(tmp_path: Path) -> None:
+    database = LocalDatabase(tmp_path / "db.sqlite")
+    registry = SourceRegistry({})
+    registry.register(StatusFailingSource())
+    registry.register(RecordSource())
+    service = SearchService(registry, database)
+
+    result = service.search(SearchRequest(address="Rua Pamplona", number="1578"))
+
+    assert len(result.dossiers) == 1
+    assert result.sources[0].status == "error"
+    assert "broken source metadata" in (result.sources[0].message or "")
+    assert result.sources[1].status == "ok"
