@@ -22,7 +22,8 @@ class MarketIntelligenceDialog(QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("ImobHunter • Inteligência de Mercado")
-        self.resize(1180, 720)
+        self.resize(980, 620)
+        self.setMinimumSize(860, 540)
         data_dir = Path.home() / ".imobhunter" / "market"
         self.store = MarketIntelligenceStore(data_dir / "businesses.sqlite3")
         self._build()
@@ -85,6 +86,10 @@ class MarketIntelligenceDialog(QDialog):
         browse_button = QPushButton("Consultar base oficial")
         browse_button.clicked.connect(self._browse_receita)
         actions.addWidget(browse_button)
+        online_button = QPushButton("Buscar empresas online")
+        online_button.setToolTip("Consulta estabelecimentos mapeados no OpenStreetMap dentro do raio informado.")
+        online_button.clicked.connect(self._search_online)
+        actions.addWidget(online_button)
         export_button = QPushButton("Exportar resultados CSV")
         export_button.clicked.connect(self._export_csv)
         actions.addWidget(export_button)
@@ -205,6 +210,27 @@ class MarketIntelligenceDialog(QDialog):
     def _browse_receita(self) -> None:
         dialog = ReceitaBrowseDialog(self.store.path, self)
         dialog.exec()
+
+    def _search_online(self) -> None:
+        try:
+            lat = float(self.latitude.text().strip().replace(",", "."))
+            lon = float(self.longitude.text().strip().replace(",", "."))
+            radius = float(self.radius.text().strip().replace(",", "."))
+            if not (0 < radius <= 25):
+                raise ValueError("A busca online aceita raio entre 0 e 25 km para proteger o serviço público.")
+            from imobhunter.application.osm_business_search import fetch_osm_businesses
+            self.status.setText("Consultando empresas mapeadas no OpenStreetMap…")
+            from PySide6.QtWidgets import QApplication
+            QApplication.processEvents()
+            places = fetch_osm_businesses(lat, lon, radius)
+            imported = self.store.import_osm_businesses(places)
+            self._search()
+            self.status.setText(
+                f"{len(self.results)} empresa(s) encontradas no raio de {radius:g} km. "
+                f"{imported} novo(s) registro(s) local(is) • © OpenStreetMap"
+            )
+        except (ValueError, OSError, RuntimeError) as exc:
+            QMessageBox.warning(self, "Busca online de empresas", str(exc))
 
     def _search(self) -> None:
         try:
