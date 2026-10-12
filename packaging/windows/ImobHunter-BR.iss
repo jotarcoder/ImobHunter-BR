@@ -5,7 +5,7 @@
 #define MyAppExeName "ImobHunter-BR.exe"
 
 [Setup]
-AppId={{8A1C8C1E-6A25-4B54-9E0E-7A6B2C9F31D4}
+AppId={{8A1C8C1E-6A25-4B54-9E0E-7A6B2C9F31D4}}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
