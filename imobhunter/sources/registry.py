@@ -14,6 +14,7 @@ from .sigef import SIGEFAdapter
 from .sinter import SINTERAdapter
 from .sncr import SNCRAdapter
 from .stub import ConfiguredSourceStub
+from .ogc_wfs import ConfigurableWFSAdapter
 
 
 @dataclass
@@ -47,10 +48,6 @@ def build_default_registry() -> SourceRegistry:
     registry.register(OSMAdapter())
     registry.register(MunicipalIPTUAdapter())
 
-    sources = [
-        ("municipal", "Municipal geoservices", "municipal"),
-        ("inde", "INDE", "geospatial"),
-    ]
-    for source_id, name, category in sources:
-        registry.register(ConfiguredSourceStub(source_id, name, category))
+    registry.register(ConfigurableWFSAdapter())
+    registry.register(ConfiguredSourceStub("inde", "INDE catalog", "geospatial"))
     return registry
