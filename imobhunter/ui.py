@@ -236,6 +236,21 @@ class MainWindow(QMainWindow):
         row.addWidget(self.state)
         row.addWidget(self.search_button)
         hero_layout.addLayout(row)
+
+        parcel_row = QHBoxLayout()
+        self.block = QLineEdit()
+        self.block.setPlaceholderText("Quadra (opcional)")
+        self.block.setMaximumWidth(190)
+        self.lot = QLineEdit()
+        self.lot.setPlaceholderText("Lote (opcional)")
+        self.lot.setMaximumWidth(190)
+        parcel_hint = QLabel("Use endereço + número ou preencha quadra + lote.")
+        parcel_hint.setObjectName("muted")
+        parcel_row.addWidget(self.block)
+        parcel_row.addWidget(self.lot)
+        parcel_row.addWidget(parcel_hint, 1)
+        hero_layout.addLayout(parcel_row)
+
         self.search_status = QLabel("Endereço + número ou quadra + lote.")
         self.search_status.setObjectName("muted")
         hero_layout.addWidget(self.search_status)
@@ -375,11 +390,22 @@ class MainWindow(QMainWindow):
         number = self.number.text().strip() or None
         city = self.city.text().strip()
         state = self.state.text().strip().upper()
-        if not address or not city or len(state) != 2:
+        block = self.block.text().strip() or None
+        lot = self.lot.text().strip() or None
+        has_address = bool(address and city and len(state) == 2)
+        has_parcel = bool(block and lot and city and len(state) == 2)
+        if not (has_address or has_parcel):
             QMessageBox.warning(
                 self,
                 "Dados incompletos",
-                "Informe endereço, cidade e UF. O número é opcional.",
+                "Informe endereço, cidade e UF, ou quadra + lote, cidade e UF.",
+            )
+            return
+        if bool(block) != bool(lot):
+            QMessageBox.warning(
+                self,
+                "Identificação incompleta",
+                "Para pesquisar por cadastro fiscal, preencha quadra e lote.",
             )
             return
 
@@ -388,6 +414,8 @@ class MainWindow(QMainWindow):
             number=number,
             city=city,
             state=state,
+            block=block,
+            lot=lot,
         )
         self.search_button.setEnabled(False)
         self.search_status.setText("Consultando fontes configuradas…")
