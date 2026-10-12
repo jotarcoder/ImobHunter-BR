@@ -75,8 +75,8 @@ class SearchWorker(QRunnable):
     def run(self) -> None:
         try:
             self.signals.finished.emit(self.service.search(self.request))
-        except (RuntimeError, ValueError) as exc:
-            self.signals.failed.emit(str(exc))
+        except Exception as exc:  # noqa: BLE001 - prevent adapter/database failures from killing the UI worker.
+            self.signals.failed.emit(f"{type(exc).__name__}: {exc}")
 
 
 class MetricCard(QFrame):
