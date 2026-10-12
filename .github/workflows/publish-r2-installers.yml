@@ -99,7 +99,7 @@ jobs:
             aws s3 cp "$file" "s3://imobhunter-downloads/$file" --endpoint-url "$endpoint" --only-show-errors \
               --content-type "application/octet-stream" \
               --content-disposition "attachment; filename=\"$file\"" \
-              --cache-control "public, max-age=3600"
+              --cache-control "public, max-age=0, must-revalidate"
             headers_file="$(mktemp)"
             curl --fail --silent --show-error --location --dump-header "$headers_file" --output /dev/null "$public_base/$file?verify=$GITHUB_RUN_ID"
             if ! grep -Eiq "^content-disposition:[[:space:]]*attachment" "$headers_file"; then
