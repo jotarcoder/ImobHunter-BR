@@ -90,7 +90,7 @@ jobs:
         run: |
           $projectVersion = (Select-String -Path pyproject.toml -Pattern '^version = "([^"]+)"$').Matches.Groups[1].Value
           $packageVersion = (Select-String -Path imobhunter/__init__.py -Pattern '__version__ = "([^"]+)"').Matches.Groups[1].Value
-          $resourceVersion = (Select-String -Path packaging/windows/version_info.txt -Pattern 'StringStruct\("ProductVersion", "([^"]+)"\)').Matches.Groups[1].Value
+          $resourceVersion = (Select-String -Path packaging/windows/version_info.txt -Pattern "StringStruct\('ProductVersion', '([^']+)'\)").Matches.Groups[1].Value
           if (-not $projectVersion -or $projectVersion -ne $packageVersion -or $projectVersion -ne $resourceVersion) {
             throw "Versões divergentes: projeto=$projectVersion pacote=$packageVersion recurso=$resourceVersion"
           }
