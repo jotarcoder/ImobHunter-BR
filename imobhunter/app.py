@@ -28,6 +28,7 @@ def main() -> None:
     from .infrastructure.local_db import LocalDatabase
     from .sources.registry import build_default_registry
     from .ui import apply_style, build_window, coverage_from_project_root
+    from .ui_settings import apply_saved_source_settings
 
     app = QApplication([])
     apply_style(app)
@@ -123,6 +124,7 @@ def main() -> None:
     activation_key = dialog.activation_key
 
     registry = build_default_registry()
+    apply_saved_source_settings(registry)
     database = LocalDatabase.default()
     service = SearchService(registry, database)
     coverage = coverage_from_project_root()
