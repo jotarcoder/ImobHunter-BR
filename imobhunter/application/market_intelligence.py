@@ -93,6 +93,35 @@ class MarketIntelligenceStore:
                 imported += 1
         return imported
 
+    def import_osm_businesses(self, places: list[dict[str, Any]]) -> int:
+        """Persist named, geolocated OSM businesses locally, avoiding duplicate refreshes."""
+        imported = 0
+        with self._connect() as db:
+            for place in places:
+                name = str(place.get("name") or "").strip()
+                lat, lon = _number(place.get("latitude")), _number(place.get("longitude"))
+                if not name or lat is None or lon is None:
+                    continue
+                address = str(place.get("address") or "").strip()
+                source = str(place.get("source") or "OpenStreetMap")
+                exists = db.execute(
+                    """SELECT id FROM businesses
+                       WHERE name=? AND latitude=? AND longitude=? AND source LIKE 'OpenStreetMap%'""",
+                    (name, lat, lon),
+                ).fetchone()
+                if exists:
+                    continue
+                db.execute(
+                    """INSERT INTO businesses
+                       (name,cnae,address,city,state,latitude,longitude,source,updated_at)
+                       VALUES (?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)""",
+                    (name, str(place.get("cnae") or ""), address,
+                     str(place.get("city") or ""), str(place.get("state") or ""),
+                     lat, lon, source),
+                )
+                imported += 1
+        return imported
+
     def search_radius(self, latitude: float, longitude: float, radius_km: float,
                       segment: str = "") -> list[dict[str, Any]]:
         if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
