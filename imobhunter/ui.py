@@ -349,14 +349,12 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def _show_settings(self) -> None:
-        QMessageBox.information(
-            self,
-            "Configurações",
-            "O processamento e o histórico de pesquisas ficam no computador.\n\n"
-            "Os módulos avançados de configuração ainda não possuem uma tela de gerenciamento. "
-            "Consulte Fontes para ver quais integrações estão disponíveis, quais exigem arquivos "
-            "locais e quais ainda não foram configuradas."
-        )
+        dialog = SourceSettingsDialog(self.service.registry, self)
+        if dialog.exec():
+            self.search_status.setText(
+                "Configurações aplicadas. As próximas pesquisas usarão as fontes atualizadas."
+            )
+            self._show_sources()
 
     def _populate_coverage(self) -> None:
         for project in self.coverage.all():
