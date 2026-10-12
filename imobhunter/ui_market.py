@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, Signal
@@ -122,7 +123,26 @@ class MarketIntelligenceDialog(QDialog):
         actions.addWidget(self.status)
         root.addLayout(actions)
 
+        map_title = QLabel("Mapa de calor — concentração de estabelecimentos")
+        map_title.setStyleSheet("font-size:16px;font-weight:750;")
+        root.addWidget(map_title)
+        try:
+            from PySide6.QtWebEngineWidgets import QWebEngineView
+            self.map_view = QWebEngineView(self)
+            self.map_view.setMinimumHeight(250)
+            root.addWidget(self.map_view, 2)
+        except ImportError:
+            self.map_view = None
+            fallback = QLabel(
+                "A visualização cartográfica requer o componente Qt WebEngine desta instalação. "
+                "Os resultados e coordenadas continuam disponíveis na tabela."
+            )
+            fallback.setObjectName("muted")
+            fallback.setWordWrap(True)
+            root.addWidget(fallback)
+
         self.table = QTableWidget(0, 8)
+        self.table.setMinimumHeight(160)
         self.table.setHorizontalHeaderLabels([
             "Empresa", "CNPJ", "CNAE", "Endereço", "Distância km",
             "Faturamento divulgado", "Faturamento estimado", "Fonte / atualização"
@@ -310,7 +330,43 @@ class MarketIntelligenceDialog(QDialog):
                     cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 self.table.setItem(row_index, column, cell)
         self.table.setSortingEnabled(True)
+        self._render_heatmap(lat, lon)
         self.status.setText(f"{len(self.results)} empresa(s) encontrada(s) no raio de {radius:g} km.")
+
+    def _render_heatmap(self, latitude: float, longitude: float) -> None:
+        if self.map_view is None:
+            return
+        points = [
+            [float(item["latitude"]), float(item["longitude"]), 0.7]
+            for item in self.results
+            if item.get("latitude") is not None and item.get("longitude") is not None
+        ]
+        points_json = json.dumps(points, ensure_ascii=True, separators=(",", ":"))
+        center_json = json.dumps([latitude, longitude])
+        html = f"""<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>html,body,#map{{height:100%;width:100%;margin:0;background:#07111b}}
+#note{{position:absolute;z-index:1000;bottom:8px;left:8px;background:#07111be8;color:#eaf2f7;
+padding:6px 9px;border-radius:6px;font:12px sans-serif}}</style></head>
+<body><div id="map"></div><div id="note">Pontos geolocalizados: <span id="count">0</span> · © OpenStreetMap</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script>
+const center={center_json}; const points={points_json};
+const map=L.map('map').setView(center,13);
+L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png',
+{{maxZoom:19,attribution:'© OpenStreetMap contributors'}}).addTo(map);
+if(points.length && L.heatLayer) {{
+  L.heatLayer(points,{{radius:28,blur:22,maxZoom:17}}).addTo(map);
+  L.circleMarker(center,{{radius:5,color:'#35ff77',fillOpacity:1}}).addTo(map);
+  const bounds=L.latLngBounds(points.map(p=>[p[0],p[1]]).concat([center]));
+  map.fitBounds(bounds.pad(0.15),{{maxZoom:15}});
+}}
+document.getElementById('count').textContent=points.length;
+</script></body></html>"""
+        self.map_view.setHtml(html)
 
     @staticmethod
     def _money(value) -> str:
