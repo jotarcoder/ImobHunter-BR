@@ -110,4 +110,25 @@ jobs:
             fi
             rm -f "$headers_file"
             echo "Public attachment download verified: $file"
+
+            # Publish a versioned Windows URL so a previous installer cannot be reused
+            # by browser/CDN caches under the stable filename.
+            if [ "$file" = "ImobHunter-BR-Setup-Windows.exe" ]; then
+              version="${TAG#v}"
+              versioned_file="ImobHunter-BR-Setup-Windows-${version}.exe"
+              aws s3 cp "$file" "s3://imobhunter-downloads/$versioned_file" --endpoint-url "$endpoint" --only-show-errors \
+                --content-type "application/octet-stream" \
+                --content-disposition "attachment; filename=\"$versioned_file\"" \
+                --cache-control "public, max-age=0, must-revalidate"
+              headers_file="$(mktemp)"
+              curl --fail --silent --show-error --location --dump-header "$headers_file" --output /dev/null "$public_base/$versioned_file?verify=$GITHUB_RUN_ID"
+              if ! grep -Eiq "^content-disposition:[[:space:]]*attachment" "$headers_file"; then
+                echo "::error::R2 did not return attachment download headers for $versioned_file."
+                cat "$headers_file"
+                rm -f "$headers_file"
+                exit 1
+              fi
+              rm -f "$headers_file"
+              echo "Public versioned Windows installer verified: $versioned_file"
+            fi
           done
