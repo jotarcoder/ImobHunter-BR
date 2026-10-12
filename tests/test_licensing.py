@@ -66,7 +66,8 @@ def test_activation_sends_normalized_user_id_and_hex_key() -> None:
         def read(self):
             return b'{"authorized":true,"plan":"annual"}'
 
-    def fake_urlopen(request, timeout):
+    def fake_urlopen(request, timeout, context):
+        assert isinstance(context, ssl.SSLContext)
         assert request.full_url == "https://license.example/api/license/activate"
         assert request.get_method() == "POST"
         assert request.get_header("Content-type") == "application/json"
@@ -135,7 +136,7 @@ def test_activation_rejects_success_http_without_authorized_true() -> None:
 def test_activation_converts_network_errors_to_license_error() -> None:
     with (
         patch("imobhunter.licensing.urlopen", side_effect=TimeoutError("timed out")),
-        pytest.raises(LicenseError, match="Não foi possível validar a licença"),
+        pytest.raises(LicenseError, match="validação da licença expirou"),
     ):
         activate("00000000-0000-4000-8000-000000000001", "A" * 64)
 
