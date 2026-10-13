@@ -102,6 +102,13 @@ def test_radius_search_excludes_registered_businesses_without_coordinates(tmp_pa
         encoding="utf-8",
     )
     assert store.import_csv(csv_path) == 1
-    assert store.count() == 1
+    # Receita registrations can exist locally before any coordinates are linked.
+    import sqlite3
+    with sqlite3.connect(store.path) as db:
+        db.execute(
+            "INSERT INTO businesses (name, cnpj, cnae) VALUES (?, ?, ?)",
+            ("Sem coordenadas", "456", "4711301"),
+        )
+    assert store.count() == 2
     found = store.search_radius(-23.55, -46.63, 2)
     assert [item["name"] for item in found] == ["Geolocalizada"]
