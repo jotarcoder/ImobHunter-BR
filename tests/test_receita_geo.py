@@ -96,9 +96,9 @@ def test_radius_search_excludes_registered_businesses_without_coordinates(tmp_pa
     store = MarketIntelligenceStore(tmp_path / "market.sqlite3")
     csv_path = tmp_path / "companies.csv"
     csv_path.write_text(
-        "name,cnpj,cnae,latitude,longitude\\n"
-        "Geolocalizada,123,4711301,-23.55,-46.63\\n"
-        "Sem coordenadas,456,4711301,,\\n",
+        "name,cnpj,cnae,latitude,longitude\n"
+        "Geolocalizada,123,4711301,-23.55,-46.63\n"
+        "Sem coordenadas,456,4711301,,\n",
         encoding="utf-8",
     )
     assert store.import_csv(csv_path) == 1
