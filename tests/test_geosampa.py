@@ -20,15 +20,13 @@ def test_geosampa_search_builds_filtered_wfs_request_and_parses_current_fields()
                         "type": "Feature",
                         "geometry": {
                             "type": "Polygon",
-                            "coordinates": [
-                                [
-                                    [-46.65, -23.57],
-                                    [-46.649, -23.57],
-                                    [-46.649, -23.569],
-                                    [-46.65, -23.569],
-                                    [-46.65, -23.57],
-                                ]
-                            ],
+                            "coordinates": [[
+                                [-46.65, -23.57],
+                                [-46.649, -23.57],
+                                [-46.649, -23.569],
+                                [-46.65, -23.569],
+                                [-46.65, -23.57],
+                            ]],
                         },
                         "properties": {
                             "cd_identificador": "123456",
@@ -75,11 +73,46 @@ def test_geosampa_search_builds_filtered_wfs_request_and_parses_current_fields()
     assert records[0].latitude == pytest.approx(-23.5696)
     assert records[0].longitude == pytest.approx(-46.6496)
     assert records[0].attributes["sql"] == "010.020.0030-1"
+    assert records[0].attributes["iptu_contributor"] == "010.020.0030-1"
     assert records[0].attributes["built_area_m2"] == 210.25
     assert records[0].attributes["lot_status"] == "ATIVO"
+    assert records[0].attributes["taxpayer_name_status"] == "not_provided_by_this_layer"
+    assert records[0].attributes["owner_document_status"] == "not_provided_by_this_layer"
+    assert records[0].owner_name is None
+    assert records[0].owner_document is None
     assert "typeName=geoportal%3Alote_cidadao" in str(captured["url"])
     assert "nm_logradouro_completo+ILIKE" in str(captured["url"])
     assert "cd_numero_porta" in str(captured["url"])
+
+
+def test_geosampa_source_status_explains_scope_and_limitations() -> None:
+    status = GeoSampaAdapter().status()
+
+    assert status.status == "available"
+    assert "SQL/IPTU" in (status.message or "")
+    assert "não confirma" in (status.message or "")
+
+
+def test_geosampa_maps_taxpayer_fields_only_when_source_returns_them() -> None:
+    adapter = GeoSampaAdapter()
+    records = adapter._parse_features({
+        "features": [{
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [-46.65, -23.57]},
+            "properties": {
+                "nr_contribuinte": "010.020.0030-1",
+                "nm_contribuinte": "Titular fornecido pela fonte",
+                "nr_cpf_cnpj": "documento-mascarado",
+            },
+        }]
+    })
+
+    assert records[0].attributes["taxpayer_name_status"] == "provided_by_source"
+    assert records[0].attributes["owner_document_status"] == "provided_by_source"
+    # Values are not copied into legal-owner fields: the source field is a
+    # taxpayer attribute, not proof of current registered ownership.
+    assert records[0].owner_name is None
+    assert records[0].owner_document is None
 
 
 def test_geosampa_address_only_search_returns_candidate_parcels() -> None:
@@ -111,7 +144,6 @@ def test_geosampa_ignores_non_sao_paulo_states() -> None:
     )
 
     assert records == []
-
 
 
 def test_geosampa_surfaces_http_failures() -> None:
