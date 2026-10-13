@@ -45,7 +45,10 @@ CREATE INDEX IF NOT EXISTS idx_rf_estab_base ON rf_establishments(cnpj_base);
 
 
 def _normalize_cnpj_base(value: str) -> str:
-    return "".join(ch for ch in value.strip() if ch.isdigit()).zfill(8)
+    digits = "".join(ch for ch in value.strip() if ch.isdigit())
+    # A valid CNPJ base has exactly eight digits. zfill() alone turns an empty
+    # field into 00000000 and can create phantom company/establishment records.
+    return digits.zfill(8) if 1 <= len(digits) <= 8 else ""
 
 
 def _read_csv_member(archive: zipfile.ZipFile, member: str):
@@ -126,6 +129,8 @@ def import_receita_archives(database_path: str | Path, archive_paths: Iterable[s
                             if len(row) < 30:
                                 continue
                             base = _normalize_cnpj_base(row[0])
+                            if not base or not row[1].strip().isdigit() or not row[2].strip().isdigit():
+                                continue
                             cnpj = base + row[1].strip().zfill(4) + row[2].strip().zfill(2)
                             if len(cnpj) != 14:
                                 continue
