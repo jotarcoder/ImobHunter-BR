@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+
+import httpx
 from urllib.parse import urlparse
 
 from PySide6.QtCore import QSettings
@@ -86,7 +88,12 @@ class SourceSettingsDialog(QDialog):
                 getattr(geosampa, "endpoint", "https://wfs.geosampa.prefeitura.sp.gov.br/geoserver/geoportal/ows"),
             ))
         )
-        form.addRow("GeoSampa — endpoint WFS", self.geosampa_url)
+        geosampa_row = QHBoxLayout()
+        geosampa_row.addWidget(self.geosampa_url, 1)
+        geosampa_test = QPushButton("Testar conexão")
+        geosampa_test.clicked.connect(self._test_geosampa)
+        geosampa_row.addWidget(geosampa_test)
+        form.addRow("GeoSampa — endpoint WFS", geosampa_row)
 
         sinter = registry.get("sinter_cib")
         self.sinter_url = QLineEdit(
@@ -119,6 +126,11 @@ class SourceSettingsDialog(QDialog):
             field.setPlaceholderText(placeholder)
             self.wfs_fields[key] = field
             form.addRow(label, field)
+
+        self.wfs_token = QLineEdit()
+        self.wfs_token.setEchoMode(QLineEdit.EchoMode.Password)
+        self.wfs_token.setPlaceholderText("Bearer token, se o serviço exigir")
+        form.addRow("WFS municipal — token", self.wfs_token)
 
         inde_path = QLineEdit(str(self.settings.value("sources/inde/catalog_path", "")))
         inde_path.setPlaceholderText("Catálogo INDE autorizado local (CSV/JSON)")
@@ -213,6 +225,11 @@ class SourceSettingsDialog(QDialog):
             sinter = self.registry.get("sinter_cib")
             if sinter is not None:
                 sinter.api_token = token
+            wfs = self.registry.get("municipal_wfs")
+            wfs_token = keyring.get_password("ImobHunter-BR", "municipal_wfs_api_token") or ""
+            self.wfs_token.setText(wfs_token)
+            if wfs is not None:
+                wfs.api_token = wfs_token
         except Exception:  # noqa: BLE001 - keyring backends expose different exception types.
             # Missing/unavailable OS keyring is expected on some portable systems.
             self.sinter_token.clear()
@@ -227,6 +244,43 @@ class SourceSettingsDialog(QDialog):
             return True
         except Exception:  # noqa: BLE001 - keyring backend errors vary by platform.
             return False
+
+    def _test_geosampa(self) -> None:
+        endpoint = self.geosampa_url.text().strip()
+        parsed = urlparse(endpoint)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            QMessageBox.warning(self, "GeoSampa", "Informe um endpoint HTTP/HTTPS válido.")
+            return
+        try:
+            response = httpx.get(
+                endpoint,
+                params={"service": "WFS", "version": "1.0.0", "request": "GetCapabilities"},
+                timeout=12.0,
+                follow_redirects=True,
+            )
+            response.raise_for_status()
+            payload = response.text
+        except httpx.HTTPError as exc:
+            QMessageBox.warning(self, "GeoSampa", f"Falha na conexão WFS: {exc}")
+            return
+        if "WFS_Capabilities" not in payload:
+            QMessageBox.warning(
+                self, "GeoSampa",
+                "O servidor respondeu, mas não retornou um documento WFS GetCapabilities válido."
+            )
+            return
+        layer = "geoportal:lote_cidadao"
+        if layer not in payload:
+            QMessageBox.warning(
+                self, "GeoSampa",
+                f"Conexão WFS respondeu, mas a camada padrão {layer} não foi encontrada. "
+                "Confirme o nome da camada antes de pesquisar."
+            )
+            return
+        QMessageBox.information(
+            self, "GeoSampa",
+            f"Conexão WFS validada. Camada {layer} anunciada pelo servidor."
+        )
 
     def _validate(self) -> None:
         problems: list[str] = []
@@ -260,6 +314,13 @@ class SourceSettingsDialog(QDialog):
                 "nem garante que um serviço remoto aceite a consulta; use a pesquisa e o status "
                 "das fontes para confirmar o funcionamento real."
             )
+
+    def _existing_wfs_token(self) -> str:
+        try:
+            import keyring
+            return keyring.get_password("ImobHunter-BR", "municipal_wfs_api_token") or ""
+        except Exception:  # noqa: BLE001 - keyring backend errors vary by platform.
+            return ""
 
     def _existing_token(self) -> str:
         try:
@@ -318,11 +379,22 @@ class SourceSettingsDialog(QDialog):
                 setattr(wfs, key, value)
         self.settings.setValue("sources/inde/catalog_path", catalog_path)
         self.settings.sync()
-        if token and not token_saved:
+        wfs_token = self.wfs_token.text().strip()
+        wfs_token_saved = True
+        if wfs_token:
+            try:
+                import keyring
+                keyring.set_password("ImobHunter-BR", "municipal_wfs_api_token", wfs_token)
+            except Exception:  # noqa: BLE001 - keyring backend errors vary by platform.
+                wfs_token_saved = False
+        wfs = self.registry.get("municipal_wfs")
+        if wfs is not None:
+            wfs.api_token = wfs_token or self._existing_wfs_token()
+        if (token and not token_saved) or (wfs_token and not wfs_token_saved):
             QMessageBox.warning(
                 self, "Token não persistido",
                 "As demais configurações foram salvas, mas o cofre de credenciais do sistema "
-                "não está disponível. O token permanece apenas nesta sessão."
+                "não está disponível. Um ou mais tokens permanecem apenas nesta sessão."
             )
         QMessageBox.information(self, "Configurações salvas", "As configurações foram aplicadas à pesquisa nesta sessão.")
         self.accept()
@@ -363,3 +435,8 @@ def apply_saved_source_settings(registry) -> None:
             value = str(settings.value(f"sources/municipal_wfs/{key}", "") or "").strip()
             if value:
                 setattr(wfs, key, value)
+        try:
+            import keyring
+            wfs.api_token = keyring.get_password("ImobHunter-BR", "municipal_wfs_api_token") or ""
+        except Exception:  # noqa: BLE001 - keyring backend errors vary by platform.
+            wfs.api_token = ""

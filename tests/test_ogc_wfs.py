@@ -58,3 +58,20 @@ def test_configurable_wfs_rejects_unsafe_field_names() -> None:
     )
     with pytest.raises(ValueError, match="Invalid WFS"):
         adapter.search(SearchRequest(address="Rua A"))
+
+
+def test_configurable_wfs_sends_bearer_token() -> None:
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["authorization"] = request.headers.get("Authorization")
+        return httpx.Response(200, json={"features": []})
+
+    adapter = ConfigurableWFSAdapter(
+        endpoint="https://example.test/ows",
+        layer="cadastro:lotes",
+        api_token="secret-test-token",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    adapter.search(SearchRequest(address="Rua A"))
+    assert captured["authorization"] == "Bearer secret-test-token"

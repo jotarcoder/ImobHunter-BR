@@ -48,6 +48,7 @@ class ConfigurableWFSAdapter(SourceAdapter):
         lot_field: str = "lote",
         area_field: str = "area_m2",
         id_field: str = "id",
+        api_token: str = "",
         timeout: float = 20.0,
         client: Any | None = None,
     ) -> None:
@@ -59,6 +60,7 @@ class ConfigurableWFSAdapter(SourceAdapter):
         self.lot_field = lot_field.strip()
         self.area_field = area_field.strip()
         self.id_field = id_field.strip()
+        self.api_token = api_token.strip()
         self.timeout = timeout
         self._client = client
 
@@ -107,7 +109,8 @@ class ConfigurableWFSAdapter(SourceAdapter):
         client = self._client or httpx.Client(timeout=self.timeout)
         close_client = self._client is None
         try:
-            response = client.get(self.endpoint, params=params)
+            headers = {"Authorization": f"Bearer {self.api_token}"} if self.api_token else {}
+            response = client.get(self.endpoint, params=params, headers=headers)
             response.raise_for_status()
             payload = response.json()
         except httpx.HTTPError as exc:
