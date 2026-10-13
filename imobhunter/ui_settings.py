@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 SOURCE_FILES = (
-    ("cnefe", "IBGE / CNEFE", "data_path", "CSV, ZIP, JSON ou GeoJSON"),
+    ("ibge_cnefe", "IBGE / CNEFE", "data_path", "CSV, ZIP, JSON ou GeoJSON"),
     ("sinter_cib", "SINTER / CIB", "data_path", "CSV, JSON ou GeoJSON"),
     ("sncr", "SNCR / INCRA", "data_path", "CSV, JSON ou GeoJSON"),
     ("sicar", "SICAR / CAR", "data_path", "CSV, JSON ou GeoJSON"),
