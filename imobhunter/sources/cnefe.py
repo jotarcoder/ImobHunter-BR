@@ -261,11 +261,12 @@ class CNEFEAdapter(SourceAdapter):
             raise RuntimeError(status.message or "CNEFE source unavailable")
 
         normalized = normalize_request(request)
-        if not normalized.street_name or not normalized.number:
+        if not normalized.street_name:
             return []
 
         wanted_street = normalize_text(normalized.street_name) or ""
-        wanted_number = normalize_text(normalized.number) or ""
+        wanted_number = normalize_text(normalized.number)
+        max_results = 100
         wanted_city = normalize_text(normalized.city)
         wanted_state = normalize_text(normalized.state)
         if not wanted_city or not wanted_state:
@@ -278,9 +279,18 @@ class CNEFEAdapter(SourceAdapter):
 
         records: list[PropertyRecord] = []
         for row in _rows(data_path):
-            street = normalize_text(str(_pick(row, "street") or "")) or ""
-            number = normalize_text(str(_pick(row, "number") or "")) or ""
-            if street != wanted_street or number != wanted_number:
+            raw_street = str(_pick(row, "street") or "")
+            street = normalize_text(raw_street) or ""
+            # CNEFE may store the street type inside NM_LOGR ("R PAMPLONA"),
+            # while the search parser separates it ("PAMPLONA"). Compare both
+            # representations so valid streets are not discarded.
+            parsed_row_street = normalize_text(
+                normalize_request(SearchRequest(address=raw_street)).street_name
+            ) or street
+            number = normalize_text(str(_pick(row, "number") or ""))
+            if wanted_street not in {street, parsed_row_street}:
+                continue
+            if wanted_number and number != wanted_number:
                 continue
             row_city = normalize_text(str(_pick(row, "city") or ""))
             row_state = normalize_text(str(_pick(row, "state") or ""))
@@ -318,4 +328,6 @@ class CNEFEAdapter(SourceAdapter):
                     provenance=(Provenance(self.source_id, confidence=0.90),),
                 )
             )
+            if len(records) >= max_results:
+                break
         return records
