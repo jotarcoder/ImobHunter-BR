@@ -25,6 +25,19 @@ def test_csv_import_and_radius_search(tmp_path: Path):
     assert found[0]["revenue_estimate"] == 90000
 
 
+def test_csv_import_is_idempotent_for_same_source_rows(tmp_path: Path):
+    csv_path = tmp_path / "companies.csv"
+    csv_path.write_text(
+        "name,cnpj,cnae,latitude,longitude,source\\n"
+        "Empresa A,12.345.678/0001-90,comercio,-23.55,-46.63,Receita aberta\\n",
+        encoding="utf-8",
+    )
+    store = MarketIntelligenceStore(tmp_path / "local.sqlite3")
+    assert store.import_csv(csv_path) == 1
+    assert store.import_csv(csv_path) == 0
+    assert store.count() == 1
+
+
 def test_import_rejects_missing_coordinates(tmp_path: Path):
     csv_path = tmp_path / "bad.csv"
     csv_path.write_text("name,cnpj\nEmpresa A,123\n", encoding="utf-8")
