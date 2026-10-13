@@ -72,9 +72,9 @@ def test_cnefe_csv_search(tmp_path) -> None:
 def test_cnefe_matches_street_type_prefix_and_address_only_search(tmp_path) -> None:
     path = tmp_path / "cnefe.csv"
     path.write_text(
-        "NM_LOGR;NUMERO;NM_MUNICIPIO;SIGLA_UF;COD_UNICO;QUADRA\\n"
-        "R PAMPLONA;1578;SAO PAULO;SP;789;12\\n"
-        "R PAMPLONA;1600;SAO PAULO;SP;790;13\\n",
+        "NM_LOGR;NUMERO;NM_MUNICIPIO;SIGLA_UF;COD_UNICO;QUADRA\n"
+        "R PAMPLONA;1578;SAO PAULO;SP;789;12\n"
+        "R PAMPLONA;1600;SAO PAULO;SP;790;13\n",
         encoding="utf-8",
     )
 
