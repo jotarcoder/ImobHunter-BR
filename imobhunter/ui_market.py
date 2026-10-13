@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
+from urllib.parse import parse_qs
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, Signal
 from PySide6.QtWidgets import (
@@ -127,9 +128,30 @@ class MarketIntelligenceDialog(QDialog):
         map_title.setStyleSheet("font-size:16px;font-weight:750;")
         root.addWidget(map_title)
         try:
+            from PySide6.QtWebEngineCore import QWebEnginePage
             from PySide6.QtWebEngineWidgets import QWebEngineView
+
+            class MapPage(QWebEnginePage):
+                map_clicked = Signal(float, float)
+
+                def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
+                    if url.scheme() == "imobhunter" and url.host() == "mapclick":
+                        query = parse_qs(url.query())
+                        try:
+                            lat = float(query["lat"][0])
+                            lon = float(query["lon"][0])
+                            if -90 <= lat <= 90 and -180 <= lon <= 180:
+                                self.map_clicked.emit(lat, lon)
+                        except (KeyError, ValueError, IndexError):
+                            pass
+                        return False
+                    return super().acceptNavigationRequest(url, navigation_type, is_main_frame)
+
             self.map_view = QWebEngineView(self)
             self.map_view.setMinimumHeight(250)
+            self.map_page = MapPage(self.map_view)
+            self.map_page.map_clicked.connect(self._map_clicked)
+            self.map_view.setPage(self.map_page)
             root.addWidget(self.map_view, 2)
         except ImportError:
             self.map_view = None
@@ -333,6 +355,12 @@ class MarketIntelligenceDialog(QDialog):
         self._render_heatmap(lat, lon)
         self.status.setText(f"{len(self.results)} empresa(s) encontrada(s) no raio de {radius:g} km.")
 
+    def _map_clicked(self, latitude: float, longitude: float) -> None:
+        """Recenter the regional search on the point selected on the map."""
+        self.latitude.setText(f"{latitude:.6f}")
+        self.longitude.setText(f"{longitude:.6f}")
+        self._search()
+
     def _render_heatmap(self, latitude: float, longitude: float) -> None:
         if self.map_view is None:
             return
@@ -365,6 +393,9 @@ if(points.length && L.heatLayer) {{
   map.fitBounds(bounds.pad(0.15),{{maxZoom:15}});
 }}
 document.getElementById('count').textContent=points.length;
+map.on('click', function(event) {{
+  window.location.href='imobhunter://mapclick?lat='+event.latlng.lat+'&lon='+event.latlng.lng;
+}});
 </script></body></html>"""
         self.map_view.setHtml(html)
 
