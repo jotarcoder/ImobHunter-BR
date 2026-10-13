@@ -165,13 +165,14 @@ class GeoSampaAdapter(SourceAdapter):
             sql = _text(properties, "nr_contribuinte")
             if not sql and setor and quadra and lote and digito:
                 sql = f"{setor}.{quadra}.{lote}-{digito}"
-            property_id = _text(
+            # Prefer the fiscal taxpayer number (SQL/IPTU) over generic parcel IDs.
+            property_id = sql or _text(
                 properties,
-                "cd_identificador",
-                "cd_identificador_original_lote",
                 "nr_contribuinte",
                 "cd_contribuinte",
                 "codigo_contribuinte",
+                "cd_identificador",
+                "cd_identificador_original_lote",
             )
             cib = _text(properties, "cd_cib")
 
@@ -199,6 +200,7 @@ class GeoSampaAdapter(SourceAdapter):
                         "source": self.source_id,
                         "sector": setor,
                         "sql": sql,
+                        "iptu_contributor": sql,
                         "cib": cib,
                         "built_area_m2": _float(properties, "qt_area_construida"),
                         "street_code": _text(properties, "cd_logradouro"),
