@@ -209,3 +209,42 @@ def test_geosampa_search_by_fiscal_block_and_lot() -> None:
     assert "cd_lote" in captured["url"]
     assert "020" in captured["url"]
     assert "0030" in captured["url"]
+
+
+
+def test_geosampa_falls_back_to_street_when_exact_house_number_has_no_match() -> None:
+    captured: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        cql = request.url.params.get("CQL_FILTER", "")
+        captured.append(cql)
+        if "cd_numero_porta" in cql:
+            return httpx.Response(200, json={"features": []}, request=request)
+        return httpx.Response(
+            200,
+            json={
+                "features": [{
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [-46.65, -23.57]},
+                    "properties": {
+                        "cd_setor_fiscal": "010",
+                        "cd_quadra_fiscal": "020",
+                        "cd_lote": "0030",
+                        "cd_digito_sql": "1",
+                        "nm_logradouro_completo": "R PAMPLONA",
+                    },
+                }]
+            },
+            request=request,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    records = GeoSampaAdapter(client=client).search(
+        SearchRequest(address="Rua Pamplona", number="1578", city="São Paulo", state="SP")
+    )
+
+    assert len(records) == 1
+    assert len(captured) == 2
+    assert "cd_numero_porta" in captured[0]
+    assert "cd_numero_porta" not in captured[1]
+    assert records[0].attributes["iptu_contributor"] == "010.020.0030-1"
