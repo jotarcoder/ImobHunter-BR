@@ -132,6 +132,21 @@ class SourceSettingsDialog(QDialog):
         self.wfs_token.setPlaceholderText("Bearer token, se o serviço exigir")
         form.addRow("WFS municipal — token", self.wfs_token)
 
+        self.inde_endpoint = QLineEdit(str(
+            self.settings.value("sources/inde/csw_endpoint", "https://metadados.inde.gov.br/geonetwork/srv/por/csw")
+        ))
+        self.inde_endpoint.setPlaceholderText("Endpoint CSW oficial da INDE")
+        form.addRow("INDE — endpoint CSW online", self.inde_endpoint)
+
+        self.inde_query = QLineEdit()
+        self.inde_query.setPlaceholderText("Ex.: cadastro imobiliário, uso do solo, limites municipais")
+        inde_search_button = QPushButton("Pesquisar no catálogo online")
+        inde_search_button.clicked.connect(self._search_inde_online)
+        inde_search_row = QHBoxLayout()
+        inde_search_row.addWidget(self.inde_query, 1)
+        inde_search_row.addWidget(inde_search_button)
+        form.addRow("INDE — descobrir geosserviços", inde_search_row)
+
         inde_path = QLineEdit(str(self.settings.value("sources/inde/catalog_path", "")))
         inde_path.setPlaceholderText("Catálogo INDE autorizado local (CSV/JSON)")
         self.inde_catalog_path = inde_path
@@ -174,6 +189,35 @@ class SourceSettingsDialog(QDialog):
         root.addLayout(buttons)
 
         self._load_saved_token()
+
+    def _search_inde_online(self) -> None:
+        query = self.inde_query.text().strip()
+        endpoint = self.inde_endpoint.text().strip()
+        try:
+            from .sources.inde import INDECatalog
+            services = INDECatalog.search_remote(query, endpoint)
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            QMessageBox.warning(self, "Catálogo INDE", str(exc))
+            return
+        self.settings.setValue("sources/inde/csw_endpoint", endpoint)
+        if not services:
+            QMessageBox.information(
+                self, "Catálogo INDE",
+                "A pesquisa online não retornou metadados para esse termo. Tente outra palavra-chave."
+            )
+            return
+        lines = [
+            f"{item.title} | {item.service_type or 'tipo de serviço não identificado'}"
+            f"\nResponsável: {item.provider or 'não informado'}"
+            f"\nURL: {item.url or 'não informada'}"
+            f"\nID: {item.service_id}"
+            for item in services[:50]
+        ]
+        suffix = f"\n\nExibindo 50 de {len(services)} registros." if len(services) > 50 else ""
+        QMessageBox.information(
+            self, f"Resultados INDE ({len(services)})",
+            "\n\n".join(lines) + suffix
+        )
 
     def _show_inde_catalog(self) -> None:
         path = Path(self.inde_catalog_path.text().strip()).expanduser()
@@ -378,6 +422,7 @@ class SourceSettingsDialog(QDialog):
             if wfs is not None and hasattr(wfs, key):
                 setattr(wfs, key, value)
         self.settings.setValue("sources/inde/catalog_path", catalog_path)
+        self.settings.setValue("sources/inde/csw_endpoint", self.inde_endpoint.text().strip())
         self.settings.sync()
         wfs_token = self.wfs_token.text().strip()
         wfs_token_saved = True

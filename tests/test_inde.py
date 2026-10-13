@@ -69,3 +69,38 @@ def test_inde_rejects_unknown_format(tmp_path):
 
     with pytest.raises(ValueError, match="CSV or JSON"):
         INDECatalog(path).load()
+
+
+def test_inde_remote_csw_search_parses_records_and_uses_query() -> None:
+    from imobhunter.sources.inde import DEFAULT_INDE_CSW_ENDPOINT
+    import httpx
+
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["body"] = request.content.decode("utf-8")
+        return httpx.Response(200, text="""<?xml version="1.0"?>
+        <csw:GetRecordsResponse xmlns:csw="http://www.opengis.net/cat/csw/2.0.2"
+          xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dct="http://purl.org/dc/terms/">
+          <csw:SearchResults numberOfRecordsMatched="1">
+            <csw:Record>
+              <dc:identifier>inde-123</dc:identifier>
+              <dc:title>Cadastro municipal de lotes</dc:title>
+              <dc:creator>Prefeitura</dc:creator>
+              <dc:subject>cadastro</dc:subject>
+              <dct:references scheme="OGC:WFS">https://geo.example.gov/ows</dct:references>
+              <dc:date>2026-01-01</dc:date>
+            </csw:Record>
+          </csw:SearchResults>
+        </csw:GetRecordsResponse>""")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    result = INDECatalog.search_remote("cadastro", client=client)
+
+    assert DEFAULT_INDE_CSW_ENDPOINT in captured["url"]
+    assert "cadastro" in captured["body"]
+    assert len(result) == 1
+    assert result[0].service_id == "inde-123"
+    assert result[0].service_type == "WFS"
+    assert result[0].url == "https://geo.example.gov/ows"
