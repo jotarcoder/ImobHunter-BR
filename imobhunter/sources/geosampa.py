@@ -112,12 +112,18 @@ class GeoSampaAdapter(SourceAdapter):
                 f"cd_lote='{_escape_cql(lot)}'",
             ]
         else:
-            if not normalized.street_name or not normalized.number:
+            if not normalized.street_name:
                 return []
             filters = [
                 f"nm_logradouro_completo ILIKE '%{_escape_cql(normalized.street_name)}%'",
-                f"cd_numero_porta='{_escape_cql(normalized.number)}'",
             ]
+            # Address-only searches should return candidate parcels instead of
+            # silently returning no results. Keep the exact door-number filter
+            # when the user supplied one.
+            if normalized.number:
+                filters.append(
+                    f"cd_numero_porta='{_escape_cql(normalized.number)}'"
+                )
         cql_filter = " AND ".join(filters)
         params = {
             "service": "WFS",
