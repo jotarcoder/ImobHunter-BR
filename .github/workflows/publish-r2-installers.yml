@@ -1,11 +1,8 @@
 name: Publish installers to Cloudflare R2
 
-# Publishing is manual by default. This one-time marked commit republishes the
-# already-built v0.1.16 release assets after the user removed the R2 objects.
+# Publishing is intentionally manual: validate all four installers and the
+# license/source flows before dispatching this workflow.
 on:
-  push:
-    branches: [main]
-    paths: [".github/workflows/publish-r2-installers.yml"]
   workflow_dispatch:
     inputs:
       release_tag:
@@ -18,7 +15,7 @@ permissions:
 
 jobs:
   publish:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[republish-r2-0.1.16]'))
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Select release tag
@@ -26,11 +23,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           INPUT_TAG: ${{ inputs.release_tag }}
-          EVENT_NAME: ${{ github.event_name }}
         shell: bash
         run: |
           set -euo pipefail
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then tag="$INPUT_TAG"; else tag="v0.1.16"; fi
+          tag="$INPUT_TAG"
           if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::Invalid release tag: expected vMAJOR.MINOR.PATCH."
             exit 1
@@ -67,7 +63,6 @@ jobs:
             echo "::error::Missing R2 credentials in repository secrets R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY."
             exit 1
           fi
-          # GitHub secrets can be pasted with a trailing newline; normalize without logging credentials.
           AWS_ACCESS_KEY_ID="$(printf %s "$AWS_ACCESS_KEY_ID" | tr -d "\r\n")"
           AWS_SECRET_ACCESS_KEY="$(printf %s "$AWS_SECRET_ACCESS_KEY" | tr -d "\r\n")"
           if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
@@ -106,8 +101,6 @@ jobs:
             rm -f "$headers_file"
             echo "Public attachment download verified: $file"
 
-            # Publish a versioned Windows URL so a previous installer cannot be reused
-            # by browser/CDN caches under the stable filename.
             if [ "$file" = "ImobHunter-BR-Setup-Windows.exe" ]; then
               version="${TAG#v}"
               versioned_file="ImobHunter-BR-Setup-Windows-${version}.exe"
