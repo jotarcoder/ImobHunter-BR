@@ -103,8 +103,17 @@ class SourceSettingsDialog(QDialog):
         form.addRow("SINTER/CIB — URL autorizada", self.sinter_url)
         self.sinter_token = QLineEdit()
         self.sinter_token.setEchoMode(QLineEdit.EchoMode.Password)
-        self.sinter_token.setPlaceholderText("Token de acesso (opcional; não exibido novamente)")
-        form.addRow("SINTER/CIB — token", self.sinter_token)
+        self.sinter_token.setPlaceholderText("Token de acesso autorizado")
+        sinter_token_row = QHBoxLayout()
+        sinter_token_row.addWidget(self.sinter_token, 1)
+        sinter_clear_token = QPushButton("Remover token salvo")
+        sinter_clear_token.clicked.connect(
+            lambda checked=False: self._clear_saved_token(
+                "sinter_cib_api_token", self.sinter_token, "sinter_cib"
+            )
+        )
+        sinter_token_row.addWidget(sinter_clear_token)
+        form.addRow("SINTER/CIB — token", sinter_token_row)
 
         municipal_wfs = registry.get("municipal_wfs")
         self.wfs_fields = {}
@@ -129,8 +138,17 @@ class SourceSettingsDialog(QDialog):
 
         self.wfs_token = QLineEdit()
         self.wfs_token.setEchoMode(QLineEdit.EchoMode.Password)
-        self.wfs_token.setPlaceholderText("Bearer token, se o serviço exigir")
-        form.addRow("WFS municipal — token", self.wfs_token)
+        self.wfs_token.setPlaceholderText("Bearer token autorizado, se necessário")
+        wfs_token_row = QHBoxLayout()
+        wfs_token_row.addWidget(self.wfs_token, 1)
+        wfs_clear_token = QPushButton("Remover token salvo")
+        wfs_clear_token.clicked.connect(
+            lambda checked=False: self._clear_saved_token(
+                "municipal_wfs_api_token", self.wfs_token, "municipal_wfs"
+            )
+        )
+        wfs_token_row.addWidget(wfs_clear_token)
+        form.addRow("WFS municipal — token", wfs_token_row)
 
         self.inde_endpoint = QLineEdit(str(
             self.settings.value("sources/inde/csw_endpoint", "https://metadados.inde.gov.br/geonetwork/srv/por/csw")
@@ -260,6 +278,32 @@ class SourceSettingsDialog(QDialog):
         path, _ = QFileDialog.getOpenFileName(self, "Selecionar base local", field.text(), patterns)
         if path:
             field.setText(path)
+
+    def _clear_saved_token(self, key: str, field: QLineEdit, source_id: str) -> None:
+        """Explicitly remove a saved credential and clear it from the active adapter."""
+        try:
+            import keyring
+            try:
+                keyring.delete_password("ImobHunter-BR", key)
+            except keyring.errors.PasswordDeleteError:
+                # No stored secret is already the requested end state.
+                pass
+        except Exception as exc:  # noqa: BLE001 - keyring backends vary by platform.
+            QMessageBox.warning(
+                self,
+                "Cofre de credenciais",
+                "Não foi possível remover a credencial salva pelo sistema. "
+                f"Detalhe: {type(exc).__name__}: {exc}",
+            )
+            return
+        field.clear()
+        source = self.registry.get(source_id)
+        if source is not None and hasattr(source, "api_token"):
+            source.api_token = ""
+        QMessageBox.information(
+            self, "Credencial removida",
+            "O token foi removido do cofre e da sessão atual."
+        )
 
     def _load_saved_token(self) -> None:
         try:
