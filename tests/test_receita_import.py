@@ -29,7 +29,7 @@ def test_import_skips_establishment_with_empty_cnpj_base(tmp_path: Path):
     fields[2] = "95"
     fields[4] = "REGISTRO SEM CNPJ BASE"
     with zipfile.ZipFile(archive_path, "w") as archive:
-        archive.writestr("ESTABELECIMENTOS.CSV", (";".join(fields) + "\\n").encode("latin-1"))
+        archive.writestr("ESTABELECIMENTOS.CSV", (";".join(fields) + "\n").encode("latin-1"))
 
     counts = import_receita_archives(db, [archive_path])
     assert counts["establishments"] == 0
