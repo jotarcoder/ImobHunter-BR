@@ -118,19 +118,41 @@ class MarketIntelligenceStore:
                 lat, lon = _number(row.get("latitude")), _number(row.get("longitude"))
                 if not name or lat is None or lon is None or not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
                     continue
+                values = (
+                    name, row.get("cnpj", ""), row.get("cnae", ""), row.get("address", ""),
+                    row.get("city", ""), row.get("state", "").upper(), lat, lon,
+                    _number(row.get("revenue_reported")), row.get("revenue_period", ""),
+                    _number(row.get("revenue_estimate")), row.get("estimate_method", ""),
+                    row.get("source", ""), row.get("updated_at", ""),
+                )
                 with self._connect() as db:
-                    db.execute(
-                        """INSERT INTO businesses
-                        (name,cnpj,cnae,address,city,state,latitude,longitude,revenue_reported,
-                         revenue_period,revenue_estimate,estimate_method,source,updated_at)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                        (name, row.get("cnpj",""), row.get("cnae",""), row.get("address",""),
-                         row.get("city",""), row.get("state","").upper(), lat, lon,
-                         _number(row.get("revenue_reported")), row.get("revenue_period",""),
-                         _number(row.get("revenue_estimate")), row.get("estimate_method",""),
-                         row.get("source",""), row.get("updated_at",""))
-                    )
-                imported += 1
+                    cnpj = "".join(ch for ch in values[1] if ch.isdigit())
+                    if cnpj:
+                        existing = db.execute(
+                            "SELECT id FROM businesses WHERE cnpj=? LIMIT 1", (values[1],)
+                        ).fetchone()
+                    else:
+                        existing = db.execute(
+                            """SELECT id FROM businesses
+                               WHERE name=? AND latitude=? AND longitude=? AND source=? LIMIT 1""",
+                            (name, lat, lon, values[12]),
+                        ).fetchone()
+                    if existing:
+                        db.execute(
+                            """UPDATE businesses SET name=?,cnpj=?,cnae=?,address=?,city=?,state=?,
+                               latitude=?,longitude=?,revenue_reported=?,revenue_period=?,
+                               revenue_estimate=?,estimate_method=?,source=?,updated_at=? WHERE id=?""",
+                            (*values, existing["id"]),
+                        )
+                    else:
+                        db.execute(
+                            """INSERT INTO businesses
+                            (name,cnpj,cnae,address,city,state,latitude,longitude,revenue_reported,
+                             revenue_period,revenue_estimate,estimate_method,source,updated_at)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            values,
+                        )
+                        imported += 1
         return imported
 
     def import_osm_businesses(self, places: list[dict[str, Any]]) -> int:
