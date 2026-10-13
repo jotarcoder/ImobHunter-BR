@@ -28,8 +28,8 @@ def test_csv_import_and_radius_search(tmp_path: Path):
 def test_csv_import_is_idempotent_for_same_source_rows(tmp_path: Path):
     csv_path = tmp_path / "companies.csv"
     csv_path.write_text(
-        "name,cnpj,cnae,latitude,longitude,source\\n"
-        "Empresa A,12.345.678/0001-90,comercio,-23.55,-46.63,Receita aberta\\n",
+        "name,cnpj,cnae,latitude,longitude,source\n"
+        "Empresa A,12.345.678/0001-90,comercio,-23.55,-46.63,Receita aberta\n",
         encoding="utf-8",
     )
     store = MarketIntelligenceStore(tmp_path / "local.sqlite3")
