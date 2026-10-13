@@ -47,8 +47,8 @@ class MarketIntelligenceDialog(QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("ImobHunter • Inteligência de Mercado")
-        self.resize(980, 620)
-        self.setMinimumSize(860, 540)
+        self.resize(1280, 820)
+        self.setMinimumSize(980, 680)
         data_dir = Path.home() / ".imobhunter" / "market"
         self.store = MarketIntelligenceStore(data_dir / "businesses.sqlite3")
         self._build()
@@ -79,7 +79,7 @@ class MarketIntelligenceDialog(QDialog):
         self.latitude.setPlaceholderText("Latitude do ponto central")
         self.longitude = QLineEdit()
         self.longitude.setPlaceholderText("Longitude do ponto central")
-        self.radius = QLineEdit("2")
+        self.radius = QLineEdit("5")
         self.radius.setMaximumWidth(100)
         self.segment = QComboBox()
         self.segment.addItems(["Todos os segmentos", "CNAE contém: comércio", "CNAE contém: serviços", "CNAE contém: indústria", "CNAE contém: construção"])
@@ -94,38 +94,44 @@ class MarketIntelligenceDialog(QDialog):
         controls.addWidget(search)
         root.addLayout(controls)
 
-        actions = QHBoxLayout()
+        # Ações em grelha: evita que os rótulos fiquem cortados em ecrãs menores.
+        from PySide6.QtWidgets import QGridLayout
+        actions = QGridLayout()
+        actions.setHorizontalSpacing(8)
+        actions.setVerticalSpacing(8)
         geocode_button = QPushButton("Localizar endereço")
-        geocode_button.setToolTip("Localiza um endereço por vez e preenche as coordenadas para a pesquisa por raio.")
+        geocode_button.setToolTip("Localiza um endereço e preenche as coordenadas para pesquisar por raio.")
         geocode_button.clicked.connect(self._geocode_address)
-        actions.addWidget(geocode_button)
         import_button = QPushButton("Importar CSV local")
         import_button.clicked.connect(self._import_csv)
-        actions.addWidget(import_button)
         receita_button = QPushButton("Importar ZIP oficial do CNPJ")
         receita_button.clicked.connect(self._import_receita)
-        actions.addWidget(receita_button)
         geo_button = QPushButton("Vincular coordenadas por CNPJ")
         geo_button.clicked.connect(self._import_coordinates)
-        actions.addWidget(geo_button)
         browse_button = QPushButton("Consultar base oficial")
         browse_button.clicked.connect(self._browse_receita)
-        actions.addWidget(browse_button)
-        self.online_button = QPushButton("Buscar empresas online")
+        self.online_button = QPushButton("Buscar empresas no mapa")
         self.online_button.setToolTip("Consulta estabelecimentos mapeados no OpenStreetMap dentro do raio informado.")
+        self.online_button.setObjectName("primary")
         self.online_button.clicked.connect(self._search_online)
-        actions.addWidget(self.online_button)
         export_button = QPushButton("Exportar resultados CSV")
         export_button.clicked.connect(self._export_csv)
-        actions.addWidget(export_button)
-        actions.addStretch()
-        self.status = QLabel("Banco local vazio. Importe um CSV autorizado para pesquisar.")
-        self.status.setObjectName("muted")
-        actions.addWidget(self.status)
+        action_buttons = [
+            geocode_button, import_button, receita_button, geo_button,
+            browse_button, self.online_button, export_button,
+        ]
+        for index, button in enumerate(action_buttons):
+            button.setMinimumHeight(38)
+            button.setSizePolicy(button.sizePolicy().Policy.Expanding, button.sizePolicy().Policy.Fixed)
+            actions.addWidget(button, index // 4, index % 4)
         root.addLayout(actions)
+        self.status = QLabel("Base local pronta. Localize um endereço ou importe dados empresariais para começar.")
+        self.status.setObjectName("muted")
+        self.status.setWordWrap(True)
+        root.addWidget(self.status)
 
         map_title = QLabel("Mapa de calor — concentração de estabelecimentos")
-        map_title.setStyleSheet("font-size:16px;font-weight:750;")
+        map_title.setStyleSheet("font-size:17px;font-weight:750;padding-top:6px;")
         root.addWidget(map_title)
         try:
             from PySide6.QtWebEngineCore import QWebEnginePage
@@ -164,7 +170,10 @@ class MarketIntelligenceDialog(QDialog):
             root.addWidget(fallback)
 
         self.table = QTableWidget(0, 8)
-        self.table.setMinimumHeight(160)
+        self.table.setMinimumHeight(220)
+        self.table.verticalHeader().setDefaultSectionSize(30)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setHorizontalHeaderLabels([
             "Empresa", "CNPJ", "CNAE", "Endereço", "Distância km",
             "Faturamento divulgado", "Faturamento estimado", "Fonte / atualização"
