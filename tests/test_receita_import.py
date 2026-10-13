@@ -19,3 +19,17 @@ def test_import_official_receita_zip_to_local_sqlite(tmp_path: Path):
     counts = import_receita_archives(db, [archive_path])
     assert counts["companies"] == 1
     assert counts["establishments"] == 1
+
+
+def test_import_skips_establishment_with_empty_cnpj_base(tmp_path: Path):
+    db = tmp_path / "local.sqlite3"
+    archive_path = tmp_path / "malformed.zip"
+    fields = [""] * 30
+    fields[1] = "0001"
+    fields[2] = "95"
+    fields[4] = "REGISTRO SEM CNPJ BASE"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("ESTABELECIMENTOS.CSV", (";".join(fields) + "\\n").encode("latin-1"))
+
+    counts = import_receita_archives(db, [archive_path])
+    assert counts["establishments"] == 0
