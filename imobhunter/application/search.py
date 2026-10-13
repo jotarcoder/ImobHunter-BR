@@ -37,29 +37,29 @@ class SearchService:
         source_results: list[SourceSearchResult] = []
 
         for source in self.registry.all():
-            configured = source.status()
-            if configured.status == "not_configured":
-                source_results.append(
-                    SourceSearchResult(
-                        source_id=source.source_id,
-                        name=source.name,
-                        status="not_configured",
-                        records_count=0,
-                        message=configured.message,
-                    )
-                )
-                continue
-
             try:
+                configured = source.status()
+                if configured.status == "not_configured":
+                    source_results.append(
+                        SourceSearchResult(
+                            source_id=source.source_id,
+                            name=source.name,
+                            status="not_configured",
+                            records_count=0,
+                            message=configured.message,
+                        )
+                    )
+                    continue
+
                 source_records = source.search(request)
-            except (OSError, RuntimeError, ValueError) as exc:
+            except Exception as exc:  # noqa: BLE001 - isolate a failing adapter from all other sources.
                 source_results.append(
                     SourceSearchResult(
                         source_id=source.source_id,
                         name=source.name,
                         status="error",
                         records_count=0,
-                        message=str(exc),
+                        message=f"{type(exc).__name__}: {exc}",
                     )
                 )
                 continue

@@ -141,3 +141,24 @@ def test_geosampa_surfaces_invalid_json() -> None:
         assert str(exc) == "GeoSampa returned invalid JSON"
     else:
         raise AssertionError("expected GeoSampa JSON failure")
+
+
+def test_geosampa_search_by_fiscal_block_and_lot() -> None:
+    captured: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        return httpx.Response(200, json={"features": []})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = GeoSampaAdapter(client=client)
+
+    records = adapter.search(
+        SearchRequest(block="020", lot="0030", city="São Paulo", state="SP")
+    )
+
+    assert records == []
+    assert "cd_quadra_fiscal" in captured["url"]
+    assert "cd_lote" in captured["url"]
+    assert "020" in captured["url"]
+    assert "0030" in captured["url"]

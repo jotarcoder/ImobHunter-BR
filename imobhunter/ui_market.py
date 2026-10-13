@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import csv
+import json
 from pathlib import Path
+from urllib.parse import parse_qs
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QFileDialog, QHBoxLayout, QInputDialog, QLabel,
     QLineEdit, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem,
@@ -16,13 +18,37 @@ from .application.receita_geo import import_receita_coordinates, save_geocoded_e
 from .application.address_geocoding import CachedAddressGeocoder, GeocodingError
 
 
+class _OnlineSearchSignals(QObject):
+    finished = Signal(list)
+    failed = Signal(str)
+
+
+class _OnlineSearchWorker(QRunnable):
+    def __init__(self, latitude: float, longitude: float, radius_km: float) -> None:
+        super().__init__()
+        self.latitude = latitude
+        self.longitude = longitude
+        self.radius_km = radius_km
+        self.signals = _OnlineSearchSignals()
+
+    def run(self) -> None:
+        try:
+            from .application.osm_business_search import fetch_osm_businesses
+            places = fetch_osm_businesses(self.latitude, self.longitude, self.radius_km)
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            self.signals.failed.emit(str(exc))
+            return
+        self.signals.finished.emit(places)
+
+
 class MarketIntelligenceDialog(QDialog):
     """Local-only company and geographic market explorer."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("ImobHunter • Inteligência de Mercado")
-        self.resize(1180, 720)
+        self.resize(980, 620)
+        self.setMinimumSize(860, 540)
         data_dir = Path.home() / ".imobhunter" / "market"
         self.store = MarketIntelligenceStore(data_dir / "businesses.sqlite3")
         self._build()
@@ -85,6 +111,10 @@ class MarketIntelligenceDialog(QDialog):
         browse_button = QPushButton("Consultar base oficial")
         browse_button.clicked.connect(self._browse_receita)
         actions.addWidget(browse_button)
+        self.online_button = QPushButton("Buscar empresas online")
+        self.online_button.setToolTip("Consulta estabelecimentos mapeados no OpenStreetMap dentro do raio informado.")
+        self.online_button.clicked.connect(self._search_online)
+        actions.addWidget(self.online_button)
         export_button = QPushButton("Exportar resultados CSV")
         export_button.clicked.connect(self._export_csv)
         actions.addWidget(export_button)
@@ -94,7 +124,47 @@ class MarketIntelligenceDialog(QDialog):
         actions.addWidget(self.status)
         root.addLayout(actions)
 
+        map_title = QLabel("Mapa de calor — concentração de estabelecimentos")
+        map_title.setStyleSheet("font-size:16px;font-weight:750;")
+        root.addWidget(map_title)
+        try:
+            from PySide6.QtWebEngineCore import QWebEnginePage
+            from PySide6.QtWebEngineWidgets import QWebEngineView
+
+            class MapPage(QWebEnginePage):
+                map_clicked = Signal(float, float)
+
+                def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
+                    if url.scheme() == "imobhunter" and url.host() == "mapclick":
+                        query = parse_qs(url.query())
+                        try:
+                            lat = float(query["lat"][0])
+                            lon = float(query["lon"][0])
+                            if -90 <= lat <= 90 and -180 <= lon <= 180:
+                                self.map_clicked.emit(lat, lon)
+                        except (KeyError, ValueError, IndexError):
+                            pass
+                        return False
+                    return super().acceptNavigationRequest(url, navigation_type, is_main_frame)
+
+            self.map_view = QWebEngineView(self)
+            self.map_view.setMinimumHeight(250)
+            self.map_page = MapPage(self.map_view)
+            self.map_page.map_clicked.connect(self._map_clicked)
+            self.map_view.setPage(self.map_page)
+            root.addWidget(self.map_view, 2)
+        except ImportError:
+            self.map_view = None
+            fallback = QLabel(
+                "A visualização cartográfica requer o componente Qt WebEngine desta instalação. "
+                "Os resultados e coordenadas continuam disponíveis na tabela."
+            )
+            fallback.setObjectName("muted")
+            fallback.setWordWrap(True)
+            root.addWidget(fallback)
+
         self.table = QTableWidget(0, 8)
+        self.table.setMinimumHeight(160)
         self.table.setHorizontalHeaderLabels([
             "Empresa", "CNPJ", "CNAE", "Endereço", "Distância km",
             "Faturamento divulgado", "Faturamento estimado", "Fonte / atualização"
@@ -206,6 +276,53 @@ class MarketIntelligenceDialog(QDialog):
         dialog = ReceitaBrowseDialog(self.store.path, self)
         dialog.exec()
 
+    def _search_online(self) -> None:
+        try:
+            lat = float(self.latitude.text().strip().replace(",", "."))
+            lon = float(self.longitude.text().strip().replace(",", "."))
+            radius = float(self.radius.text().strip().replace(",", "."))
+            if not (0 < radius <= 25):
+                raise ValueError("A busca online aceita raio entre 0 e 25 km.")
+            if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                raise ValueError("Coordenadas inválidas. Localize um endereço antes de pesquisar.")
+        except ValueError as exc:
+            QMessageBox.warning(self, "Busca online de empresas", str(exc))
+            return
+
+        self.online_button.setEnabled(False)
+        self.status.setText("Consultando OpenStreetMap em segundo plano…")
+        self._online_worker = _OnlineSearchWorker(lat, lon, radius)
+        self._online_worker.signals.finished.connect(
+            lambda places, r=radius: self._online_search_finished(places, r)
+        )
+        self._online_worker.signals.failed.connect(self._online_search_failed)
+        QThreadPool.globalInstance().start(self._online_worker)
+
+    def _online_search_finished(self, places: list[dict], radius: float) -> None:
+        try:
+            imported = self.store.import_osm_businesses(places)
+            self._search()
+            count = len(self.results)
+            if not places:
+                detail = "A fonte não retornou estabelecimentos mapeados para este raio."
+            elif count == 0:
+                detail = "Os locais retornados não ficaram dentro do raio após a validação."
+            else:
+                detail = f"{count} empresa(s) no raio de {radius:g} km."
+            self.status.setText(
+                f"{detail} {imported} novo(s) registro(s) salvo(s) localmente • © OpenStreetMap"
+            )
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            self.status.setText("A consulta terminou, mas não foi possível salvar os resultados.")
+            QMessageBox.warning(self, "Busca online de empresas", str(exc))
+        finally:
+            self.online_button.setEnabled(True)
+
+    def _online_search_failed(self, message: str) -> None:
+        self.online_button.setEnabled(True)
+        self.status.setText("A consulta online falhou; o restante do aplicativo continua disponível.")
+        QMessageBox.warning(self, "Busca online de empresas", message)
+
     def _search(self) -> None:
         try:
             lat = float(self.latitude.text().strip().replace(",", "."))
@@ -235,7 +352,52 @@ class MarketIntelligenceDialog(QDialog):
                     cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 self.table.setItem(row_index, column, cell)
         self.table.setSortingEnabled(True)
+        self._render_heatmap(lat, lon)
         self.status.setText(f"{len(self.results)} empresa(s) encontrada(s) no raio de {radius:g} km.")
+
+    def _map_clicked(self, latitude: float, longitude: float) -> None:
+        """Recenter the regional search on the point selected on the map."""
+        self.latitude.setText(f"{latitude:.6f}")
+        self.longitude.setText(f"{longitude:.6f}")
+        self._search()
+
+    def _render_heatmap(self, latitude: float, longitude: float) -> None:
+        if self.map_view is None:
+            return
+        points = [
+            [float(item["latitude"]), float(item["longitude"]), 0.7]
+            for item in self.results
+            if item.get("latitude") is not None and item.get("longitude") is not None
+        ]
+        points_json = json.dumps(points, ensure_ascii=True, separators=(",", ":"))
+        center_json = json.dumps([latitude, longitude])
+        html = f"""<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>html,body,#map{{height:100%;width:100%;margin:0;background:#07111b}}
+#note{{position:absolute;z-index:1000;bottom:8px;left:8px;background:#07111be8;color:#eaf2f7;
+padding:6px 9px;border-radius:6px;font:12px sans-serif}}</style></head>
+<body><div id="map"></div><div id="note">Pontos geolocalizados: <span id="count">0</span> · © OpenStreetMap</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script>
+const center={center_json}; const points={points_json};
+const map=L.map('map').setView(center,13);
+L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png',
+{{maxZoom:19,attribution:'© OpenStreetMap contributors'}}).addTo(map);
+if(points.length && L.heatLayer) {{
+  L.heatLayer(points,{{radius:28,blur:22,maxZoom:17}}).addTo(map);
+  L.circleMarker(center,{{radius:5,color:'#35ff77',fillOpacity:1}}).addTo(map);
+  const bounds=L.latLngBounds(points.map(p=>[p[0],p[1]]).concat([center]));
+  map.fitBounds(bounds.pad(0.15),{{maxZoom:15}});
+}}
+document.getElementById('count').textContent=points.length;
+map.on('click', function(event) {{
+  window.location.href='imobhunter://mapclick?lat='+event.latlng.lat+'&lon='+event.latlng.lng;
+}});
+</script></body></html>"""
+        self.map_view.setHtml(html)
 
     @staticmethod
     def _money(value) -> str:

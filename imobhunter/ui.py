@@ -24,6 +24,7 @@ from .application.coverage import DDDCoverageRegistry, load_ddd_coverage
 from .application.search import SearchResult, SearchService
 from .domain.models import SearchRequest
 from .ui_market import MarketIntelligenceDialog
+from .ui_settings import SourceSettingsDialog
 
 
 APP_STYLE = """
@@ -74,8 +75,8 @@ class SearchWorker(QRunnable):
     def run(self) -> None:
         try:
             self.signals.finished.emit(self.service.search(self.request))
-        except (RuntimeError, ValueError) as exc:
-            self.signals.failed.emit(str(exc))
+        except Exception as exc:  # noqa: BLE001 - prevent adapter/database failures from killing the UI worker.
+            self.signals.failed.emit(f"{type(exc).__name__}: {exc}")
 
 
 class MetricCard(QFrame):
@@ -153,7 +154,7 @@ class MainWindow(QMainWindow):
 
         self.nav_coverage = QPushButton("▦  Cobertura")
         self.nav_coverage.setObjectName("nav")
-        self.nav_coverage.clicked.connect(lambda: self.coverage_scroll.setFocus())
+        self.nav_coverage.clicked.connect(self._focus_coverage)
         side.addWidget(self.nav_coverage)
 
         self.nav_market = QPushButton("⌖  Inteligência de Mercado")
@@ -235,6 +236,26 @@ class MainWindow(QMainWindow):
         row.addWidget(self.state)
         row.addWidget(self.search_button)
         hero_layout.addLayout(row)
+
+        parcel_row = QHBoxLayout()
+        self.block = QLineEdit()
+        self.block.setPlaceholderText("Quadra (opcional)")
+        self.block.setMaximumWidth(190)
+        self.lot = QLineEdit()
+        self.lot.setPlaceholderText("Lote (opcional)")
+        self.lot.setMaximumWidth(150)
+        self.block.setMaximumWidth(150)
+        self.cib = QLineEdit()
+        self.cib.setPlaceholderText("Código CIB (opcional)")
+        self.cib.setMaximumWidth(180)
+        parcel_hint = QLabel("Endereço, quadra+lote ou CIB.")
+        parcel_hint.setObjectName("muted")
+        parcel_row.addWidget(self.block)
+        parcel_row.addWidget(self.lot)
+        parcel_row.addWidget(self.cib)
+        parcel_row.addWidget(parcel_hint, 1)
+        hero_layout.addLayout(parcel_row)
+
         self.search_status = QLabel("Endereço + número ou quadra + lote.")
         self.search_status.setObjectName("muted")
         hero_layout.addWidget(self.search_status)
@@ -307,21 +328,53 @@ class MainWindow(QMainWindow):
         dialog = MarketIntelligenceDialog(self)
         dialog.exec()
 
-    def _show_sources(self) -> None:
-        QMessageBox.information(
-            self,
-            "Fontes",
-            "O ImobHunter consulta apenas fontes configuradas e autorizadas. "
-            "A tela de resultados informa as fontes utilizadas e o nível de confiança."
+    def _focus_coverage(self) -> None:
+        # Bring the actual DDD controls into keyboard focus and provide visible feedback.
+        first_button = self.coverage_scroll.widget().findChild(QPushButton, "ddd")
+        if first_button is not None:
+            self.coverage_scroll.ensureWidgetVisible(first_button)
+            first_button.setFocus(Qt.FocusReason.OtherFocusReason)
+        self.search_status.setText(
+            f"Cobertura carregada: {len(self.coverage.all())} DDDs cadastrados. "
+            "Clique em um DDD para selecionar a região."
         )
+        self.metric_region.set_value("Selecione um DDD")
+
+    def _show_sources(self) -> None:
+        lines = ["Fontes registradas no aplicativo:", ""]
+        for source in self.service.registry.all():
+            try:
+                status = source.status()
+                label = {
+                    "available": "Disponível",
+                    "ok": "Disponível",
+                    "not_configured": "Não configurada",
+                    "error": "Erro de configuração",
+                }.get(status.status, status.status)
+                lines.append(f"• {source.name}: {label}")
+                if status.message:
+                    lines.append(f"  {status.message}")
+            except (OSError, RuntimeError, ValueError, TypeError) as exc:
+                lines.append(f"• {source.name}: falha ao verificar status ({exc})")
+            lines.append("")
+        lines.append(
+            "A presença na lista não garante que a fonte tenha dados para todo endereço. "
+            "A pesquisa mostra os resultados e falhas de cada fonte."
+        )
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Fontes de dados")
+        dialog.setIcon(QMessageBox.Icon.Information)
+        dialog.setText("\n".join(lines))
+        dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
+        dialog.exec()
 
     def _show_settings(self) -> None:
-        QMessageBox.information(
-            self,
-            "Configurações",
-            "A configuração avançada será liberada conforme os módulos do sistema forem ativados. "
-            "Por enquanto, o aplicativo mantém o processamento local e o banco de pesquisa no computador."
-        )
+        dialog = SourceSettingsDialog(self.service.registry, self)
+        if dialog.exec():
+            self.search_status.setText(
+                "Configurações aplicadas. As próximas pesquisas usarão as fontes atualizadas."
+            )
+            self._show_sources()
 
     def _populate_coverage(self) -> None:
         for project in self.coverage.all():
@@ -342,11 +395,24 @@ class MainWindow(QMainWindow):
         number = self.number.text().strip() or None
         city = self.city.text().strip()
         state = self.state.text().strip().upper()
-        if not address or not city or len(state) != 2:
+        block = self.block.text().strip() or None
+        lot = self.lot.text().strip() or None
+        cib = self.cib.text().strip() or None
+        has_address = bool(address and city and len(state) == 2)
+        has_parcel = bool(block and lot and city and len(state) == 2)
+        has_cib = bool(cib)
+        if not (has_address or has_parcel or has_cib):
             QMessageBox.warning(
                 self,
                 "Dados incompletos",
-                "Informe endereço, cidade e UF. O número é opcional.",
+                "Informe endereço + cidade + UF, quadra + lote + cidade + UF, ou um código CIB.",
+            )
+            return
+        if bool(block) != bool(lot):
+            QMessageBox.warning(
+                self,
+                "Identificação incompleta",
+                "Para pesquisar por cadastro fiscal, preencha quadra e lote.",
             )
             return
 
@@ -355,6 +421,9 @@ class MainWindow(QMainWindow):
             number=number,
             city=city,
             state=state,
+            block=block,
+            lot=lot,
+            cib=cib,
         )
         self.search_button.setEnabled(False)
         self.search_status.setText("Consultando fontes configuradas…")
@@ -366,6 +435,7 @@ class MainWindow(QMainWindow):
     def _search_finished(self, result: SearchResult) -> None:
         self.search_button.setEnabled(True)
         sources = result.sources
+        self._last_search_sources = sources
         found = len(result.records)
         active = sum(source.status in {"ok", "no_results"} for source in sources)
         self.metric_properties.set_value(str(found))
@@ -390,7 +460,21 @@ class MainWindow(QMainWindow):
             if widget is not None:
                 widget.deleteLater()
         if not dossiers:
-            self.dossier_layout.addWidget(QLabel("Nenhum dossiê consolidado para esta pesquisa."))
+            message = QLabel(
+                "Nenhum dossiê foi consolidado. Isso não significa necessariamente que o endereço "
+                "não exista: as fontes podem não cobrir a cidade, não ter dados para esse número "
+                "ou ter falhado durante a consulta."
+            )
+            message.setWordWrap(True)
+            self.dossier_layout.addWidget(message)
+            for source in getattr(self, "_last_search_sources", ()):
+                detail = QLabel(
+                    f"{source.name} — {source.status}: "
+                    f"{source.message or (str(source.records_count) + ' registro(s)')}"
+                )
+                detail.setWordWrap(True)
+                detail.setObjectName("muted")
+                self.dossier_layout.addWidget(detail)
             return
         for index, dossier in enumerate(dossiers, 1):
             card = QFrame()

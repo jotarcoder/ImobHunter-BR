@@ -35,3 +35,23 @@ def test_import_rejects_missing_coordinates(tmp_path: Path):
         assert "latitude" in str(exc)
     else:
         raise AssertionError("Expected invalid CSV headers to be rejected")
+
+
+def test_segment_filters_match_cnae_groups_and_osm_tags(tmp_path: Path):
+    csv_path = tmp_path / "segments.csv"
+    csv_path.write_text(
+        "name,cnae,latitude,longitude\n"
+        "Loja,4711301,-23.55,-46.63\n"
+        "Serviço,6201500,-23.55,-46.63\n"
+        "Fábrica,2511000,-23.55,-46.63\n"
+        "Construtora,4120400,-23.55,-46.63\n"
+        "Café OSM,amenity cafe,-23.55,-46.63\n"
+        "Loja OSM,shop,-23.55,-46.63\n",
+        encoding="utf-8",
+    )
+    store = MarketIntelligenceStore(tmp_path / "segments.sqlite3")
+    assert store.import_csv(csv_path) == 6
+    assert {x["name"] for x in store.search_radius(-23.55, -46.63, 1, "comércio")} == {"Loja", "Loja OSM"}
+    assert {x["name"] for x in store.search_radius(-23.55, -46.63, 1, "serviços")} == {"Serviço", "Café OSM"}
+    assert {x["name"] for x in store.search_radius(-23.55, -46.63, 1, "indústria")} == {"Fábrica"}
+    assert {x["name"] for x in store.search_radius(-23.55, -46.63, 1, "construção")} == {"Construtora"}
