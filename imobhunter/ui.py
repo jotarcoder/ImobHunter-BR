@@ -8,6 +8,7 @@ from PySide6.QtCore import QThreadPool, QObject, QRunnable, QUrl, Qt, Signal, Sl
 from PySide6.QtGui import QCursor, QDesktopServices, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -525,56 +526,98 @@ class MainWindow(QMainWindow):
         return "  •  ".join(values) or "Identificação detalhada disponível no dossiê."
 
     def _show_dossier(self, dossier) -> None:
-        dialog = QMessageBox(self)
+        dialog = QDialog(self)
         dialog.setWindowTitle("Dossiê do imóvel")
-        dialog.setIcon(QMessageBox.Icon.Information)
-        lines = [
-            "<h2>Imóvel consolidado</h2>",
-            f"<p><b>Confiança geral:</b> {dossier.score:.0f}/100</p>",
-            "<h3>Informações consolidadas</h3>",
-        ]
+        dialog.resize(820, 680)
+        dialog.setMinimumSize(620, 480)
+        root = QVBoxLayout(dialog)
+        root.setContentsMargins(20, 18, 20, 18)
+        root.setSpacing(14)
+        header = QFrame()
+        header.setObjectName("hero")
+        header_layout = QVBoxLayout(header)
+        title = QLabel("Dossiê do imóvel")
+        title.setObjectName("title")
+        subtitle = QLabel(f"Confiabilidade dos dados: {dossier.score:.0f}/100 · {len(dossier.facts)} informações consolidadas")
+        subtitle.setObjectName("muted")
+        header_layout.addWidget(title)
+        header_layout.addWidget(subtitle)
+        root.addWidget(header)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(2, 2, 8, 2)
+        content_layout.setSpacing(12)
+        registry_fact = next((fact for fact in dossier.facts if fact.field == "registry_number"), None)
+        registry_value = escape(str(registry_fact.value)) if registry_fact else "Não localizada nas fontes consultadas — isso não significa que não exista."
+        registry = QLabel("<b>Matrícula:</b> " + registry_value)
+        registry.setWordWrap(True)
+        registry.setObjectName("muted")
+        content_layout.addWidget(registry)
+        labels = {
+            "address": "Endereço", "area_m2": "Área do terreno (m²)", "cib": "CIB",
+            "property_id": "Identificador cadastral", "block": "Quadra fiscal", "lot": "Lote fiscal",
+            "attribute:sql": "Contribuinte IPTU / SQL", "attribute:iptu_contributor": "Contribuinte IPTU / SQL",
+            "attribute:built_area_m2": "Área construída (m²)", "attribute:door_number": "Número predial",
+            "attribute:sector": "Setor fiscal", "attribute:condominium": "Condomínio",
+            "attribute:lot_status": "Situação do lote", "attribute:lot_type": "Tipo de lote",
+        }
+        shown_iptu = False
         for fact in dossier.facts:
             if fact.field == "registry_number":
                 continue
-            lines.append(
-                f"<p><b>{escape(fact.field)}</b><br>"
-                f"{escape(str(fact.value))}<br>"
-                f"<small>Fonte: {escape(fact.provenance.source_id)} · "
-                f"Confiança: {fact.provenance.confidence:.0%}</small></p>"
-            )
+            if fact.field in {"attribute:sql", "attribute:iptu_contributor"}:
+                if shown_iptu:
+                    continue
+                shown_iptu = True
+            card = QFrame()
+            card.setObjectName("card")
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(14, 12, 14, 12)
+            raw_label = labels.get(fact.field, fact.field.replace("attribute:", "").replace("_", " ").capitalize())
+            label = QLabel(escape(raw_label))
+            label.setObjectName("muted")
+            value = QLabel(escape(str(fact.value)))
+            value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            value.setWordWrap(True)
+            value.setStyleSheet("font-size:16px;font-weight:700;color:#f4f8fb;")
+            source = QLabel(f"Fonte: {escape(fact.provenance.source_id)} · Confiança: {fact.provenance.confidence:.0%}")
+            source.setObjectName("muted")
+            card_layout.addWidget(label)
+            card_layout.addWidget(value)
+            card_layout.addWidget(source)
+            content_layout.addWidget(card)
+        if not shown_iptu:
+            note = QLabel("Contribuinte IPTU / SQL não veio no registro consolidado. A fonte municipal precisa retornar esse campo; não é seguro deduzi-lo de outro identificador.")
+            note.setWordWrap(True)
+            note.setStyleSheet("color:#ffcc66;")
+            content_layout.addWidget(note)
         if dossier.conflicts:
-            lines.append("<h3>Conflitos entre fontes</h3>")
+            conflict_card = QFrame()
+            conflict_card.setObjectName("card")
+            conflict_layout = QVBoxLayout(conflict_card)
+            conflict_title = QLabel("Divergências entre fontes")
+            conflict_title.setObjectName("section")
+            conflict_layout.addWidget(conflict_title)
             for conflict in dossier.conflicts:
-                values = " ↔ ".join(str(value) for value in conflict.values)
-                lines.append(f"<p><b>{conflict.field}:</b> {values}</p>")
-        else:
-            lines.append("<p>Nenhum conflito identificado entre os dados consolidados.</p>")
-        registry_fact = next(
-            (fact for fact in dossier.facts if fact.field == "registry_number"),
-            None,
-        )
-        if registry_fact:
-            lines.insert(
-                2,
-                f"<p><b>Matrícula do imóvel:</b> {escape(str(registry_fact.value))}<br>"
-                f"<small>Fonte: {escape(registry_fact.provenance.source_id)} · "
-                "confirme o número e a situação no registro oficial.</small></p>",
-            )
-        else:
-            lines.insert(
-                2,
-                "<p><b>Matrícula:</b> não localizada nas fontes consultadas. "
-                "Isso não significa que o imóvel não tenha matrícula.</p>",
-            )
-        dialog.setText("".join(lines))
-        dialog.setStandardButtons(QMessageBox.StandardButton.Close)
-        lookup_button = dialog.addButton(
-            "Consultar RI Digital", QMessageBox.ButtonRole.ActionRole
-        )
-        lookup_button.clicked.connect(
-            lambda: QDesktopServices.openUrl(QUrl("https://ridigital.org.br/"))
-        )
-        dialog.setMinimumWidth(680)
+                label = QLabel(f"{escape(str(conflict.field))}: " + " ↔ ".join(escape(str(value)) for value in conflict.values))
+                label.setWordWrap(True)
+                conflict_layout.addWidget(label)
+            content_layout.addWidget(conflict_card)
+        content_layout.addStretch()
+        scroll.setWidget(content)
+        root.addWidget(scroll, 1)
+        actions = QHBoxLayout()
+        actions.addStretch()
+        lookup_button = QPushButton("Consultar RI Digital")
+        lookup_button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://ridigital.org.br/")))
+        close_button = QPushButton("Fechar")
+        close_button.setObjectName("primary")
+        close_button.clicked.connect(dialog.accept)
+        actions.addWidget(lookup_button)
+        actions.addWidget(close_button)
+        root.addLayout(actions)
         dialog.exec()
 
     def _search_failed(self, message: str) -> None:

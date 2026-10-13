@@ -44,10 +44,18 @@ def test_receita_coordinate_join_enables_radius_search(tmp_path: Path):
     )
     result = import_receita_coordinates(db_path, csv_path)
     assert result == {"matched": 1, "inserted": 1, "updated": 0, "skipped": 0}
-    found = MarketIntelligenceStore(db_path).search_radius(-23.55, -46.63, 1)
+    store = MarketIntelligenceStore(db_path)
+    found = store.search_radius(-23.55, -46.63, 1)
     assert len(found) == 1
     assert found[0]["cnpj"] == "12345678000199"
     assert found[0]["name"] == "LOJA EXEMPLO"
+
+    # Re-importing the same coordinate file refreshes the existing CNPJ row,
+    # instead of creating a second business record.
+    result_again = import_receita_coordinates(db_path, csv_path)
+    assert result_again == {"matched": 1, "inserted": 0, "updated": 1, "skipped": 0}
+    assert store.count() == 1
+    assert len(store.search_radius(-23.55, -46.63, 1)) == 1
 
 
 def test_coordinate_import_skips_unknown_and_invalid_coordinates(tmp_path: Path):
@@ -82,3 +90,25 @@ def test_coordinate_import_requires_receita_tables(tmp_path: Path):
 
     with pytest.raises(ValueError, match="Importe primeiro"):
         import_receita_coordinates(db_path, csv_path)
+
+
+def test_radius_search_excludes_registered_businesses_without_coordinates(tmp_path: Path):
+    store = MarketIntelligenceStore(tmp_path / "market.sqlite3")
+    csv_path = tmp_path / "companies.csv"
+    csv_path.write_text(
+        "name,cnpj,cnae,latitude,longitude\n"
+        "Geolocalizada,123,4711301,-23.55,-46.63\n"
+        "Sem coordenadas,456,4711301,,\n",
+        encoding="utf-8",
+    )
+    assert store.import_csv(csv_path) == 1
+    # Receita registrations can exist locally before any coordinates are linked.
+    import sqlite3
+    with sqlite3.connect(store.path) as db:
+        db.execute(
+            "INSERT INTO businesses (name, cnpj, cnae) VALUES (?, ?, ?)",
+            ("Sem coordenadas", "456", "4711301"),
+        )
+    assert store.count() == 2
+    found = store.search_radius(-23.55, -46.63, 2)
+    assert [item["name"] for item in found] == ["Geolocalizada"]

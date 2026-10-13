@@ -91,7 +91,11 @@ class GeoSampaAdapter(SourceAdapter):
             source_id=self.source_id,
             name=self.name,
             status="available",
-            message="GeoSampa WFS cadastral layer configured",
+            message=(
+                "Camada cadastral municipal de São Paulo: lote, quadra, SQL/IPTU, "
+                "área e geometria quando fornecidos. Esta camada não confirma, por si só, "
+                "nome/CPF do proprietário nem débitos atuais."
+            ),
         )
 
     def search(self, request: SearchRequest) -> list[PropertyRecord]:
@@ -112,12 +116,18 @@ class GeoSampaAdapter(SourceAdapter):
                 f"cd_lote='{_escape_cql(lot)}'",
             ]
         else:
-            if not normalized.street_name or not normalized.number:
+            if not normalized.street_name:
                 return []
             filters = [
                 f"nm_logradouro_completo ILIKE '%{_escape_cql(normalized.street_name)}%'",
-                f"cd_numero_porta='{_escape_cql(normalized.number)}'",
             ]
+            # Address-only searches should return candidate parcels instead of
+            # silently returning no results. Keep the exact door-number filter
+            # when the user supplied one.
+            if normalized.number:
+                filters.append(
+                    f"cd_numero_porta='{_escape_cql(normalized.number)}'"
+                )
         cql_filter = " AND ".join(filters)
         params = {
             "service": "WFS",
@@ -159,13 +169,15 @@ class GeoSampaAdapter(SourceAdapter):
             sql = _text(properties, "nr_contribuinte")
             if not sql and setor and quadra and lote and digito:
                 sql = f"{setor}.{quadra}.{lote}-{digito}"
-            property_id = _text(
+            # The public cadastral layer's SQL/IPTU number identifies the fiscal
+            # registration; it must not be presented as proof of legal ownership.
+            property_id = sql or _text(
                 properties,
-                "cd_identificador",
-                "cd_identificador_original_lote",
                 "nr_contribuinte",
                 "cd_contribuinte",
                 "codigo_contribuinte",
+                "cd_identificador",
+                "cd_identificador_original_lote",
             )
             cib = _text(properties, "cd_cib")
 
@@ -191,8 +203,20 @@ class GeoSampaAdapter(SourceAdapter):
                     longitude=longitude,
                     attributes={
                         "source": self.source_id,
+                        "source_scope": "municipal_fiscal_cadastre",
                         "sector": setor,
                         "sql": sql,
+                        "iptu_contributor": sql,
+                        "taxpayer_name_status": (
+                            "not_provided_by_this_layer" if not _text(
+                                properties, "nm_contribuinte", "nome_contribuinte"
+                            ) else "provided_by_source"
+                        ),
+                        "owner_document_status": (
+                            "not_provided_by_this_layer" if not _text(
+                                properties, "nr_cpf_cnpj", "cpf_cnpj", "documento_contribuinte"
+                            ) else "provided_by_source"
+                        ),
                         "cib": cib,
                         "built_area_m2": _float(properties, "qt_area_construida"),
                         "street_code": _text(properties, "cd_logradouro"),
