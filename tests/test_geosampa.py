@@ -97,7 +97,7 @@ def test_geosampa_address_only_search_returns_candidate_parcels() -> None:
     assert "cd_numero_porta" not in captured["url"]
 
 
-def test_geosampa_ignores_non_sao_paulo_states() -> None
+def test_geosampa_ignores_non_sao_paulo_states() -> None:
     adapter = GeoSampaAdapter(
         client=httpx.Client(
             transport=httpx.MockTransport(
