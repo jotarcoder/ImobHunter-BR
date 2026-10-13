@@ -128,32 +128,45 @@ class GeoSampaAdapter(SourceAdapter):
                 filters.append(
                     f"cd_numero_porta='{_escape_cql(normalized.number)}'"
                 )
-        cql_filter = " AND ".join(filters)
-        params = {
-            "service": "WFS",
-            "version": "1.0.0",
-            "request": "GetFeature",
-            "typeName": self.layer,
-            "outputFormat": "application/json",
-            "CQL_FILTER": cql_filter,
-            "maxFeatures": 50,
-        }
+        # Primeiro tenta o endereço exato. Se o cadastro municipal tiver
+        # número predial ausente/diferente, repete por logradouro para não
+        # transformar uma divergência cadastral em uma busca vazia.
+        query_filters = [filters]
+        if normalized.number and not (block and lot):
+            query_filters.append([
+                f"nm_logradouro_completo ILIKE '%{_escape_cql(normalized.street_name or '')}%'"
+            ])
 
         client = self._client or httpx.Client(timeout=self.timeout)
         close_client = self._client is None
         try:
-            response = client.get(self.endpoint, params=params)
-            response.raise_for_status()
-            payload = response.json()
-        except httpx.HTTPError as exc:
-            raise RuntimeError(f"GeoSampa request failed: {exc}") from exc
-        except ValueError as exc:
-            raise RuntimeError("GeoSampa returned invalid JSON") from exc
+            records: list[PropertyRecord] = []
+            for active_filters in query_filters:
+                params = {
+                    "service": "WFS",
+                    "version": "1.0.0",
+                    "request": "GetFeature",
+                    "typeName": self.layer,
+                    "outputFormat": "application/json",
+                    "CQL_FILTER": " AND ".join(active_filters),
+                    "maxFeatures": 50,
+                }
+                try:
+                    response = client.get(self.endpoint, params=params)
+                    response.raise_for_status()
+                    payload = response.json()
+                except httpx.HTTPError as exc:
+                    raise RuntimeError(f"GeoSampa request failed: {exc}") from exc
+                except ValueError as exc:
+                    raise RuntimeError("GeoSampa returned invalid JSON") from exc
+                records = self._parse_features(payload)
+                if records:
+                    break
         finally:
             if close_client:
                 client.close()
 
-        return self._parse_features(payload)
+        return records
 
     def _parse_features(self, payload: dict[str, Any]) -> list[PropertyRecord]:
         records: list[PropertyRecord] = []
