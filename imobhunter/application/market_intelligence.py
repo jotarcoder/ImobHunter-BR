@@ -118,18 +118,22 @@ class MarketIntelligenceStore:
                 lat, lon = _number(row.get("latitude")), _number(row.get("longitude"))
                 if not name or lat is None or lon is None or not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
                     continue
+                raw_cnpj = row.get("cnpj", "")
+                normalized_cnpj = "".join(ch for ch in raw_cnpj if ch.isdigit())
                 values = (
-                    name, row.get("cnpj", ""), row.get("cnae", ""), row.get("address", ""),
+                    name, normalized_cnpj or raw_cnpj, row.get("cnae", ""), row.get("address", ""),
                     row.get("city", ""), row.get("state", "").upper(), lat, lon,
                     _number(row.get("revenue_reported")), row.get("revenue_period", ""),
                     _number(row.get("revenue_estimate")), row.get("estimate_method", ""),
                     row.get("source", ""), row.get("updated_at", ""),
                 )
                 with self._connect() as db:
-                    cnpj = "".join(ch for ch in values[1] if ch.isdigit())
-                    if cnpj:
+                    if normalized_cnpj:
                         existing = db.execute(
-                            "SELECT id FROM businesses WHERE cnpj=? LIMIT 1", (values[1],)
+                            """SELECT id FROM businesses
+                               WHERE REPLACE(REPLACE(REPLACE(REPLACE(cnpj,'.',''),'/',''),'-',''),' ','')=?
+                               LIMIT 1""",
+                            (normalized_cnpj,),
                         ).fetchone()
                     else:
                         existing = db.execute(
