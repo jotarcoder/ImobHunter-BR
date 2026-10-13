@@ -11,6 +11,8 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from . import __version__
+
 DEFAULT_LICENSE_API = "https://imobhunter-license.imobhunterbr.workers.dev"
 CONTACT_PHONE = "+55 (11) 99903-7737"
 
@@ -63,7 +65,11 @@ def activate(user_id: str, activation_key: str, api_url: str | None = None) -> d
     request = Request(
         f"{base}/api/license/activate",
         data=payload,
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": f"ImobHunter-BR/{__version__} (desktop-license-client)",
+        },
         method="POST",
     )
     try:
