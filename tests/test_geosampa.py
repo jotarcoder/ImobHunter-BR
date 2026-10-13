@@ -82,7 +82,22 @@ def test_geosampa_search_builds_filtered_wfs_request_and_parses_current_fields()
     assert "cd_numero_porta" in str(captured["url"])
 
 
-def test_geosampa_ignores_non_sao_paulo_states() -> None:
+def test_geosampa_address_only_search_returns_candidate_parcels() -> None:
+    captured: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        return httpx.Response(200, json={"features": []}, request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = GeoSampaAdapter(client=client)
+    adapter.search(SearchRequest(address="Rua Pamplona", city="São Paulo", state="SP"))
+
+    assert "nm_logradouro_completo" in captured["url"]
+    assert "cd_numero_porta" not in captured["url"]
+
+
+def test_geosampa_ignores_non_sao_paulo_states() -> None
     adapter = GeoSampaAdapter(
         client=httpx.Client(
             transport=httpx.MockTransport(
