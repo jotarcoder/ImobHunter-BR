@@ -69,6 +69,23 @@ def test_cnefe_csv_search(tmp_path) -> None:
     assert records[0].block == "9"
 
 
+def test_cnefe_matches_street_type_prefix_and_address_only_search(tmp_path) -> None:
+    path = tmp_path / "cnefe.csv"
+    path.write_text(
+        "NM_LOGR;NUMERO;NM_MUNICIPIO;SIGLA_UF;COD_UNICO;QUADRA\\n"
+        "R PAMPLONA;1578;SAO PAULO;SP;789;12\\n"
+        "R PAMPLONA;1600;SAO PAULO;SP;790;13\\n",
+        encoding="utf-8",
+    )
+
+    records = CNEFEAdapter(path).search(
+        SearchRequest(address="Rua Pamplona", city="São Paulo", state="SP")
+    )
+
+    assert len(records) == 2
+    assert {record.property_id for record in records} == {"789", "790"}
+
+
 def test_cnefe_reports_missing_local_file(tmp_path) -> None:
     status = CNEFEAdapter(tmp_path / "missing.geojson").status()
 
