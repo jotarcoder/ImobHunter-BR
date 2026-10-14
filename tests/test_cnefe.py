@@ -187,3 +187,37 @@ def test_http_text_decodes_gzip_compressed_response(monkeypatch) -> None:
     monkeypatch.setattr(cnefe, "urlopen", lambda *_args, **_kwargs: FakeResponse())
 
     assert "3550308_SAO_PAULO.zip" in cnefe._http_text("https://ftp.ibge.gov.br/listing/")
+
+
+
+def test_cnefe_builds_and_reuses_sqlite_index(tmp_path, monkeypatch) -> None:
+    from imobhunter.sources import cnefe
+
+    path = tmp_path / "cnefe.csv"
+    path.write_text(
+        "NM_LOGR;NUMERO;NM_MUNICIPIO;SIGLA_UF;COD_UNICO;QUADRA\\n"
+        "R PAMPLONA;1578;SAO PAULO;SP;789;12\\n"
+        "R AUGUSTA;50;SAO PAULO;SP;790;13\\n",
+        encoding="utf-8",
+    )
+    cache = tmp_path / "cache"
+    original_rows = cnefe._rows
+    calls = {"count": 0}
+
+    def counted_rows(data_path):
+        calls["count"] += 1
+        yield from original_rows(data_path)
+
+    monkeypatch.setattr(cnefe, "_rows", counted_rows)
+    adapter = CNEFEAdapter(path, cache_dir=cache)
+    request = SearchRequest(
+        address="Rua Pamplona", number="1578", city="São Paulo", state="SP"
+    )
+
+    first = adapter.search(request)
+    second = adapter.search(request)
+
+    assert len(first) == len(second) == 1
+    assert first[0].property_id == "789"
+    assert calls["count"] == 1
+    assert list((cache / "index").glob("cnefe-*.sqlite3"))
