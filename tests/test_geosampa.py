@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from imobhunter.domain.models import SearchRequest
-from imobhunter.sources.geosampa import GeoSampaAdapter
+from imobhunter.sources.geosampa import DEFAULT_WFS_URL, GeoSampaAdapter
 
 
 def test_geosampa_search_builds_filtered_wfs_request_and_parses_current_fields() -> None:
@@ -248,3 +248,7 @@ def test_geosampa_falls_back_to_street_when_exact_house_number_has_no_match() ->
     assert "cd_numero_porta" in captured[0]
     assert "cd_numero_porta" not in captured[1]
     assert records[0].attributes["iptu_contributor"] == "010.020.0030-1"
+
+
+def test_geosampa_uses_official_wfs_endpoint_path() -> None:
+    assert DEFAULT_WFS_URL == "https://wfs.geosampa.prefeitura.sp.gov.br/geoserver/geoportal/wfs"
