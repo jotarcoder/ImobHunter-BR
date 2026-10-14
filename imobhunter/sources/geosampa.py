@@ -10,7 +10,7 @@ from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest, 
 from .base import SourceAdapter
 
 DEFAULT_WFS_URL = "https://wfs.geosampa.prefeitura.sp.gov.br/geoserver/geoportal/wfs"
-DEFAULT_LAYER = "geoportal:lote_cidadao"
+DEFAULT_LAYER = "geoportal:lote"
 
 
 def _text(properties: dict[str, Any], *names: str) -> str | None:
@@ -194,7 +194,7 @@ class GeoSampaAdapter(SourceAdapter):
             )
             cib = _text(properties, "cd_cib")
             taxpayer_name = _text(
-                properties, "nm_contribuinte", "nome_contribuinte", "contribuinte"
+                properties, "nm_contribuinte", "nome_contribuinte", "contribuinte", "nm_proprietario"
             )
             reference_year = _text(
                 properties, "ano_referencia", "ano_base", "exercicio", "year"
@@ -216,6 +216,7 @@ class GeoSampaAdapter(SourceAdapter):
                     area_m2=_float(
                         properties,
                         "qt_area_terreno",
+                        "qt_area_terreno_calc",
                         "area_terreno",
                     ),
                     latitude=latitude,
@@ -255,6 +256,12 @@ class GeoSampaAdapter(SourceAdapter):
                             "numero_porta",
                         ),
                         "lot_type": _text(properties, "tx_tipo_lote", "tipo_lote"),
+                        "block_type": _text(properties, "tx_tipo_quadra", "cd_tipo_quadra"),
+                        "property_use_type": _text(properties, "tipo_uso_imovel"),
+                        "land_type": _text(properties, "tipo_terreno_imovel"),
+                        "frontage_m": _float(properties, "qt_testada_calculo"),
+                        "owner_name_from_source": _text(properties, "nm_proprietario"),
+                        "commitment_holder_from_source": _text(properties, "nm_compromissario"),
                         "lot_status": _text(
                             properties,
                             "tx_situ_lote",
