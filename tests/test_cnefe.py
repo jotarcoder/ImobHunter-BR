@@ -1,3 +1,4 @@
+import gzip
 import json
 import zipfile
 
@@ -163,3 +164,26 @@ def test_cnefe_remote_resolves_municipality_and_uses_cache(tmp_path, monkeypatch
     assert len(second) == 1
     assert calls["catalog"] == 1
     assert (tmp_path / "cache" / "municipalities.json").is_file()
+
+
+def test_http_text_decodes_gzip_compressed_response(monkeypatch) -> None:
+    from imobhunter.sources import cnefe
+
+    payload = gzip.compress(b'<a href="3550308_SAO_PAULO.zip">arquivo</a>')
+
+    class FakeResponse:
+        def __init__(self):
+            self.headers = {"Content-Encoding": "gzip"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return payload
+
+    monkeypatch.setattr(cnefe, "urlopen", lambda *_args, **_kwargs: FakeResponse())
+
+    assert "3550308_SAO_PAULO.zip" in cnefe._http_text("https://ftp.ibge.gov.br/listing/")
