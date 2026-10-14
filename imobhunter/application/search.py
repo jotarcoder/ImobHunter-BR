@@ -10,7 +10,7 @@ from imobhunter.sources.base import SourceAdapter
 from imobhunter.sources.registry import SourceRegistry
 
 DEFAULT_SOURCE_TIMEOUT_SECONDS = 25.0
-MAX_PARALLEL_SOURCES = 8
+MAX_PARALLEL_SOURCES = 16
 
 
 @dataclass(frozen=True)
