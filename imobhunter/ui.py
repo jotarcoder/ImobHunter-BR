@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -98,12 +99,93 @@ class MetricCard(QFrame):
         self.value.setText(value)
 
 
+class SearchResultsWindow(QMainWindow):
+    """Independent, minimizable results window for one property search."""
+
+    def __init__(self, request: SearchRequest) -> None:
+        super().__init__(None, Qt.WindowType.Window)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+        address = " ".join(part for part in (request.address, request.number) if part)
+        location = ", ".join(part for part in (request.city, request.state) if part)
+        query = address or f"Quadra {request.block}, lote {request.lot}" if request.block else (request.cib or address)
+        self.setWindowTitle(f"ImobHunter-BR • {query} • {location}".strip(" •"))
+        self.resize(1120, 820)
+        self.setMinimumSize(760, 560)
+        root = QWidget()
+        layout = QVBoxLayout(root)
+        layout.setContentsMargins(22, 20, 22, 20)
+        layout.setSpacing(14)
+        header = QLabel("Dossiê da pesquisa")
+        header.setObjectName("title")
+        subtitle = QLabel(f"{query}  ·  {location}\nEsta janela é independente. Você pode minimizá-la e continuar pesquisando na tela principal.")
+        subtitle.setObjectName("muted")
+        subtitle.setWordWrap(True)
+        layout.addWidget(header)
+        layout.addWidget(subtitle)
+        self.summary = QLabel("Consultando fontes…")
+        self.summary.setObjectName("section")
+        self.summary.setWordWrap(True)
+        layout.addWidget(self.summary)
+        self.details = QTextBrowser()
+        self.details.setOpenExternalLinks(True)
+        self.details.setStyleSheet(
+            "QTextBrowser { background:#0c1926; border:1px solid #1b3348; "
+            "border-radius:12px; padding:16px; color:#eaf2f7; font-size:13px; }"
+        )
+        layout.addWidget(self.details, 1)
+        self.setCentralWidget(root)
+
+    def set_result(self, result: SearchResult) -> None:
+        sources = result.sources
+        found = len(result.records)
+        self.summary.setText(
+            f"{found} registro(s) · {len(result.dossiers)} dossiê(s) consolidado(s) · "
+            f"{sum(s.status in {'ok', 'no_results'} for s in sources)} fonte(s) responderam"
+        )
+        parts = []
+        for i, dossier in enumerate(result.dossiers, 1):
+            parts.append(f"<h2>Imóvel {i} — confiança {dossier.score:.0f}/100</h2>")
+            parts.append("<p>" + escape(" • ".join(dossier.score_reasons) or "Sem indicadores suficientes.") + "</p>")
+            parts.append("<table width='100%' cellspacing='0' cellpadding='8'>")
+            for fact in dossier.facts:
+                parts.append(
+                    "<tr><td width='34%' bgcolor='#122536'><b>" + escape(str(fact.field).replace("attribute:", "").replace("_", " ").capitalize()) +
+                    "</b></td><td>" + escape(str(fact.value)) +
+                    "<br><small>Fonte: " + escape(str(fact.provenance.source_id)) +
+                    " · Confiança: " + f"{fact.provenance.confidence:.0%}" + "</small></td></tr>"
+                )
+            parts.append("</table>")
+            if dossier.conflicts:
+                parts.append("<h3 style='color:#ffcc66'>Divergências entre fontes</h3><ul>")
+                for conflict in dossier.conflicts:
+                    parts.append("<li>" + escape(str(conflict.field)) + ": " + escape(" ↔ ".join(str(v) for v in conflict.values)) + "</li>")
+                parts.append("</ul>")
+        if not result.dossiers:
+            parts.append(
+                "<p><b>Nenhum dossiê consolidado.</b> Isso não confirma que o imóvel não exista. "
+                "Confira cobertura, endereço e mensagens das fontes.</p>"
+            )
+        parts.append("<h2>Diagnóstico das fontes</h2><table width='100%' cellspacing='0' cellpadding='8'>")
+        for source in sources:
+            parts.append(
+                "<tr><td width='30%'><b>" + escape(str(source.name)) + "</b></td><td>" +
+                escape(str(source.status)) + " · " + escape(str(source.records_count)) +
+                " registro(s)<br>" + escape(str(source.message or "Sem mensagem adicional.")) + "</td></tr>"
+            )
+        parts.append("</table>")
+        self.details.setHtml("".join(parts))
+
+    def set_error(self, message: str) -> None:
+        self.summary.setText("A pesquisa não pôde ser concluída.")
+        self.details.setPlainText(message)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, service: SearchService, coverage: DDDCoverageRegistry) -> None:
         super().__init__()
         self.service = service
         self.coverage = coverage
-        self.thread_pool = QThreadPool.globalInstance()
+        self.thread_pool = QThreadPool.globalInstance()\n        self._result_windows: list[SearchResultsWindow] = []
         self.setWindowTitle("ImobHunter-BR")
         logo_path = Path(__file__).resolve().parent / "assets" / "logo.svg"
         self.setWindowIcon(QIcon(str(logo_path)))
@@ -437,6 +519,17 @@ class MainWindow(QMainWindow):
         worker.signals.finished.connect(self._search_finished)
         worker.signals.failed.connect(self._search_failed)
         self.thread_pool.start(worker)
+
+
+    def _search_finished_in_window(self, window: SearchResultsWindow, result: SearchResult) -> None:
+        self.search_button.setEnabled(True)
+        self.search_status.setText("Pesquisa concluída. Você pode iniciar outra pesquisa sem fechar esta janela.")
+        window.set_result(result)
+
+    def _search_failed_in_window(self, window: SearchResultsWindow, message: str) -> None:
+        self.search_button.setEnabled(True)
+        self.search_status.setText("A pesquisa falhou. Os detalhes estão na janela desta pesquisa.")
+        window.set_error(message)
 
     def _search_finished(self, result: SearchResult) -> None:
         self.search_button.setEnabled(True)
