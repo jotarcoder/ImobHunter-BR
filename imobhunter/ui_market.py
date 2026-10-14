@@ -489,18 +489,17 @@ map.on('click', function(event) {{
 
         result = payload.get("result") or {}
         population = result.get("population", "não informado")
+        population_text = f"{population:,}".replace(",", ".") if isinstance(population, int) else str(population)
         self.sidra_button.setEnabled(True)
         self.status.setText(
             f'IBGE/SIDRA: {result.get("municipality")} — ano {result.get("period")}; '
-            f'população estimada {population:,} pessoas.'
-            if isinstance(population, int)
-            else f'Consulta IBGE/SIDRA concluída para {result.get("municipality")}.'
+            f'população estimada {population_text} pessoas.'
         )
         QMessageBox.information(
             self, "Estimativa populacional — IBGE / SIDRA",
             f"Município: {result.get('municipality')} ({result.get('municipality_code')})\n"
             f"Período de referência: {result.get('period')}\n"
-            f"População estimada: {population:,} pessoas\n\n"
+            f"População estimada: {population_text} pessoas\n\n"
             f"Fonte: {result.get('source')}\n"
             f"Tabela: {result.get('source_url')}\n\n"
             "Estimativa oficial do IBGE; o período pode não coincidir com o ano corrente."
@@ -510,6 +509,7 @@ map.on('click', function(event) {{
         self.sidra_button.setEnabled(True)
         self.status.setText("A consulta ao IBGE falhou; o restante do aplicativo continua disponível.")
         QMessageBox.warning(self, "Consulta IBGE / SIDRA", message)
+
     def _export_csv(self) -> None:
         if not self.results:
             QMessageBox.information(self, "Exportar", "Faça uma pesquisa antes de exportar.")
