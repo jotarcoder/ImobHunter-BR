@@ -245,7 +245,7 @@ class PublicGeoservicesAdapter(SourceAdapter):
                     lowered = {str(key).casefold(): value for key, value in properties.items()}
                     name = next(
                         (str(lowered[key]).strip() for key in (
-                            "nome", "nome_bem", "nome_uc", "nome_unidade", "name",
+                            "nome", "nome_bem", "nome_sitio", "nome_uc", "nome_unidade", "name",
                             "denominacao", "ds_nome", "nm_bem", "nm_uc",
                         ) if lowered.get(key) not in (None, "")),
                         layer,

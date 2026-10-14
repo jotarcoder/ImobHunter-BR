@@ -1,11 +1,7 @@
-import json
-
 import httpx
 
 from imobhunter.domain.models import SearchRequest
 from imobhunter.sources.public_geoservices import (
-    ICMBIO_WFS,
-    IPHAN_WFS,
     PublicGeoservicesAdapter,
     _coordinates,
     _feature_layers,
