@@ -682,20 +682,20 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Consulta de teste incompleta", str(exc))
             return
 
-        token = object()
-        button.setProperty("probe_token", id(token))
+        token = id(object())
+        button.setProperty("probe_token", token)
         button.setProperty("probe_timed_out", False)
         button.setEnabled(False)
         label.setText(f"{source.name} — testando…")
         worker = IntegrationProbeWorker(source, request)
         worker.signals.finished.connect(
-            lambda source_id, result, message, elapsed, s=source, l=label, b=button, t=id(token):
+            lambda source_id, result, message, elapsed, s=source, l=label, b=button, t=token:
                 self._integration_probe_finished(source_id, result, message, elapsed, s, l, b, t)
         )
         timer = QTimer(dialog)
         timer.setSingleShot(True)
         timer.timeout.connect(
-            lambda s=source, l=label, b=button, t=id(token):
+            lambda s=source, l=label, b=button, t=token:
                 self._integration_probe_timeout(s, l, b, t)
         )
         button._integration_probe_timer = timer
