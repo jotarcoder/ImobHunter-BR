@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+import json
 
 from imobhunter.application.address import normalize_request
 from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest, SourceStatus
@@ -174,6 +175,9 @@ class GeoSampaAdapter(SourceAdapter):
             properties = feature.get("properties") or {}
             geometry = feature.get("geometry") or {}
             latitude, longitude = _representative_point(geometry)
+            # Preserve the real GeoJSON polygon so the desktop map can render it.
+            safe_geometry = geometry if geometry.get("type") in {"Point", "Polygon", "MultiPolygon"} else {}
+            geometry_json = json.dumps(safe_geometry, separators=(",", ":"), allow_nan=False) if safe_geometry else None
 
             setor = _text(properties, "cd_setor_fiscal", "setor")
             quadra = _text(properties, "cd_quadra_fiscal", "quadra")
@@ -223,6 +227,7 @@ class GeoSampaAdapter(SourceAdapter):
                     longitude=longitude,
                     attributes={
                         "source": self.source_id,
+                        "geometry_geojson": geometry_json,
                         "source_scope": "municipal_fiscal_cadastre",
                         "sector": setor,
                         "sql": sql,
