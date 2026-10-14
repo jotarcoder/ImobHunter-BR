@@ -274,9 +274,12 @@ class MainWindow(QMainWindow):
 
         self.coverage_scroll = QScrollArea()
         self.coverage_scroll.setWidgetResizable(True)
-        self.coverage_scroll.setFixedHeight(56)
+        self.coverage_scroll.setMinimumHeight(104)
+        self.coverage_scroll.setMaximumHeight(132)
+        self.coverage_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.coverage_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         coverage_host = QWidget()
-        self.coverage_layout = QHBoxLayout(coverage_host)
+        self.coverage_layout = QVBoxLayout(coverage_host)
         self.coverage_layout.setContentsMargins(0, 0, 0, 0)
         self.coverage_layout.setSpacing(7)
         self.coverage_scroll.setWidget(coverage_host)
@@ -302,7 +305,6 @@ class MainWindow(QMainWindow):
         results_layout.setContentsMargins(18, 16, 18, 16)
         results_title = QLabel("Resultado da pesquisa")
         results_title.setObjectName("resultTitle")
-        results_title.setObjectName("section")
         results_layout.addWidget(results_title)
         self.dossier_scroll = QScrollArea()
         self.dossier_scroll.setWidgetResizable(True)
@@ -311,6 +313,9 @@ class MainWindow(QMainWindow):
         self.dossier_layout.setContentsMargins(0, 4, 0, 0)
         self.dossier_layout.setSpacing(10)
         self.dossier_scroll.setWidget(self.dossier_host)
+        self.dossier_scroll.setMinimumHeight(240)
+        self.dossier_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.dossier_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         results_layout.addWidget(self.dossier_scroll, 1)
         self.result_text = QLabel(
             "Pronto para pesquisar. O ImobHunter consulta as fontes configuradas "
