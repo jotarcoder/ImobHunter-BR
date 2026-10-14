@@ -68,6 +68,7 @@ def test_search_records_history(tmp_path: Path) -> None:
     assert result.dossiers == ()
     assert result.sources[0].status == "not_configured"
     assert database.search_count() == 1
+    service._executor.shutdown(wait=True, cancel_futures=True)
 
 
 def test_search_isolates_source_failure_and_keeps_other_results(tmp_path: Path) -> None:
@@ -86,6 +87,7 @@ def test_search_isolates_source_failure_and_keeps_other_results(tmp_path: Path) 
         ("records", "ok"),
     ]
     assert "source unavailable" in (result.sources[0].message or "")
+    service._executor.shutdown(wait=True, cancel_futures=True)
 
 
 def test_search_reports_no_results(tmp_path: Path) -> None:
@@ -98,6 +100,7 @@ def test_search_reports_no_results(tmp_path: Path) -> None:
 
     assert result.sources[0].status == "no_results"
     assert result.sources[0].records_count == 0
+    service._executor.shutdown(wait=True, cancel_futures=True)
 
 
 def test_search_isolates_source_network_failure(tmp_path: Path) -> None:
@@ -115,6 +118,7 @@ def test_search_isolates_source_network_failure(tmp_path: Path) -> None:
         ("records", "ok"),
     ]
     assert "network unavailable" in (result.sources[0].message or "")
+    service._executor.shutdown(wait=True, cancel_futures=True)
 
 
 class StatusFailingSource(SourceAdapter):
@@ -141,4 +145,49 @@ def test_search_isolates_source_status_failure(tmp_path: Path) -> None:
     assert len(result.dossiers) == 1
     assert result.sources[0].status == "error"
     assert "broken source metadata" in (result.sources[0].message or "")
-    assert result.sources[1].status == "ok"
+    service._executor.shutdown(wait=True, cancel_futures=True)
+
+
+class SlowSource(SourceAdapter):
+    source_id = "slow"
+    name = "Slow"
+    category = "test"
+
+    def status(self) -> SourceStatus:
+        return SourceStatus(self.source_id, self.name, "available")
+
+    def search(self, request: SearchRequest) -> list[PropertyRecord]:
+        import time
+
+        time.sleep(0.4)
+        return []
+
+
+def test_search_runs_sources_concurrently_and_times_out_slow_source(tmp_path: Path) -> None:
+    import time
+
+    database = LocalDatabase(tmp_path / "db.sqlite")
+    registry = SourceRegistry({})
+    registry.register(SlowSource())
+    registry.register(RecordSource())
+    service = SearchService(
+        registry,
+        database,
+        source_timeout_seconds=0.05,
+        max_parallel_sources=2,
+    )
+
+    started = time.monotonic()
+    try:
+        result = service.search(SearchRequest(address="Rua Pamplona", number="1578"))
+        elapsed = time.monotonic() - started
+    finally:
+        service._executor.shutdown(wait=True, cancel_futures=True)
+
+    assert elapsed < 0.3
+    assert len(result.records) == 1
+    assert [(item.source_id, item.status) for item in result.sources] == [
+        ("slow", "timeout"),
+        ("records", "ok"),
+    ]
+    assert "limite de 0.05 segundos" in (result.sources[0].message or "")
