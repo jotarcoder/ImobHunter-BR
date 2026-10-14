@@ -400,10 +400,9 @@ class CNEFEAdapter(SourceAdapter):
             data_path = _download_remote_zip(remote_url, self.cache_dir)
 
         records: list[PropertyRecord] = []
-        index_cache = self.cache_dir if self.data_path is None else self.cache_dir
         for row in _candidate_rows(
             data_path,
-            index_cache,
+            self.cache_dir,
             wanted_street,
             wanted_number,
             wanted_city or "",
