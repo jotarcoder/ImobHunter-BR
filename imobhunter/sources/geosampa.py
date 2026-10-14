@@ -193,6 +193,12 @@ class GeoSampaAdapter(SourceAdapter):
                 "cd_identificador_original_lote",
             )
             cib = _text(properties, "cd_cib")
+            taxpayer_name = _text(
+                properties, "nm_contribuinte", "nome_contribuinte", "contribuinte"
+            )
+            reference_year = _text(
+                properties, "ano_referencia", "ano_base", "exercicio", "year"
+            )
 
             records.append(
                 PropertyRecord(
@@ -219,12 +225,20 @@ class GeoSampaAdapter(SourceAdapter):
                         "source_scope": "municipal_fiscal_cadastre",
                         "sector": setor,
                         "sql": sql,
-                        "iptu_contributor": sql,
+                        # Registration SQL and taxpayer name are separate fields.
+                        "iptu_contributor": taxpayer_name,
+                        "iptu_registration_number": sql,
+                        "taxpayer_name": taxpayer_name,
                         "taxpayer_name_status": (
-                            "not_provided_by_this_layer" if not _text(
-                                properties, "nm_contribuinte", "nome_contribuinte"
-                            ) else "provided_by_source"
+                            "not_provided_by_this_layer" if not taxpayer_name
+                            else "provided_by_source"
                         ),
+                        "iptu_reference_year": reference_year,
+                        "iptu_data_scope": (
+                            "historical" if reference_year and reference_year.isdigit()
+                            and int(reference_year) <= 2016 else "unspecified"
+                        ),
+                        "iptu_current_debt_status": "not_provided_by_this_layer",
                         "owner_document_status": (
                             "not_provided_by_this_layer" if not _text(
                                 properties, "nr_cpf_cnpj", "cpf_cnpj", "documento_contribuinte"
