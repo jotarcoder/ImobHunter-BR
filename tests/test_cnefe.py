@@ -1,5 +1,4 @@
 import gzip
-import io
 import json
 import zipfile
 
@@ -167,14 +166,14 @@ def test_cnefe_remote_resolves_municipality_and_uses_cache(tmp_path, monkeypatch
     assert (tmp_path / "cache" / "municipalities.json").is_file()
 
 
-
 def test_http_text_decodes_gzip_compressed_response(monkeypatch) -> None:
     from imobhunter.sources import cnefe
 
     payload = gzip.compress(b'<a href="3550308_SAO_PAULO.zip">arquivo</a>')
 
     class FakeResponse:
-        headers = {"Content-Encoding": "gzip"}
+        def __init__(self):
+            self.headers = {"Content-Encoding": "gzip"}
 
         def __enter__(self):
             return self
