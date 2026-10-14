@@ -1,4 +1,5 @@
 import csv
+import gzip
 import io
 import json
 import os
@@ -122,9 +123,15 @@ def _http_json(url: str) -> Any:
 
 
 def _http_text(url: str) -> str:
-    request = Request(url, headers={"User-Agent": USER_AGENT})
+    request = Request(url, headers={"User-Agent": USER_AGENT, "Accept-Encoding": "gzip, identity"})
     with urlopen(request, timeout=20) as response:
-        return response.read().decode("utf-8", errors="replace")
+        payload = response.read()
+        content_encoding = (response.headers.get("Content-Encoding") or "").lower().strip()
+        # Some IBGE directory responses arrive gzip-compressed. Decoding the
+        # gzip header directly as UTF-8 raises the reported 0x8b error.
+        if content_encoding == "gzip" or payload.startswith(b"\x1f\x8b"):
+            payload = gzip.decompress(payload)
+        return payload.decode("utf-8-sig", errors="replace")
 
 
 def _municipality_catalog(cache_dir: Path) -> list[dict[str, Any]]:
