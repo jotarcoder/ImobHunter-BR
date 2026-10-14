@@ -194,7 +194,7 @@ class GeoSampaAdapter(SourceAdapter):
             )
             cib = _text(properties, "cd_cib")
             taxpayer_name = _text(
-                properties, "nm_contribuinte", "nome_contribuinte", "contribuinte", "nm_proprietario"
+                properties, "nm_contribuinte", "nome_contribuinte", "contribuinte"
             )
             reference_year = _text(
                 properties, "ano_referencia", "ano_base", "exercicio", "year"
