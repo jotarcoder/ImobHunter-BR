@@ -16,7 +16,7 @@ from .application.market_intelligence import MarketIntelligenceStore
 from .application.receita_import import import_receita_archives, search_receita_establishments
 from .application.receita_geo import import_receita_coordinates, save_geocoded_establishment
 from .application.address_geocoding import CachedAddressGeocoder, GeocodingError
-from .application.sidra import fetch_population_estimate
+from .application.sidra import fetch_population_estimate, search_municipalities
 
 
 class _OnlineSearchSignals(QObject):
@@ -40,6 +40,31 @@ class _OnlineSearchWorker(QRunnable):
             self.signals.failed.emit(str(exc))
             return
         self.signals.finished.emit(places)
+
+
+class _SidraQuerySignals(QObject):
+    finished = Signal(object)
+    failed = Signal(str)
+
+
+class _SidraQueryWorker(QRunnable):
+    def __init__(self, query: str) -> None:
+        super().__init__()
+        self.query = query.strip()
+        self.signals = _SidraQuerySignals()
+
+    def run(self) -> None:
+        try:
+            if self.query.isdigit():
+                if len(self.query) != 7:
+                    raise ValueError("O código IBGE precisa ter exatamente 7 dígitos.")
+                payload = {"kind": "population", "result": fetch_population_estimate(self.query)}
+            else:
+                payload = {"kind": "municipalities", "items": search_municipalities(self.query)}
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            self.signals.failed.emit(str(exc))
+            return
+        self.signals.finished.emit(payload)
 
 
 class MarketIntelligenceDialog(QDialog):
@@ -112,8 +137,9 @@ class MarketIntelligenceDialog(QDialog):
         browse_button = QPushButton("Consultar base oficial")
         browse_button.clicked.connect(self._browse_receita)
         sidra_button = QPushButton("População IBGE / SIDRA")
-        sidra_button.setToolTip("Consulta a estimativa populacional mais recente da tabela 6579 para um município.")
+        sidra_button.setToolTip("Pesquise pelo nome do município ou informe seu código IBGE para consultar a tabela 6579.")
         sidra_button.clicked.connect(self._query_sidra_population)
+        self.sidra_button = sidra_button
         self.online_button = QPushButton("Buscar empresas no mapa")
         self.online_button.setToolTip("Consulta estabelecimentos mapeados no OpenStreetMap dentro do raio informado.")
         self.online_button.setObjectName("primary")
@@ -417,27 +443,73 @@ map.on('click', function(event) {{
         return "—" if value is None else f"R$ {value:,.2f}"
 
     def _query_sidra_population(self) -> None:
-        code, accepted = QInputDialog.getText(
+        query, accepted = QInputDialog.getText(
             self, "IBGE / SIDRA — População",
-            "Código IBGE do município (7 dígitos):"
+            "Nome do município ou código IBGE (7 dígitos):"
         )
-        if not accepted:
+        if not accepted or not query.strip():
             return
-        try:
-            result = fetch_population_estimate(code)
-        except (RuntimeError, ValueError) as exc:
-            QMessageBox.warning(self, "Consulta IBGE / SIDRA", str(exc))
+        self.sidra_button.setEnabled(False)
+        self.status.setText("Consultando localidades e estimativas oficiais do IBGE em segundo plano…")
+        self._sidra_worker = _SidraQueryWorker(query)
+        self._sidra_worker.signals.finished.connect(self._sidra_query_finished)
+        self._sidra_worker.signals.failed.connect(self._sidra_query_failed)
+        QThreadPool.globalInstance().start(self._sidra_worker)
+
+    def _start_sidra_population(self, municipality_code: str) -> None:
+        self.status.setText("Consultando a estimativa populacional no SIDRA…")
+        self._sidra_worker = _SidraQueryWorker(municipality_code)
+        self._sidra_worker.signals.finished.connect(self._sidra_query_finished)
+        self._sidra_worker.signals.failed.connect(self._sidra_query_failed)
+        QThreadPool.globalInstance().start(self._sidra_worker)
+
+    def _sidra_query_finished(self, payload: dict) -> None:
+        if payload.get("kind") == "municipalities":
+            items = payload.get("items") or []
+            if not items:
+                self.sidra_button.setEnabled(True)
+                self.status.setText("O IBGE não encontrou municípios com esse nome.")
+                QMessageBox.information(self, "IBGE / SIDRA", "Nenhum município encontrado. Confira o nome e tente novamente.")
+                return
+            if len(items) == 1:
+                self._start_sidra_population(items[0]["code"])
+                return
+            labels = [f'{item["name"]} - {item["state"]} ({item["code"]})' for item in items]
+            selected, accepted = QInputDialog.getItem(
+                self, "Selecionar município", "O IBGE encontrou mais de um município:",
+                labels, 0, False
+            )
+            if not accepted:
+                self.sidra_button.setEnabled(True)
+                self.status.setText("Consulta ao IBGE cancelada.")
+                return
+            index = labels.index(selected)
+            self._start_sidra_population(items[index]["code"])
             return
-        population = result.get("population") or "não informado"
+
+        result = payload.get("result") or {}
+        population = result.get("population", "não informado")
+        population_text = f"{population:,}".replace(",", ".") if isinstance(population, int) else str(population)
+        self.sidra_button.setEnabled(True)
+        self.status.setText(
+            f'IBGE/SIDRA: {result.get("municipality")} — ano {result.get("period")}; '
+            f'população estimada {population_text} pessoas.'
+        )
         QMessageBox.information(
             self, "Estimativa populacional — IBGE / SIDRA",
-            f"Município/código: {result.get('municipality')}\n"
-            f"Período: {result.get('period')}\n"
-            f"População estimada: {population}\n\n"
+            f"Município: {result.get('municipality')} ({result.get('municipality_code')})\n"
+            f"Período de referência: {result.get('period')}\n"
+            f"População estimada: {population_text} pessoas\n\n"
             f"Fonte: {result.get('source')}\n"
             f"Tabela: {result.get('source_url')}\n\n"
-            "Consulta online sob demanda. Confira o município e o período antes de usar os dados."
+            "Estimativa oficial do IBGE; o período pode não coincidir com o ano corrente."
         )
+
+    def _sidra_query_failed(self, message: str) -> None:
+        self.sidra_button.setEnabled(True)
+        self.status.setText("A consulta ao IBGE falhou; o restante do aplicativo continua disponível.")
+        QMessageBox.warning(self, "Consulta IBGE / SIDRA", message)
+
     def _export_csv(self) -> None:
         if not self.results:
             QMessageBox.information(self, "Exportar", "Faça uma pesquisa antes de exportar.")
