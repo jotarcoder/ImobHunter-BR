@@ -698,6 +698,7 @@ class MainWindow(QMainWindow):
             lambda s=source, l=label, b=button, t=id(token):
                 self._integration_probe_timeout(s, l, b, t)
         )
+        button._integration_probe_timer = timer
         timer.start(12000)
         self._integration_probe_timers = getattr(self, "_integration_probe_timers", [])
         self._integration_probe_timers.append(timer)
@@ -720,6 +721,9 @@ class MainWindow(QMainWindow):
             return
         if button.property("probe_timed_out"):
             return
+        timer = getattr(button, "_integration_probe_timer", None)
+        if timer is not None:
+            timer.stop()
         button.setEnabled(True)
         labels = {
             "ok": "CONECTADA · com resultados",
