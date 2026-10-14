@@ -38,7 +38,7 @@ def search_municipalities(query: str, *, client: httpx.Client | None = None) -> 
         if owned:
             http.close()
     if not isinstance(payload, list):
-        raise RuntimeError("A API de localidades do IBGE retornou uma resposta inválida.")
+        raise TypeError("A API de localidades do IBGE retornou uma resposta inválida.")
     matches: list[dict[str, str]] = []
     for item in payload:
         if not isinstance(item, dict) or not str(item.get("id", "")).isdigit():
