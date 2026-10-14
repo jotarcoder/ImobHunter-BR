@@ -185,7 +185,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.service = service
         self.coverage = coverage
-        self.thread_pool = QThreadPool.globalInstance()\n        self._result_windows: list[SearchResultsWindow] = []
+        self.thread_pool = QThreadPool.globalInstance()\n        self._result_windows: list[SearchResultsWindow] = []\n        self._result_windows: list[SearchResultsWindow] = []
         self.setWindowTitle("ImobHunter-BR")
         logo_path = Path(__file__).resolve().parent / "assets" / "logo.svg"
         self.setWindowIcon(QIcon(str(logo_path)))
@@ -406,7 +406,7 @@ class MainWindow(QMainWindow):
         self.result_text.setObjectName("muted")
         self.result_text.setWordWrap(True)
         results_layout.addWidget(self.result_text)
-        layout.addWidget(results, 1)
+        results.hide()  # Os resultados completos ficam em janelas independentes.
 
         root.setLayout(shell)
         shell.addWidget(content, 1)
@@ -513,11 +513,16 @@ class MainWindow(QMainWindow):
             lot=lot,
             cib=cib,
         )
+        result_window = SearchResultsWindow(request)
+        self._result_windows.append(result_window)
+        result_window.show()
+        result_window.raise_()
+        result_window.activateWindow()
         self.search_button.setEnabled(False)
-        self.search_status.setText("Consultando fontes configuradas…")
+        self.search_status.setText("Consultando fontes configuradas… A tela principal continua disponível.")
         worker = SearchWorker(self.service, request)
-        worker.signals.finished.connect(self._search_finished)
-        worker.signals.failed.connect(self._search_failed)
+        worker.signals.finished.connect(lambda result, w=result_window: self._search_finished_in_window(w, result))
+        worker.signals.failed.connect(lambda message, w=result_window: self._search_failed_in_window(w, message))
         self.thread_pool.start(worker)
 
 
