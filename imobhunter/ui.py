@@ -4,8 +4,8 @@ from html import escape
 from pathlib import Path
 import sys
 
-from PySide6.QtCore import QThreadPool, QObject, QRunnable, QUrl, Qt, Signal, Slot
-from PySide6.QtGui import QBrush, QCursor, QDesktopServices, QFont, QIcon, QPainter, QPen, QPixmap
+from PySide6.QtCore import QThreadPool, QObject, QRunnable, QUrl, Qt, Signal, Slot, QPointF
+from PySide6.QtGui import QBrush, QCursor, QDesktopServices, QFont, QIcon, QPainter, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -154,11 +154,10 @@ class CadastralMapDialog(QDialog):
                 points = [((float(p[0])-min_x)*scale, (-float(p[1])-min_y)*scale) for p in polygon[0] if len(p) >= 2]
                 if len(points) < 3:
                     continue
-                from PySide6.QtCore import QPointF
-                item = QGraphicsPolygonItem([QPointF(x, y) for x, y in points])
+                item = QGraphicsPolygonItem(QPolygonF([QPointF(x, y) for x, y in points]))
                 item.setBrush(QBrush(Qt.GlobalColor.darkCyan))
                 item.setPen(QPen(Qt.GlobalColor.white, 1))
-                item.setFlag(QGraphicsPolygonItem.GraphicsItemFlag.ItemIsSelectable, True)
+                item.setFlag(item.GraphicsItemFlag.ItemIsSelectable, True)
                 item.setData(0, record)
                 item.setToolTip(f"Quadra {record.block or '—'} · Lote {record.lot or '—'}")
                 self.scene.addItem(item)
