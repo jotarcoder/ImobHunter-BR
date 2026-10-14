@@ -3,6 +3,7 @@ from __future__ import annotations
 from html import escape
 from pathlib import Path
 import sys
+import uuid
 
 from PySide6.QtCore import QThreadPool, QObject, QRunnable, QUrl, Qt, Signal, Slot, QPointF, QTimer
 from PySide6.QtGui import QBrush, QCursor, QDesktopServices, QFont, QIcon, QPainter, QPen, QPixmap, QPolygonF
@@ -682,7 +683,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Consulta de teste incompleta", str(exc))
             return
 
-        token = id(object())
+        token = uuid.uuid4().hex
         button.setProperty("probe_token", token)
         button.setProperty("probe_timed_out", False)
         button.setEnabled(False)
