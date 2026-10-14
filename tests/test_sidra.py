@@ -39,15 +39,13 @@ def test_population_estimate_rejects_invalid_municipality_codes(code):
 
 def test_population_estimate_rejects_missing_or_invalid_rows():
     for payload in ([], [{"MN": "São Paulo"}], [{}, {"MN": "São Paulo", "D1N": "2026", "V": "-"}]):
-        with _client(payload) as client:
-            with pytest.raises(RuntimeError):
-                fetch_population_estimate("3550308", client=client)
+        with _client(payload) as client, pytest.raises(RuntimeError):
+            fetch_population_estimate("3550308", client=client)
 
 
 def test_population_estimate_reports_http_errors():
-    with _client({"message": "unavailable"}, status_code=503) as client:
-        with pytest.raises(RuntimeError, match="IBGE/SIDRA"):
-            fetch_population_estimate("3550308", client=client)
+    with _client({"message": "unavailable"}, status_code=503) as client, pytest.raises(RuntimeError, match="IBGE/SIDRA"):
+        fetch_population_estimate("3550308", client=client)
 
 
 def test_search_municipalities_maps_code_name_and_state():
@@ -67,6 +65,5 @@ def test_search_municipalities_rejects_short_query():
 
 
 def test_search_municipalities_checks_response_shape():
-    with _client({"error": "bad response"}) as client:
-        with pytest.raises(RuntimeError, match="resposta inválida"):
-            search_municipalities("São Paulo", client=client)
+    with _client({"error": "bad response"}) as client, pytest.raises(TypeError, match="resposta inválida"):
+        search_municipalities("São Paulo", client=client)
