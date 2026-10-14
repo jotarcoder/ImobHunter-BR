@@ -185,7 +185,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.service = service
         self.coverage = coverage
-        self.thread_pool = QThreadPool.globalInstance()\n        self._result_windows: list[SearchResultsWindow] = []\n        self._result_windows: list[SearchResultsWindow] = []
+        self.thread_pool = QThreadPool.globalInstance()
+        self._result_windows: list[SearchResultsWindow] = []
         self.setWindowTitle("ImobHunter-BR")
         logo_path = Path(__file__).resolve().parent / "assets" / "logo.svg"
         self.setWindowIcon(QIcon(str(logo_path)))
