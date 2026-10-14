@@ -15,6 +15,9 @@ from typing import Any
 from urllib.parse import urljoin
 from urllib.request import Request, urlopen
 
+import certifi
+import ssl
+
 from imobhunter.application.address import normalize_request, normalize_text
 from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest, SourceStatus
 from imobhunter.sources.base import SourceAdapter
@@ -51,6 +54,16 @@ MUNICIPALITY_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
 MAX_CNEFE_DOWNLOAD_BYTES = 512 * 1024 * 1024
 MAX_CNEFE_DOWNLOAD_SECONDS = 60
 CNEFE_SOCKET_TIMEOUT_SECONDS = 10
+
+
+def _urlopen(request: Request, timeout: float):
+    """Use certifi's maintained CA bundle in packaged Windows/macOS builds.
+
+    This keeps normal TLS verification enabled while avoiding dependence on a
+    Python installation's missing or stale certificate bundle.
+    """
+    context = ssl.create_default_context(cafile=certifi.where())
+    return urlopen(request, timeout=timeout, context=context)
 
 
 def _clean_key(value: str) -> str:
@@ -122,7 +135,7 @@ def _rows(path: Path) -> Iterable[dict[str, Any]]:
 
 def _http_json(url: str) -> Any:
     request = Request(url, headers={"User-Agent": USER_AGENT})
-    with urlopen(request, timeout=20) as response:
+    with _urlopen(request, timeout=20) as response:
         return json.load(response)
 
 
@@ -210,7 +223,7 @@ def _download_remote_zip(url: str, cache_dir: Path) -> Path:
     request = Request(url, headers={"User-Agent": USER_AGENT})
     downloaded = 0
     try:
-        with urlopen(request, timeout=CNEFE_SOCKET_TIMEOUT_SECONDS) as response, temp.open("wb") as handle:
+        with _urlopen(request, timeout=CNEFE_SOCKET_TIMEOUT_SECONDS) as response, temp.open("wb") as handle:
             started_at = time.monotonic()
             content_length = response.headers.get("Content-Length")
             if content_length and int(content_length) > MAX_CNEFE_DOWNLOAD_BYTES:
