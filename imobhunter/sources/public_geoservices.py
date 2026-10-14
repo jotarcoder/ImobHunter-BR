@@ -162,9 +162,10 @@ class PublicGeoservicesAdapter(SourceAdapter):
             if provider == "iphan":
                 if any(term in text for term in ("bem_protecao", "bens materiais", "sitios", "sítios arqueolog")):
                     selected.append(name)
-            elif provider == "icmbio":
-                if "conserv" in text and ("unidade" in text or "uc_" in text or "uc " in text):
-                    selected.append(name)
+            elif provider == "icmbio" and "conserv" in text and (
+                "unidade" in text or "uc_" in text or "uc " in text
+            ):
+                selected.append(name)
         return selected[:3]
 
     def _features(
@@ -186,7 +187,7 @@ class PublicGeoservicesAdapter(SourceAdapter):
             },
         )
         if not isinstance(payload, dict) or not isinstance(payload.get("features"), list):
-            raise RuntimeError(f"A camada {layer} não retornou uma FeatureCollection GeoJSON válida.")
+            raise TypeError(f"A camada {layer} não retornou uma FeatureCollection GeoJSON válida.")
         features = []
         for feature in payload["features"]:
             if not isinstance(feature, dict):
