@@ -16,6 +16,7 @@ from .application.market_intelligence import MarketIntelligenceStore
 from .application.receita_import import import_receita_archives, search_receita_establishments
 from .application.receita_geo import import_receita_coordinates, save_geocoded_establishment
 from .application.address_geocoding import CachedAddressGeocoder, GeocodingError
+from .application.sidra import fetch_population_estimate
 
 
 class _OnlineSearchSignals(QObject):
@@ -110,6 +111,9 @@ class MarketIntelligenceDialog(QDialog):
         geo_button.clicked.connect(self._import_coordinates)
         browse_button = QPushButton("Consultar base oficial")
         browse_button.clicked.connect(self._browse_receita)
+        sidra_button = QPushButton("População IBGE / SIDRA")
+        sidra_button.setToolTip("Consulta a estimativa populacional mais recente da tabela 6579 para um município.")
+        sidra_button.clicked.connect(self._query_sidra_population)
         self.online_button = QPushButton("Buscar empresas no mapa")
         self.online_button.setToolTip("Consulta estabelecimentos mapeados no OpenStreetMap dentro do raio informado.")
         self.online_button.setObjectName("primary")
@@ -118,7 +122,7 @@ class MarketIntelligenceDialog(QDialog):
         export_button.clicked.connect(self._export_csv)
         action_buttons = [
             geocode_button, import_button, receita_button, geo_button,
-            browse_button, self.online_button, export_button,
+            browse_button, sidra_button, self.online_button, export_button,
         ]
         for index, button in enumerate(action_buttons):
             button.setMinimumHeight(38)
@@ -412,6 +416,28 @@ map.on('click', function(event) {{
     def _money(value) -> str:
         return "—" if value is None else f"R$ {value:,.2f}"
 
+    def _query_sidra_population(self) -> None:
+        code, accepted = QInputDialog.getText(
+            self, "IBGE / SIDRA — População",
+            "Código IBGE do município (7 dígitos):"
+        )
+        if not accepted:
+            return
+        try:
+            result = fetch_population_estimate(code)
+        except (RuntimeError, ValueError) as exc:
+            QMessageBox.warning(self, "Consulta IBGE / SIDRA", str(exc))
+            return
+        population = result.get("population") or "não informado"
+        QMessageBox.information(
+            self, "Estimativa populacional — IBGE / SIDRA",
+            f"Município/código: {result.get('municipality')}\n"
+            f"Período: {result.get('period')}\n"
+            f"População estimada: {population}\n\n"
+            f"Fonte: {result.get('source')}\n"
+            f"Tabela: {result.get('source_url')}\n\n"
+            "Consulta online sob demanda. Confira o município e o período antes de usar os dados."
+        )
     def _export_csv(self) -> None:
         if not self.results:
             QMessageBox.information(self, "Exportar", "Faça uma pesquisa antes de exportar.")
