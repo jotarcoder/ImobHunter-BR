@@ -5,10 +5,13 @@ from pathlib import Path
 import sys
 
 from PySide6.QtCore import QThreadPool, QObject, QRunnable, QUrl, Qt, Signal, Slot
-from PySide6.QtGui import QCursor, QDesktopServices, QFont, QIcon, QPixmap
+from PySide6.QtGui import QBrush, QCursor, QDesktopServices, QFont, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
+    QGraphicsScene,
+    QGraphicsView,
+    QGraphicsPolygonItem,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -25,6 +28,7 @@ from PySide6.QtWidgets import (
 from .application.coverage import DDDCoverageRegistry, load_ddd_coverage
 from .application.search import SearchResult, SearchService
 from .domain.models import SearchRequest
+import json
 from .ui_market import MarketIntelligenceDialog
 from .ui_settings import SourceSettingsDialog
 
@@ -99,6 +103,84 @@ class MetricCard(QFrame):
         self.value.setText(value)
 
 
+
+class CadastralMapDialog(QDialog):
+    """Small interactive lot map based on actual GeoJSON returned by GeoSampa."""
+    def __init__(self, records, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Mapa cadastral — GeoSampa")
+        self.resize(900, 620)
+        layout = QVBoxLayout(self)
+        self.hint = QLabel("Selecione um polígono para consultar os atributos disponíveis.")
+        layout.addWidget(self.hint)
+        self.view = QGraphicsView()
+        self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.scene = QGraphicsScene(self)
+        self.view.setScene(self.scene)
+        layout.addWidget(self.view, 1)
+        self.details = QTextBrowser()
+        self.details.setMaximumHeight(170)
+        layout.addWidget(self.details)
+        geometries = []
+        for record in records:
+            try:
+                geometry = json.loads(record.attributes.get("geometry_geojson") or "null")
+            except (TypeError, ValueError):
+                geometry = None
+            if geometry and geometry.get("type") in {"Polygon", "MultiPolygon"}:
+                geometries.append((record, geometry))
+        if not geometries:
+            self.hint.setText("Esta consulta não retornou polígonos cadastrais. Não há geometria para desenhar.")
+            return
+        all_points = []
+        for record, geometry in geometries:
+            polygons = [geometry["coordinates"]] if geometry["type"] == "Polygon" else geometry["coordinates"]
+            for polygon in polygons:
+                if not polygon or not polygon[0]:
+                    continue
+                ring = polygon[0]
+                all_points.extend((float(p[0]), -float(p[1])) for p in ring if len(p) >= 2)
+        if not all_points:
+            self.hint.setText("A geometria recebida não contém coordenadas válidas.")
+            return
+        min_x, max_x = min(p[0] for p in all_points), max(p[0] for p in all_points)
+        min_y, max_y = min(p[1] for p in all_points), max(p[1] for p in all_points)
+        scale = min(760 / max(max_x-min_x, 1e-7), 440 / max(max_y-min_y, 1e-7))
+        for record, geometry in geometries:
+            polygons = [geometry["coordinates"]] if geometry["type"] == "Polygon" else geometry["coordinates"]
+            for polygon in polygons:
+                if not polygon or not polygon[0]:
+                    continue
+                points = [((float(p[0])-min_x)*scale, (-float(p[1])-min_y)*scale) for p in polygon[0] if len(p) >= 2]
+                if len(points) < 3:
+                    continue
+                from PySide6.QtCore import QPointF
+                item = QGraphicsPolygonItem([QPointF(x, y) for x, y in points])
+                item.setBrush(QBrush(Qt.GlobalColor.darkCyan))
+                item.setPen(QPen(Qt.GlobalColor.white, 1))
+                item.setFlag(QGraphicsPolygonItem.GraphicsItemFlag.ItemIsSelectable, True)
+                item.setData(0, record)
+                item.setToolTip(f"Quadra {record.block or '—'} · Lote {record.lot or '—'}")
+                self.scene.addItem(item)
+        self.scene.setSceneRect(self.scene.itemsBoundingRect())
+        self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        self.scene.selectionChanged.connect(self._show_selection)
+
+    def _show_selection(self):
+        selected = self.scene.selectedItems()
+        if not selected:
+            return
+        record = selected[0].data(0)
+        attributes = dict(record.attributes)
+        attributes.pop("geometry_geojson", None)
+        lines = [f"<b>Endereço:</b> {record.address or 'Não informado'}",
+                 f"<b>Quadra:</b> {record.block or '—'} · <b>Lote:</b> {record.lot or '—'}",
+                 f"<b>Área:</b> {record.area_m2 if record.area_m2 is not None else 'Não informada'} m²",
+                 "<b>Atributos fornecidos pela fonte:</b><br>" +
+                 "<br>".join(f"{escape(str(k))}: {escape(str(v))}" for k,v in attributes.items() if v not in (None, ""))]
+        self.details.setHtml("<br>".join(lines))
+
+
 class SearchResultsWindow(QMainWindow):
     """Independent, minimizable results window for one property search."""
 
@@ -134,6 +216,10 @@ class SearchResultsWindow(QMainWindow):
         )
         layout.addWidget(self.details, 1)
         actions = QHBoxLayout()
+        self.map_button = QPushButton("Mapa cadastral dos lotes")
+        self.map_button.setEnabled(False)
+        self.map_button.clicked.connect(self._open_cadastral_map)
+        actions.addWidget(self.map_button)
         map_button = QPushButton("Abrir GeoSampa oficial ↗")
         map_button.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl("https://geosampa.prefeitura.sp.gov.br/"))
@@ -143,7 +229,14 @@ class SearchResultsWindow(QMainWindow):
         layout.addLayout(actions)
         self.setCentralWidget(root)
 
+    def _open_cadastral_map(self) -> None:
+        records = getattr(self, "_map_records", [])
+        dialog = CadastralMapDialog(records, self)
+        dialog.exec()
+
     def set_result(self, result: SearchResult) -> None:
+        self._map_records = [r for r in result.records if r.attributes.get("geometry_geojson")]
+        self.map_button.setEnabled(bool(self._map_records))
         sources = result.sources
         found = len(result.records)
         self.summary.setText(

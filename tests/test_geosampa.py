@@ -278,3 +278,23 @@ def test_geosampa_keeps_taxpayer_name_separate_from_registration_number() -> Non
     assert attributes["iptu_data_scope"] == "historical"
     assert attributes["iptu_current_debt_status"] == "not_provided_by_this_layer"
     assert records[0].owner_name is None
+
+
+
+def test_geosampa_preserves_polygon_geojson_for_cadastral_map() -> None:
+    geometry = {
+        "type": "Polygon",
+        "coordinates": [[[-46.65, -23.57], [-46.64, -23.57], [-46.64, -23.56], [-46.65, -23.57]]],
+    }
+    records = GeoSampaAdapter()._parse_features({
+        "features": [{"type": "Feature", "geometry": geometry, "properties": {"cd_lote": "0030"}}]
+    })
+    import json
+    assert json.loads(records[0].attributes["geometry_geojson"]) == geometry
+
+
+def test_geosampa_rejects_unsupported_geometry_for_map() -> None:
+    records = GeoSampaAdapter()._parse_features({
+        "features": [{"type": "Feature", "geometry": {"type": "GeometryCollection", "geometries": []}, "properties": {}}]
+    })
+    assert records[0].attributes["geometry_geojson"] is None
