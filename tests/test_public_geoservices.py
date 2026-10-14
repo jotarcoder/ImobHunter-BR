@@ -36,7 +36,7 @@ def test_coordinates_for_point_and_polygon():
     assert _coordinates({"type": "Point", "coordinates": [-46.66, -23.56]}) == (-23.56, -46.66)
     lat, lon = _coordinates({"type": "Polygon", "coordinates": [[[-46.7, -23.6], [-46.6, -23.5]]]})
     assert lat == -23.55
-    assert lon == -46.65
+    assert round(lon, 2) == -46.65
 
 
 def test_live_official_geoservices_search_maps_provenance_and_caches(tmp_path):
