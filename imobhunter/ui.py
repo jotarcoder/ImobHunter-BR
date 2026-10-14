@@ -563,19 +563,30 @@ class MainWindow(QMainWindow):
         labels = {
             "address": "Endereço", "area_m2": "Área do terreno (m²)", "cib": "CIB",
             "property_id": "Identificador cadastral", "block": "Quadra fiscal", "lot": "Lote fiscal",
-            "attribute:sql": "Contribuinte IPTU / SQL", "attribute:iptu_contributor": "Contribuinte IPTU / SQL",
+            "attribute:sql": "Número de inscrição IPTU / SQL",
+            "attribute:iptu_registration_number": "Número de inscrição IPTU / SQL",
+            "attribute:iptu_contributor": "Nome do contribuinte IPTU",
+            "attribute:taxpayer_name": "Nome do contribuinte IPTU",
+            "attribute:iptu_reference_year": "Ano de referência do IPTU",
+            "attribute:iptu_data_scope": "Período da base IPTU",
+            "attribute:iptu_current_debt_status": "Situação dos débitos atuais",
             "attribute:built_area_m2": "Área construída (m²)", "attribute:door_number": "Número predial",
             "attribute:sector": "Setor fiscal", "attribute:condominium": "Condomínio",
             "attribute:lot_status": "Situação do lote", "attribute:lot_type": "Tipo de lote",
         }
-        shown_iptu = False
+        shown_iptu_registration = False
+        shown_taxpayer_name = False
         for fact in dossier.facts:
             if fact.field == "registry_number":
                 continue
-            if fact.field in {"attribute:sql", "attribute:iptu_contributor"}:
-                if shown_iptu:
+            if fact.field in {"attribute:sql", "attribute:iptu_registration_number"}:
+                if shown_iptu_registration:
                     continue
-                shown_iptu = True
+                shown_iptu_registration = True
+            if fact.field in {"attribute:iptu_contributor", "attribute:taxpayer_name"}:
+                if shown_taxpayer_name:
+                    continue
+                shown_taxpayer_name = True
             card = QFrame()
             card.setObjectName("card")
             card_layout = QVBoxLayout(card)
@@ -593,8 +604,12 @@ class MainWindow(QMainWindow):
             card_layout.addWidget(value)
             card_layout.addWidget(source)
             content_layout.addWidget(card)
-        if not shown_iptu:
-            note = QLabel("Contribuinte IPTU / SQL não veio no registro consolidado. A fonte municipal precisa retornar esse campo; não é seguro deduzi-lo de outro identificador.")
+        if not shown_taxpayer_name:
+            note = QLabel(
+                "Nome do contribuinte IPTU não foi fornecido pela fonte consultada. "
+                "O SQL identifica o cadastro fiscal, mas não é o nome do contribuinte. "
+                "A base histórica disponível pode não refletir a situação atual."
+            )
             note.setWordWrap(True)
             note.setStyleSheet("color:#ffcc66;")
             content_layout.addWidget(note)

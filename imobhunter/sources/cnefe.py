@@ -4,6 +4,8 @@ import io
 import json
 import os
 import re
+import sqlite3
+import hashlib
 import time
 import unicodedata
 import zipfile
@@ -237,6 +239,111 @@ def _download_remote_zip(url: str, cache_dir: Path) -> Path:
 
 
 
+def _candidate_rows(
+    data_path: Path,
+    cache_dir: Path,
+    wanted_street: str,
+    wanted_number: str | None,
+    wanted_city: str,
+    wanted_state: str,
+) -> Iterable[dict[str, Any]]:
+    """Build a local SQLite index once, then query only matching CNEFE addresses."""
+    stat = data_path.stat()
+    signature = f"{data_path.resolve()}|{stat.st_size}|{stat.st_mtime_ns}"
+    key = hashlib.sha256(str(data_path.resolve()).encode("utf-8")).hexdigest()[:24]
+    index_dir = cache_dir / "index"
+    index_dir.mkdir(parents=True, exist_ok=True)
+    index_path = index_dir / f"cnefe-{key}.sqlite3"
+    expected = signature
+
+    def index_is_current() -> bool:
+        if not index_path.is_file():
+            return False
+        try:
+            with sqlite3.connect(index_path) as conn:
+                row = conn.execute(
+                    "SELECT value FROM metadata WHERE key='signature'"
+                ).fetchone()
+                return bool(row and row[0] == expected)
+        except sqlite3.DatabaseError:
+            return False
+
+    if not index_is_current():
+        temp_path = index_path.with_suffix(".sqlite3.part")
+        temp_path.unlink(missing_ok=True)
+        try:
+            with sqlite3.connect(temp_path) as conn:
+                conn.execute("PRAGMA journal_mode=OFF")
+                conn.execute("PRAGMA synchronous=OFF")
+                conn.execute(
+                    "CREATE TABLE addresses ("
+                    "street TEXT NOT NULL, parsed_street TEXT NOT NULL, "
+                    "number TEXT NOT NULL, city TEXT NOT NULL, state TEXT NOT NULL, "
+                    "payload TEXT NOT NULL)"
+                )
+                batch = []
+                for row in _rows(data_path):
+                    raw_street = str(_pick(row, "street") or "")
+                    street = normalize_text(raw_street) or ""
+                    parsed_street = normalize_text(
+                        normalize_request(SearchRequest(address=raw_street)).street_name
+                    ) or street
+                    number = normalize_text(str(_pick(row, "number") or "")) or ""
+                    city = normalize_text(str(_pick(row, "city") or "")) or ""
+                    state = normalize_text(str(_pick(row, "state") or "")) or ""
+                    batch.append((
+                        street, parsed_street, number, city, state,
+                        json.dumps(row, ensure_ascii=False, default=str),
+                    ))
+                    if len(batch) >= 2000:
+                        conn.executemany(
+                            "INSERT INTO addresses VALUES (?, ?, ?, ?, ?, ?)", batch
+                        )
+                        batch.clear()
+                if batch:
+                    conn.executemany(
+                        "INSERT INTO addresses VALUES (?, ?, ?, ?, ?, ?)", batch
+                    )
+                conn.execute("CREATE INDEX idx_cnefe_street ON addresses(street)")
+                conn.execute("CREATE INDEX idx_cnefe_parsed_street ON addresses(parsed_street)")
+                conn.execute("CREATE INDEX idx_cnefe_number ON addresses(number)")
+                conn.execute("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+                conn.execute(
+                    "INSERT INTO metadata(key, value) VALUES ('signature', ?)",
+                    (expected,),
+                )
+                conn.commit()
+            temp_path.replace(index_path)
+        except Exception:
+            temp_path.unlink(missing_ok=True)
+            raise
+
+    clauses = ["(street=? OR parsed_street=?)"]
+    params: list[str] = [wanted_street, wanted_street]
+    if wanted_number:
+        clauses.append("number=?")
+        params.append(wanted_number)
+    if wanted_city:
+        clauses.append("(city='' OR city=?)")
+        params.append(wanted_city)
+    if wanted_state:
+        clauses.append("(state='' OR state=?)")
+        params.append(wanted_state)
+    query = (
+        "SELECT payload FROM addresses WHERE "
+        + " AND ".join(clauses)
+        + " LIMIT 100"
+    )
+    with sqlite3.connect(index_path) as conn:
+        for (payload,) in conn.execute(query, params):
+            try:
+                row = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(row, dict):
+                yield row
+
+
 class CNEFEAdapter(SourceAdapter):
     source_id = "ibge_cnefe"
     name = "IBGE / CNEFE"
@@ -293,26 +400,18 @@ class CNEFEAdapter(SourceAdapter):
             data_path = _download_remote_zip(remote_url, self.cache_dir)
 
         records: list[PropertyRecord] = []
-        for row in _rows(data_path):
-            raw_street = str(_pick(row, "street") or "")
-            street = normalize_text(raw_street) or ""
-            # CNEFE may store the street type inside NM_LOGR ("R PAMPLONA"),
-            # while the search parser separates it ("PAMPLONA"). Compare both
-            # representations so valid streets are not discarded.
-            parsed_row_street = normalize_text(
-                normalize_request(SearchRequest(address=raw_street)).street_name
-            ) or street
+        for row in _candidate_rows(
+            data_path,
+            self.cache_dir,
+            wanted_street,
+            wanted_number,
+            wanted_city or "",
+            wanted_state or "",
+        ):
+            street = normalize_text(str(_pick(row, "street") or "")) or ""
             number = normalize_text(str(_pick(row, "number") or ""))
-            if wanted_street not in {street, parsed_row_street}:
-                continue
-            if wanted_number and number != wanted_number:
-                continue
             row_city = normalize_text(str(_pick(row, "city") or ""))
             row_state = normalize_text(str(_pick(row, "state") or ""))
-            if wanted_city and row_city and row_city != wanted_city:
-                continue
-            if wanted_state and row_state and row_state != wanted_state:
-                continue
 
             attributes = {
                 "cep": _pick(row, "cep"),

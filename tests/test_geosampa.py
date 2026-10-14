@@ -73,7 +73,9 @@ def test_geosampa_search_builds_filtered_wfs_request_and_parses_current_fields()
     assert records[0].latitude == pytest.approx(-23.5696)
     assert records[0].longitude == pytest.approx(-46.6496)
     assert records[0].attributes["sql"] == "010.020.0030-1"
-    assert records[0].attributes["iptu_contributor"] == "010.020.0030-1"
+    assert records[0].attributes["iptu_contributor"] is None
+    assert records[0].attributes["iptu_registration_number"] == "010.020.0030-1"
+    assert records[0].attributes["iptu_current_debt_status"] == "not_provided_by_this_layer"
     assert records[0].attributes["built_area_m2"] == 210.25
     assert records[0].attributes["lot_status"] == "ATIVO"
     assert records[0].attributes["taxpayer_name_status"] == "not_provided_by_this_layer"
@@ -247,8 +249,32 @@ def test_geosampa_falls_back_to_street_when_exact_house_number_has_no_match() ->
     assert len(captured) == 2
     assert "cd_numero_porta" in captured[0]
     assert "cd_numero_porta" not in captured[1]
-    assert records[0].attributes["iptu_contributor"] == "010.020.0030-1"
+    assert records[0].attributes["iptu_contributor"] is None
+    assert records[0].attributes["iptu_registration_number"] == "010.020.0030-1"
+    assert records[0].attributes["iptu_current_debt_status"] == "not_provided_by_this_layer"
 
 
 def test_geosampa_uses_official_wfs_endpoint_path() -> None:
     assert DEFAULT_WFS_URL == "https://wfs.geosampa.prefeitura.sp.gov.br/geoserver/geoportal/wfs"
+
+
+
+def test_geosampa_keeps_taxpayer_name_separate_from_registration_number() -> None:
+    records = GeoSampaAdapter()._parse_features({
+        "features": [{
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [-46.65, -23.57]},
+            "properties": {
+                "nr_contribuinte": "010.020.0030-1",
+                "nm_contribuinte": "Nome de contribuinte fornecido pela fonte",
+                "ano_base": "2016",
+            },
+        }]
+    })
+    attributes = records[0].attributes
+    assert attributes["iptu_contributor"] == "Nome de contribuinte fornecido pela fonte"
+    assert attributes["iptu_registration_number"] == "010.020.0030-1"
+    assert attributes["iptu_reference_year"] == "2016"
+    assert attributes["iptu_data_scope"] == "historical"
+    assert attributes["iptu_current_debt_status"] == "not_provided_by_this_layer"
+    assert records[0].owner_name is None

@@ -105,11 +105,24 @@ class MunicipalIPTUAdapter(SourceAdapter):
                     )
                 )
 
-        query_status = str(row.get("query_status") or row.get("status_consulta") or "no_debt_found")
+        query_status = str(row.get("query_status") or row.get("status_consulta") or "not_verified")
+        taxpayer_name = row.get("taxpayer_name") or row.get("contribuinte") or row.get("nome_contribuinte")
+        reference_year = cls._int(
+            row.get("iptu_reference_year")
+            or row.get("ano_referencia")
+            or row.get("ano_base")
+            or row.get("exercicio")
+            or row.get("year")
+        )
         attributes = {
             "iptu_query_status": query_status,
             "iptu_query_date": row.get("query_date") or row.get("data_consulta"),
             "iptu_official_source": row.get("official_source") or row.get("fonte_oficial"),
+            "iptu_reference_year": reference_year,
+            "iptu_data_scope": "historical" if reference_year is not None and reference_year <= 2016 else "unspecified",
+            "taxpayer_name": taxpayer_name,
+            "taxpayer_name_status": "provided_by_source" if taxpayer_name else "not_provided_by_source",
+            "iptu_current_debt_status": "not_verified" if query_status == "not_verified" else query_status,
             "iptu_authentication_required": cls._bool(row.get("authentication_required")),
             "iptu_captcha_required": cls._bool(row.get("captcha_required")),
         }
@@ -121,7 +134,9 @@ class MunicipalIPTUAdapter(SourceAdapter):
             state=row.get("uf") or row.get("state"),
             block=row.get("quadra") or row.get("block"),
             lot=row.get("lote") or row.get("lot"),
-            owner_name=row.get("owner_name") or row.get("contribuinte"),
+            # Taxpayer and legal owner are distinct concepts; do not promote
+            # the IPTU taxpayer into the legal-owner field without a source claim.
+            owner_name=row.get("registered_owner_name") or row.get("proprietario_registrado"),
             owner_document=row.get("owner_document"),
             attributes=attributes,
             tax_debts=tuple(debts),
