@@ -133,6 +133,14 @@ class SearchResultsWindow(QMainWindow):
             "border-radius:12px; padding:16px; color:#eaf2f7; font-size:13px; }"
         )
         layout.addWidget(self.details, 1)
+        actions = QHBoxLayout()
+        map_button = QPushButton("Abrir GeoSampa oficial ↗")
+        map_button.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl("https://geosampa.prefeitura.sp.gov.br/"))
+        )
+        actions.addWidget(map_button)
+        actions.addStretch(1)
+        layout.addLayout(actions)
         self.setCentralWidget(root)
 
     def set_result(self, result: SearchResult) -> None:
@@ -250,6 +258,11 @@ class MainWindow(QMainWindow):
         self.nav_sources.setObjectName("nav")
         self.nav_sources.clicked.connect(self._show_sources)
         side.addWidget(self.nav_sources)
+
+        self.nav_integrations = QPushButton("⟳  Integrações")
+        self.nav_integrations.setObjectName("nav")
+        self.nav_integrations.clicked.connect(self._show_integrations)
+        side.addWidget(self.nav_integrations)
 
         self.nav_settings = QPushButton("⚙  Configurações")
         self.nav_settings.setObjectName("nav")
@@ -435,6 +448,63 @@ class MainWindow(QMainWindow):
             "Clique em um DDD para selecionar a região."
         )
         self.metric_region.set_value("Selecione um DDD")
+
+    def _show_integrations(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Painel de integrações")
+        dialog.resize(940, 700)
+        dialog.setMinimumSize(720, 520)
+        root = QVBoxLayout(dialog)
+        title = QLabel("Diagnóstico das integrações")
+        title.setObjectName("title")
+        root.addWidget(title)
+        intro = QLabel(
+            "Este painel mostra o estado declarado por cada adaptador. "
+            "A confirmação de conectividade é feita com uma consulta real usando "
+            "o endereço preenchido na tela principal; fontes municipais podem cobrir apenas "
+            "municípios específicos. Nenhuma credencial é exibida aqui."
+        )
+        intro.setWordWrap(True)
+        intro.setObjectName("muted")
+        root.addWidget(intro)
+        table = QTextBrowser()
+        table.setOpenExternalLinks(True)
+        table.setStyleSheet(
+            "QTextBrowser { background:#0c1926; border:1px solid #1b3348; "
+            "border-radius:12px; padding:14px; color:#eaf2f7; font-size:13px; }"
+        )
+        parts = ["<h2>Estado de configuração</h2><table width='100%' cellspacing='0' cellpadding='8'>"]
+        for source in self.service.registry.all():
+            try:
+                status = source.status()
+                state = {
+                    "available": "Registrada; conectividade ainda não testada",
+                    "ok": "Conectada",
+                    "not_configured": "Não configurada",
+                    "error": "Erro de configuração",
+                }.get(status.status, status.status)
+                message = status.message or "Sem detalhes fornecidos pelo adaptador."
+            except Exception as exc:  # noqa: BLE001 - isolate broken adapters in diagnostics.
+                state = "Falha ao consultar estado"
+                message = f"{type(exc).__name__}: {exc}"
+            parts.append(
+                "<tr><td width='26%'><b>" + escape(source.name) + "</b><br><small>" +
+                escape(source.source_id) + "</small></td><td><b>" + escape(state) +
+                "</b><br>" + escape(message) + "</td></tr>"
+            )
+        parts.append("</table><h2>Como validar a conexão</h2><p>Preencha endereço, cidade e UF na tela principal e execute uma pesquisa. "
+                     "A janela de resultados mostra, por fonte, se a consulta retornou registros, nenhum resultado, erro ou timeout. "
+                     "“Nenhum resultado” não é o mesmo que falha de conexão.</p>")
+        parts.append("<p><a href='https://geosampa.prefeitura.sp.gov.br/'>GeoSampa oficial</a> · "
+                     "<a href='https://www.ibge.gov.br/'>IBGE</a> · "
+                     "<a href='https://www.gov.br/receitafederal/pt-br/acesso-a-informacao/dados-abertos/cadastros'>Dados abertos CNPJ</a></p>")
+        table.setHtml("".join(parts))
+        root.addWidget(table, 1)
+        close_button = QPushButton("Fechar")
+        close_button.setObjectName("primary")
+        close_button.clicked.connect(dialog.accept)
+        root.addWidget(close_button, alignment=Qt.AlignmentFlag.AlignRight)
+        dialog.exec()
 
     def _show_sources(self) -> None:
         lines = ["Fontes registradas no aplicativo:", ""]
