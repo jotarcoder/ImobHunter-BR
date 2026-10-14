@@ -47,6 +47,8 @@ IBGE_MUNICIPALITIES_API = "https://servicodados.ibge.gov.br/api/v1/localidades/m
 USER_AGENT = "ImobHunter-BR/0.1 (official IBGE CNEFE integration)"
 MUNICIPALITY_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
 MAX_CNEFE_DOWNLOAD_BYTES = 512 * 1024 * 1024
+MAX_CNEFE_DOWNLOAD_SECONDS = 60
+CNEFE_SOCKET_TIMEOUT_SECONDS = 10
 
 
 def _clean_key(value: str) -> str:
@@ -206,11 +208,17 @@ def _download_remote_zip(url: str, cache_dir: Path) -> Path:
     request = Request(url, headers={"User-Agent": USER_AGENT})
     downloaded = 0
     try:
-        with urlopen(request, timeout=120) as response, temp.open("wb") as handle:
+        with urlopen(request, timeout=CNEFE_SOCKET_TIMEOUT_SECONDS) as response, temp.open("wb") as handle:
+            started_at = time.monotonic()
             content_length = response.headers.get("Content-Length")
             if content_length and int(content_length) > MAX_CNEFE_DOWNLOAD_BYTES:
                 raise ValueError("CNEFE download exceeds the configured size limit")
             while True:
+                if time.monotonic() - started_at > MAX_CNEFE_DOWNLOAD_SECONDS:
+                    raise TimeoutError(
+                        "O download municipal do CNEFE excedeu 60 segundos; "
+                        "a busca foi interrompida sem salvar um arquivo incompleto."
+                    )
                 chunk = response.read(1024 * 1024)
                 if not chunk:
                     break

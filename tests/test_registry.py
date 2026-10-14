@@ -19,6 +19,7 @@ def test_default_registry_contains_core_sources() -> None:
         "iphan",
         "osm",
         "municipal_iptu",
+        "official_geo_overlays",
     } <= ids
 
 

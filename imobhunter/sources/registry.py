@@ -15,6 +15,7 @@ from .sinter import SINTERAdapter
 from .sncr import SNCRAdapter
 from .stub import ConfiguredSourceStub
 from .ogc_wfs import ConfigurableWFSAdapter
+from .public_geoservices import PublicGeoservicesAdapter
 
 
 @dataclass
@@ -45,6 +46,7 @@ def build_default_registry() -> SourceRegistry:
     registry.register(CNPJAdapter())
     registry.register(ICMBioAdapter())
     registry.register(IPHANAdapter())
+    registry.register(PublicGeoservicesAdapter())
     registry.register(OSMAdapter())
     registry.register(MunicipalIPTUAdapter())
 
