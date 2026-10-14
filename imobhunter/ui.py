@@ -4,7 +4,7 @@ from html import escape
 from pathlib import Path
 import sys
 
-from PySide6.QtCore import QThreadPool, QObject, QRunnable, QUrl, Qt, Signal, Slot, QPointF
+from PySide6.QtCore import QThreadPool, QObject, QRunnable, QUrl, Qt, Signal, Slot, QPointF, QTimer
 from PySide6.QtGui import QBrush, QCursor, QDesktopServices, QFont, QIcon, QPainter, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import (
     QApplication,
@@ -83,6 +83,44 @@ class SearchWorker(QRunnable):
             self.signals.finished.emit(self.service.search(self.request))
         except Exception as exc:  # noqa: BLE001 - prevent adapter/database failures from killing the UI worker.
             self.signals.failed.emit(f"{type(exc).__name__}: {exc}")
+
+
+
+class IntegrationProbeSignals(QObject):
+    finished = Signal(str, str, str, int)
+
+
+class IntegrationProbeWorker(QRunnable):
+    def __init__(self, source, request: SearchRequest) -> None:
+        super().__init__()
+        self.source = source
+        self.request = request
+        self.signals = IntegrationProbeSignals()
+
+    @Slot()
+    def run(self) -> None:
+        import time
+        started = time.monotonic()
+        state = "error"
+        message = "A fonte não retornou um estado."
+        try:
+            status = self.source.status()
+            if status.status == "not_configured":
+                state = "not_configured"
+                message = status.message or "Fonte não configurada."
+            else:
+                records = self.source.search(self.request)
+                if records:
+                    state = "ok"
+                    message = f"Consulta respondida com {len(records)} registro(s)."
+                else:
+                    state = "no_results"
+                    message = "A fonte respondeu, mas não encontrou registros para esta consulta."
+        except Exception as exc:  # noqa: BLE001 - each adapter is isolated.
+            state = "error"
+            message = f"{type(exc).__name__}: {exc}"
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        self.signals.finished.emit(self.source.source_id, state, message, elapsed_ms)
 
 
 class MetricCard(QFrame):
@@ -544,21 +582,21 @@ class MainWindow(QMainWindow):
     def _show_integrations(self) -> None:
         dialog = QDialog(self)
         dialog.setWindowTitle("Painel de integrações")
-        dialog.resize(940, 700)
-        dialog.setMinimumSize(720, 520)
+        dialog.resize(980, 760)
+        dialog.setMinimumSize(760, 560)
         root = QVBoxLayout(dialog)
         title = QLabel("Diagnóstico das integrações")
         title.setObjectName("title")
         root.addWidget(title)
         intro = QLabel(
-            "Este painel mostra o estado declarado por cada adaptador. "
-            "A confirmação de conectividade é feita com uma consulta real usando "
-            "o endereço preenchido na tela principal; fontes municipais podem cobrir apenas "
-            "municípios específicos. Nenhuma credencial é exibida aqui."
+            "Teste cada adaptador com os dados atuais da pesquisa. As consultas rodam em segundo plano; "
+            "um timeout é sinalizado separadamente de uma falha e de uma resposta sem resultados. "
+            "A cobertura geográfica e os dados disponíveis dependem de cada fonte."
         )
         intro.setWordWrap(True)
         intro.setObjectName("muted")
         root.addWidget(intro)
+
         table = QTextBrowser()
         table.setOpenExternalLinks(True)
         table.setStyleSheet(
@@ -566,17 +604,18 @@ class MainWindow(QMainWindow):
             "border-radius:12px; padding:14px; color:#eaf2f7; font-size:13px; }"
         )
         parts = ["<h2>Estado de configuração</h2><table width='100%' cellspacing='0' cellpadding='8'>"]
-        for source in self.service.registry.all():
+        sources = self.service.registry.all()
+        for source in sources:
             try:
                 status = source.status()
                 state = {
-                    "available": "Registrada; conectividade ainda não testada",
+                    "available": "Registrada; ainda não testada",
                     "ok": "Conectada",
                     "not_configured": "Não configurada",
                     "error": "Erro de configuração",
                 }.get(status.status, status.status)
                 message = status.message or "Sem detalhes fornecidos pelo adaptador."
-            except Exception as exc:  # noqa: BLE001 - isolate broken adapters in diagnostics.
+            except Exception as exc:  # noqa: BLE001
                 state = "Falha ao consultar estado"
                 message = f"{type(exc).__name__}: {exc}"
             parts.append(
@@ -584,19 +623,114 @@ class MainWindow(QMainWindow):
                 escape(source.source_id) + "</small></td><td><b>" + escape(state) +
                 "</b><br>" + escape(message) + "</td></tr>"
             )
-        parts.append("</table><h2>Como validar a conexão</h2><p>Preencha endereço, cidade e UF na tela principal e execute uma pesquisa. "
-                     "A janela de resultados mostra, por fonte, se a consulta retornou registros, nenhum resultado, erro ou timeout. "
-                     "“Nenhum resultado” não é o mesmo que falha de conexão.</p>")
-        parts.append("<p><a href='https://geosampa.prefeitura.sp.gov.br/'>GeoSampa oficial</a> · "
-                     "<a href='https://www.ibge.gov.br/'>IBGE</a> · "
-                     "<a href='https://www.gov.br/receitafederal/pt-br/acesso-a-informacao/dados-abertos/cadastros'>Dados abertos CNPJ</a></p>")
+        parts.append("</table>")
         table.setHtml("".join(parts))
         root.addWidget(table, 1)
+
+        request_box = QLabel("Consulta de teste: use endereço + cidade + UF, quadra + lote + cidade + UF ou código CIB preenchidos na tela principal.")
+        request_box.setWordWrap(True)
+        root.addWidget(request_box)
+
+        status_labels = {}
+        buttons = {}
+        for source in sources:
+            row = QHBoxLayout()
+            label = QLabel(f"{source.name} ({source.source_id}) — aguardando teste")
+            label.setWordWrap(True)
+            row.addWidget(label, 1)
+            button = QPushButton("Testar conexão")
+            button.clicked.connect(
+                lambda checked=False, s=source, l=label, b=button: self._test_integration(s, l, b, dialog)
+            )
+            row.addWidget(button)
+            root.addLayout(row)
+            status_labels[source.source_id] = label
+            buttons[source.source_id] = button
+
+        links = QLabel(
+            "<a href='https://geosampa.prefeitura.sp.gov.br/'>GeoSampa oficial</a> · "
+            "<a href='https://www.ibge.gov.br/'>IBGE</a> · "
+            "<a href='https://www.gov.br/receitafederal/pt-br/acesso-a-informacao/dados-abertos/cadastros'>Dados abertos CNPJ</a>"
+        )
+        links.setOpenExternalLinks(True)
+        root.addWidget(links)
         close_button = QPushButton("Fechar")
         close_button.setObjectName("primary")
         close_button.clicked.connect(dialog.accept)
         root.addWidget(close_button, alignment=Qt.AlignmentFlag.AlignRight)
         dialog.exec()
+
+    def _test_integration(self, source, label: QLabel, button: QPushButton, dialog: QDialog) -> None:
+        address = self.address.text().strip() or None
+        number = self.number.text().strip() or None
+        city = self.city.text().strip() or None
+        state = self.state.text().strip().upper() or None
+        block = self.block.text().strip() or None
+        lot = self.lot.text().strip() or None
+        cib = self.cib.text().strip() or None
+        request = SearchRequest(
+            address=address, number=number, city=city, state=state,
+            block=block, lot=lot, cib=cib,
+        )
+        try:
+            request.validate()
+            if (address and (not city or not state or len(state) != 2)) or (
+                (block or lot) and (not block or not lot or not city or not state or len(state) != 2)
+            ):
+                raise ValueError("Preencha cidade e UF (2 letras) para endereço ou quadra/lote.")
+        except ValueError as exc:
+            QMessageBox.information(self, "Consulta de teste incompleta", str(exc))
+            return
+
+        token = object()
+        button.setProperty("probe_token", id(token))
+        button.setProperty("probe_timed_out", False)
+        button.setEnabled(False)
+        label.setText(f"{source.name} — testando…")
+        worker = IntegrationProbeWorker(source, request)
+        worker.signals.finished.connect(
+            lambda source_id, result, message, elapsed, s=source, l=label, b=button, t=id(token):
+                self._integration_probe_finished(source_id, result, message, elapsed, s, l, b, t)
+        )
+        timer = QTimer(dialog)
+        timer.setSingleShot(True)
+        timer.timeout.connect(
+            lambda s=source, l=label, b=button, t=id(token):
+                self._integration_probe_timeout(s, l, b, t)
+        )
+        timer.start(12000)
+        self._integration_probe_timers = getattr(self, "_integration_probe_timers", [])
+        self._integration_probe_timers.append(timer)
+        self._integration_probe_workers = getattr(self, "_integration_probe_workers", [])
+        self._integration_probe_workers.append(worker)
+        self.thread_pool.start(worker)
+
+    def _integration_probe_timeout(self, source, label: QLabel, button: QPushButton, token: int) -> None:
+        if button.property("probe_token") != token:
+            return
+        button.setProperty("probe_timed_out", True)
+        button.setEnabled(True)
+        label.setText(f"{source.name} — TIMEOUT: mais de 12 segundos. A consulta pode ainda estar em execução.")
+
+    def _integration_probe_finished(
+        self, source_id: str, result: str, message: str, elapsed_ms: int,
+        source, label: QLabel, button: QPushButton, token: int,
+    ) -> None:
+        if button.property("probe_token") != token:
+            return
+        if button.property("probe_timed_out"):
+            return
+        button.setEnabled(True)
+        labels = {
+            "ok": "CONECTADA · com resultados",
+            "no_results": "RESPONDEU · sem resultados",
+            "not_configured": "NÃO CONFIGURADA",
+            "error": "FALHA",
+        }
+        label.setText(
+            f"{source.name} — {labels.get(result, result.upper())} · {elapsed_ms} ms · {message}"
+        )
+
 
     def _show_sources(self) -> None:
         lines = ["Fontes registradas no aplicativo:", ""]
