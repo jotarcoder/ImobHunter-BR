@@ -47,6 +47,42 @@ def get_user_id() -> str:
     return value
 
 
+def saved_activation_key() -> str | None:
+    """Return the locally saved activation key, if present."""
+    path = _user_data_dir() / "license.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        key = "".join(str(data.get("activation_key", "")).split()).replace("-", "").upper()
+        if len(key) == 64 and all(char in "0123456789ABCDEF" for char in key):
+            return key
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    return None
+
+
+def save_activation_key(activation_key: str) -> None:
+    """Persist a key only after the licensing server authorizes it."""
+    key = "".join(str(activation_key).split()).replace("-", "").upper()
+    if len(key) != 64 or any(char not in "0123456789ABCDEF" for char in key):
+        raise LicenseError("A chave de ativação não tem o formato esperado.")
+    path = _user_data_dir() / "license.json"
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps({"activation_key": key}), encoding="utf-8")
+    try:
+        temporary.chmod(0o600)
+    except OSError:
+        pass
+    temporary.replace(path)
+
+
+def clear_saved_activation_key() -> None:
+    """Remove the locally cached key when server validation fails."""
+    try:
+        (_user_data_dir() / "license.json").unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def activate(user_id: str, activation_key: str, api_url: str | None = None) -> dict:
     try:
         normalized_id = str(uuid.UUID(str(user_id).strip())).lower()

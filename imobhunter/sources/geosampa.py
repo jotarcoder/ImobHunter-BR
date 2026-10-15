@@ -11,7 +11,7 @@ from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest, 
 from .base import SourceAdapter
 
 DEFAULT_WFS_URL = "https://wfs.geosampa.prefeitura.sp.gov.br/geoserver/geoportal/wfs"
-DEFAULT_LAYER = "geoportal:lote"
+DEFAULT_LAYER = "geoportal:lote_cidadao"
 
 
 def _text(properties: dict[str, Any], *names: str) -> str | None:
@@ -155,11 +155,27 @@ class GeoSampaAdapter(SourceAdapter):
                 try:
                     response = client.get(self.endpoint, params=params)
                     response.raise_for_status()
-                    payload = response.json()
                 except httpx.HTTPError as exc:
                     raise RuntimeError(f"GeoSampa request failed: {exc}") from exc
+                content_type = response.headers.get("content-type", "").lower()
+                try:
+                    payload = response.json()
                 except ValueError as exc:
-                    raise RuntimeError("GeoSampa returned invalid JSON") from exc
+                    body = " ".join(response.text.split())[:240]
+                    if "xml" in content_type or body.startswith("<"):
+                        detail = "WFS devolveu XML em vez de GeoJSON"
+                    elif "html" in content_type or "<html" in body.lower():
+                        detail = "WFS devolveu HTML em vez de GeoJSON"
+                    else:
+                        detail = "WFS devolveu conteúdo que não é JSON válido"
+                    raise RuntimeError(
+                        f"GeoSampa: {detail}; HTTP {response.status_code}; "
+                        f"Content-Type={content_type or 'ausente'}; resposta={body or '(vazia)'}"
+                    ) from exc
+                if not isinstance(payload, dict):
+                    raise TypeError("GeoSampa: resposta JSON válida, mas não é um objeto GeoJSON")
+                if payload.get("type") == "ExceptionReport" or "ServiceException" in payload:
+                    raise RuntimeError("GeoSampa WFS reportou uma exceção: " + " ".join(str(payload)[:300].split()))
                 records = self._parse_features(payload)
                 if records:
                     break
