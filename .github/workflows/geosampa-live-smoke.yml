@@ -1,0 +1,83 @@
+name: GeoSampa live smoke validation
+
+on:
+  push:
+    branches:
+      - "test/geosampa-live-smoke-validation"
+  pull_request:
+    paths:
+      - "imobhunter/sources/geosampa.py"
+      - ".github/workflows/geosampa-live-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-wfs-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Probe current and legacy GeoSampa WFS endpoints
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          probes = [
+              (
+                  "current adapter endpoint (legacy public WFS)",
+                  "https://wfs.geosampa.prefeitura.sp.gov.br/geoserver/geoportal/wfs",
+                  "geoportal:lote_cidadao",
+              ),
+              (
+                  "documented SLUI endpoint (diagnostic)",
+                  "https://geoserver.slui.dev/geoserver/slui/ows",
+                  "slui:view_lote_cidadao",
+              ),
+          ]
+          params_base = {
+              "service": "WFS",
+              "version": "1.0.0",
+              "request": "GetFeature",
+              "maxFeatures": "1",
+              "outputFormat": "json",
+              "srsName": "EPSG:4326",
+              "CQL_FILTER": "nm_logradouro_completo ILIKE '%PAMPLONA%'",
+          }
+          results = []
+          for label, endpoint, layer in probes:
+              params = {**params_base, "typeName": layer}
+              url = endpoint + "?" + urllib.parse.urlencode(params)
+              request = urllib.request.Request(
+                  url,
+                  headers={"User-Agent": "ImobHunter-BR-GeoSampa-SmokeTest/1.0"},
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=20) as response:
+                      body = response.read().decode("utf-8")
+                      status = response.status
+                  payload = json.loads(body)
+                  if not isinstance(payload, dict) or not isinstance(payload.get("features"), list):
+                      result = (label, endpoint, status, "invalid GeoJSON response", 0)
+                  else:
+                      count = len(payload["features"])
+                      result = (label, endpoint, status, "GeoJSON FeatureCollection", count)
+              except urllib.error.HTTPError as exc:
+                  result = (label, endpoint, exc.code, f"HTTP error: {exc.reason}", 0)
+                  exc.close()
+              except Exception as exc:
+                  result = (label, endpoint, "ERROR", f"{type(exc).__name__}: {exc}", 0)
+              results.append(result)
+              print(f"{label}: status={result[2]}; response={result[3]}; features={result[4]}; endpoint={endpoint}")
+
+          current = results[0]
+          if current[2] != 200 or current[3] != "GeoJSON FeatureCollection" or current[4] < 1:
+              raise SystemExit(
+                  "FAIL: current adapter endpoint is not returning a usable feature for the live address query. "
+                  "See both endpoint results above; do not treat mocked unit tests as live validation."
+              )
+          print("PASS: current adapter endpoint returned at least one live feature.")
+          PY
