@@ -153,7 +153,7 @@ class GeoSampaAdapter(SourceAdapter):
                     "maxFeatures": 50,
                 }
                 try:
-                    response = client.get(self.endpoint, params=params)
+                    response = client.get(self.endpoint, params=params, timeout=self.timeout)
                     response.raise_for_status()
                 except httpx.HTTPError as exc:
                     raise RuntimeError(f"GeoSampa request failed: {exc}") from exc
