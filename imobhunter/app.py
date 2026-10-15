@@ -23,7 +23,7 @@ def main() -> None:
             "pip install -e '.[desktop]'"
         ) from exc
 
-    from .licensing import LicenseError, activate, get_user_id
+    from .licensing import (LicenseError, activate, get_user_id, saved_activation_key, save_activation_key, clear_saved_activation_key)
     from .application.search import SearchService
     from .infrastructure.local_db import LocalDatabase
     from .sources.registry import build_default_registry
@@ -34,12 +34,22 @@ def main() -> None:
     apply_style(app)
     user_id = get_user_id()
 
+    cached_key = saved_activation_key()
+    if cached_key:
+        try:
+            activate(user_id, cached_key)
+        except LicenseError:
+            clear_saved_activation_key()
+            cached_key = None
+
     class ActivationDialog(QDialog):
         def __init__(self) -> None:
             super().__init__()
             self.setWindowTitle("Ativar ImobHunter-BR")
             self.setMinimumWidth(520)
             self.activation_key = ""
+            if cached_key:
+                self.key_field.setText(cached_key) if hasattr(self, "key_field") else None
             layout = QVBoxLayout(self)
             layout.setSpacing(12)
 
@@ -67,6 +77,8 @@ def main() -> None:
             self.key_field = QLineEdit()
             self.key_field.setPlaceholderText("Cole aqui sua chave de 64 caracteres")
             self.key_field.setEchoMode(QLineEdit.EchoMode.Password)
+            if cached_key:
+                self.key_field.setText(cached_key)
             self.key_field.returnPressed.connect(self.try_activate)
             layout.addWidget(self.key_field)
 
@@ -115,13 +127,20 @@ def main() -> None:
             except LicenseError as exc:
                 self.status.setText(str(exc))
                 return
+            try:
+                save_activation_key(key)
+            except OSError as exc:
+                self.status.setText(f"Licença ativada, mas não foi possível salvar localmente: {exc}")
+                return
             self.activation_key = key
             self.accept()
 
-    dialog = ActivationDialog()
-    if dialog.exec() != QDialog.DialogCode.Accepted:
-        return
-    activation_key = dialog.activation_key
+    activation_key = cached_key or ""
+    if not activation_key:
+        dialog = ActivationDialog()
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        activation_key = dialog.activation_key
 
     registry = build_default_registry()
     apply_saved_source_settings(registry)
@@ -135,6 +154,7 @@ def main() -> None:
         try:
             activate(user_id, activation_key)
         except LicenseError:
+            clear_saved_activation_key()
             QMessageBox.critical(
                 window,
                 "Licença suspensa",
