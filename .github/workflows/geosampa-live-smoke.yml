@@ -1,0 +1,74 @@
+name: GeoSampa live smoke validation
+
+on:
+  pull_request:
+    paths:
+      - "imobhunter/sources/geosampa.py"
+      - ".github/workflows/geosampa-live-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-wfs-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Query live GeoSampa WFS
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.parse
+          import urllib.request
+
+          endpoint = "https://geoserver.slui.dev/geoserver/slui/ows"
+          params = {
+              "service": "WFS",
+              "version": "1.0.0",
+              "request": "GetFeature",
+              "typeName": "slui:view_lote_cidadao",
+              "maxFeatures": "1",
+              "outputFormat": "json",
+              "srsName": "EPSG:4326",
+              "CQL_FILTER": "nm_logradouro_completo ILIKE '%PAMPLONA%'",
+          }
+          url = endpoint + "?" + urllib.parse.urlencode(params)
+          request = urllib.request.Request(
+              url,
+              headers={"User-Agent": "ImobHunter-BR-GeoSampa-SmokeTest/1.0"},
+          )
+          with urllib.request.urlopen(request, timeout=25) as response:
+              status = response.status
+              body = response.read().decode("utf-8")
+
+          if status != 200:
+              raise SystemExit(f"GeoSampa WFS returned HTTP {status}")
+
+          try:
+              payload = json.loads(body)
+          except json.JSONDecodeError as exc:
+              raise SystemExit(
+                  f"GeoSampa WFS did not return JSON; body starts with: {body[:300]!r}"
+              ) from exc
+
+          if not isinstance(payload, dict) or not isinstance(payload.get("features"), list):
+              raise SystemExit(
+                  "GeoSampa WFS response is not a GeoJSON FeatureCollection; "
+                  f"keys={list(payload) if isinstance(payload, dict) else type(payload).__name__}"
+              )
+
+          if not payload["features"]:
+              raise SystemExit(
+                  "GeoSampa WFS answered with valid GeoJSON but returned no features "
+                  "for the smoke-test query nm_logradouro_completo ILIKE '%PAMPLONA%'."
+              )
+
+          feature = payload["features"][0]
+          properties = feature.get("properties") or {}
+          print("PASS: live GeoSampa WFS returned HTTP 200 and at least one feature.")
+          print(f"Endpoint: {endpoint}")
+          print(f"Layer: {params['typeName']}")
+          print(f"Feature properties received: {len(properties)}")
+          print("Sample fields: " + ", ".join(list(properties)[:12]))
+          PY
