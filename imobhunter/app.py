@@ -48,8 +48,6 @@ def main() -> None:
             self.setWindowTitle("Ativar ImobHunter-BR")
             self.setMinimumWidth(520)
             self.activation_key = ""
-            if cached_key:
-                self.key_field.setText(cached_key) if hasattr(self, "key_field") else None
             layout = QVBoxLayout(self)
             layout.setSpacing(12)
 
