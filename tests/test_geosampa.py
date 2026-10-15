@@ -82,7 +82,7 @@ def test_geosampa_search_builds_filtered_wfs_request_and_parses_current_fields()
     assert records[0].attributes["owner_document_status"] == "not_provided_by_this_layer"
     assert records[0].owner_name is None
     assert records[0].owner_document is None
-    assert "typeName=slui%3Aview_lote_cidadao" in str(captured["url"])
+    assert "typeName=geoportal%3Alote_cidadao" in str(captured["url"])
     assert "nm_logradouro_completo+ILIKE" in str(captured["url"])
     assert "cd_numero_porta" in str(captured["url"])
 
