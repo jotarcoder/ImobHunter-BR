@@ -10,8 +10,8 @@ from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest, 
 
 from .base import SourceAdapter
 
-DEFAULT_WFS_URL = "https://wfs.geosampa.prefeitura.sp.gov.br/geoserver/geoportal/wfs"
-DEFAULT_LAYER = "geoportal:lote_cidadao"
+DEFAULT_WFS_URL = "https://geoserver.slui.dev/geoserver/slui/ows"
+DEFAULT_LAYER = "slui:view_lote_cidadao"
 
 
 def _text(properties: dict[str, Any], *names: str) -> str | None:
@@ -119,8 +119,12 @@ class GeoSampaAdapter(SourceAdapter):
         else:
             if not normalized.street_name:
                 return []
+            # Wildcards between tokens tolerate source abbreviations and spacing.
+            street_term = "%".join(
+                token for token in normalized.street_name.split() if token
+            )
             filters = [
-                f"nm_logradouro_completo ILIKE '%{_escape_cql(normalized.street_name)}%'",
+                f"nm_logradouro_completo ILIKE '%{_escape_cql(street_term)}%'",
             ]
             # Address-only searches should return candidate parcels instead of
             # silently returning no results. Keep the exact door-number filter
@@ -134,8 +138,11 @@ class GeoSampaAdapter(SourceAdapter):
         # transformar uma divergência cadastral em uma busca vazia.
         query_filters = [filters]
         if normalized.number and not (block and lot):
+            street_term = "%".join(
+                token for token in (normalized.street_name or "").split() if token
+            )
             query_filters.append([
-                f"nm_logradouro_completo ILIKE '%{_escape_cql(normalized.street_name or '')}%'"
+                f"nm_logradouro_completo ILIKE '%{_escape_cql(street_term)}%'"
             ])
 
         client = self._client or httpx.Client(timeout=self.timeout)
@@ -148,7 +155,8 @@ class GeoSampaAdapter(SourceAdapter):
                     "version": "1.0.0",
                     "request": "GetFeature",
                     "typeName": self.layer,
-                    "outputFormat": "application/json",
+                    "outputFormat": "json",
+                    "srsName": "EPSG:4326",
                     "CQL_FILTER": " AND ".join(active_filters),
                     "maxFeatures": 50,
                 }

@@ -82,7 +82,7 @@ def test_geosampa_search_builds_filtered_wfs_request_and_parses_current_fields()
     assert records[0].attributes["owner_document_status"] == "not_provided_by_this_layer"
     assert records[0].owner_name is None
     assert records[0].owner_document is None
-    assert "typeName=geoportal%3Alote_cidadao" in str(captured["url"])
+    assert "typeName=slui%3Aview_lote_cidadao" in str(captured["url"])
     assert "nm_logradouro_completo+ILIKE" in str(captured["url"])
     assert "cd_numero_porta" in str(captured["url"])
 
@@ -256,8 +256,8 @@ def test_geosampa_falls_back_to_street_when_exact_house_number_has_no_match() ->
 
 
 def test_geosampa_uses_official_wfs_endpoint_path() -> None:
-    assert DEFAULT_WFS_URL == "https://wfs.geosampa.prefeitura.sp.gov.br/geoserver/geoportal/wfs"
-    assert GeoSampaAdapter().layer == "geoportal:lote_cidadao"
+    assert DEFAULT_WFS_URL == "https://geoserver.slui.dev/geoserver/slui/ows"
+    assert GeoSampaAdapter().layer == "slui:view_lote_cidadao"
 
 
 
@@ -300,3 +300,55 @@ def test_geosampa_rejects_unsupported_geometry_for_map() -> None:
         "features": [{"type": "Feature", "geometry": {"type": "GeometryCollection", "geometries": []}, "properties": {}}]
     })
     assert records[0].attributes["geometry_geojson"] is None
+
+
+def test_geosampa_wildcards_each_street_token_for_source_abbreviations() -> None:
+    captured: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request.url.params.get("CQL_FILTER", ""))
+        return httpx.Response(200, json={"features": []}, request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    GeoSampaAdapter(client=client).search(
+        SearchRequest(address="Rua Doutor Arnaldo", number="100", city="São Paulo", state="SP")
+    )
+
+    assert len(captured) == 2
+    assert "nm_logradouro_completo ILIKE '%ARNALDO%'" in captured[0]
+    assert "cd_numero_porta='100'" in captured[0]
+    assert "nm_logradouro_completo ILIKE '%ARNALDO%'" in captured[1]
+    assert "cd_numero_porta" not in captured[1]
+
+
+def test_geosampa_returns_empty_list_for_valid_empty_geojson() -> None:
+    client = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json={"type": "FeatureCollection", "features": []}, request=request)
+        )
+    )
+    records = GeoSampaAdapter(client=client).search(
+        SearchRequest(address="Rua Pamplona", city="São Paulo", state="SP")
+    )
+    assert records == []
+
+
+def test_geosampa_uses_new_slui_endpoint_and_wfs_parameters() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["params"] = dict(request.url.params)
+        return httpx.Response(200, json={"type": "FeatureCollection", "features": []}, request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    GeoSampaAdapter(client=client).search(
+        SearchRequest(address="Av Paulista", city="São Paulo", state="SP")
+    )
+    assert str(captured["url"]).startswith("https://geoserver.slui.dev/geoserver/slui/ows?")
+    params = captured["params"]
+    assert params["service"] == "WFS"
+    assert params["request"] == "GetFeature"
+    assert params["typeName"] == "slui:view_lote_cidadao"
+    assert params["outputFormat"] == "json"
+    assert params["srsName"] == "EPSG:4326"
