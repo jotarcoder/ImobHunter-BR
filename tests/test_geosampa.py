@@ -82,7 +82,7 @@ def test_geosampa_search_builds_filtered_wfs_request_and_parses_current_fields()
     assert records[0].attributes["owner_document_status"] == "not_provided_by_this_layer"
     assert records[0].owner_name is None
     assert records[0].owner_document is None
-    assert "typeName=geoportal%3Alote" in str(captured["url"])
+    assert "typeName=geoportal%3Alote_cidadao" in str(captured["url"])
     assert "nm_logradouro_completo+ILIKE" in str(captured["url"])
     assert "cd_numero_porta" in str(captured["url"])
 
@@ -187,7 +187,8 @@ def test_geosampa_surfaces_invalid_json() -> None:
             )
         )
     except RuntimeError as exc:
-        assert str(exc) == "GeoSampa returned invalid JSON"
+        assert "GeoSampa: WFS devolveu conteúdo que não é JSON válido" in str(exc)
+        assert "HTTP 200" in str(exc)
     else:
         raise AssertionError("expected GeoSampa JSON failure")
 
@@ -256,6 +257,7 @@ def test_geosampa_falls_back_to_street_when_exact_house_number_has_no_match() ->
 
 def test_geosampa_uses_official_wfs_endpoint_path() -> None:
     assert DEFAULT_WFS_URL == "https://wfs.geosampa.prefeitura.sp.gov.br/geoserver/geoportal/wfs"
+    assert GeoSampaAdapter().layer == "geoportal:lote_cidadao"
 
 
 
