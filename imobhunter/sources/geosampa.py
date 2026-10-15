@@ -11,7 +11,7 @@ from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest, 
 from .base import SourceAdapter
 
 DEFAULT_WFS_URL = "https://wfs.geosampa.prefeitura.sp.gov.br/geoserver/geoportal/wfs"
-DEFAULT_LAYER = "geoportal:lote"
+DEFAULT_LAYER = "geoportal:lote_cidadao"
 
 
 def _text(properties: dict[str, Any], *names: str) -> str | None:
