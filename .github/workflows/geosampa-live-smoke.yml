@@ -1,6 +1,9 @@
 name: GeoSampa live smoke validation
 
 on:
+  push:
+    branches:
+      - "test/geosampa-live-smoke-validation"
   pull_request:
     paths:
       - "imobhunter/sources/geosampa.py"
