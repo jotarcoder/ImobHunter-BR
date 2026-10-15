@@ -18,60 +18,66 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Query live GeoSampa WFS
+      - name: Probe current and legacy GeoSampa WFS endpoints
         run: |
           python - <<'PY'
           import json
+          import urllib.error
           import urllib.parse
           import urllib.request
 
-          endpoint = "https://geoserver.slui.dev/geoserver/slui/ows"
-          params = {
+          probes = [
+              (
+                  "current SLUI",
+                  "https://geoserver.slui.dev/geoserver/slui/ows",
+                  "slui:view_lote_cidadao",
+              ),
+              (
+                  "legacy GeoSampa",
+                  "https://wfs.geosampa.prefeitura.sp.gov.br/geoserver/geoportal/wfs",
+                  "geoportal:lote_cidadao",
+              ),
+          ]
+          params_base = {
               "service": "WFS",
               "version": "1.0.0",
               "request": "GetFeature",
-              "typeName": "slui:view_lote_cidadao",
               "maxFeatures": "1",
               "outputFormat": "json",
               "srsName": "EPSG:4326",
               "CQL_FILTER": "nm_logradouro_completo ILIKE '%PAMPLONA%'",
           }
-          url = endpoint + "?" + urllib.parse.urlencode(params)
-          request = urllib.request.Request(
-              url,
-              headers={"User-Agent": "ImobHunter-BR-GeoSampa-SmokeTest/1.0"},
-          )
-          with urllib.request.urlopen(request, timeout=25) as response:
-              status = response.status
-              body = response.read().decode("utf-8")
-
-          if status != 200:
-              raise SystemExit(f"GeoSampa WFS returned HTTP {status}")
-
-          try:
-              payload = json.loads(body)
-          except json.JSONDecodeError as exc:
-              raise SystemExit(
-                  f"GeoSampa WFS did not return JSON; body starts with: {body[:300]!r}"
-              ) from exc
-
-          if not isinstance(payload, dict) or not isinstance(payload.get("features"), list):
-              raise SystemExit(
-                  "GeoSampa WFS response is not a GeoJSON FeatureCollection; "
-                  f"keys={list(payload) if isinstance(payload, dict) else type(payload).__name__}"
+          results = []
+          for label, endpoint, layer in probes:
+              params = {**params_base, "typeName": layer}
+              url = endpoint + "?" + urllib.parse.urlencode(params)
+              request = urllib.request.Request(
+                  url,
+                  headers={"User-Agent": "ImobHunter-BR-GeoSampa-SmokeTest/1.0"},
               )
+              try:
+                  with urllib.request.urlopen(request, timeout=20) as response:
+                      body = response.read().decode("utf-8")
+                      status = response.status
+                  payload = json.loads(body)
+                  if not isinstance(payload, dict) or not isinstance(payload.get("features"), list):
+                      result = (label, endpoint, status, "invalid GeoJSON response", 0)
+                  else:
+                      count = len(payload["features"])
+                      result = (label, endpoint, status, "GeoJSON FeatureCollection", count)
+              except urllib.error.HTTPError as exc:
+                  result = (label, endpoint, exc.code, f"HTTP error: {exc.reason}", 0)
+                  exc.close()
+              except Exception as exc:
+                  result = (label, endpoint, "ERROR", f"{type(exc).__name__}: {exc}", 0)
+              results.append(result)
+              print(f"{label}: status={result[2]}; response={result[3]}; features={result[4]}; endpoint={endpoint}")
 
-          if not payload["features"]:
+          current = results[0]
+          if current[2] != 200 or current[3] != "GeoJSON FeatureCollection" or current[4] < 1:
               raise SystemExit(
-                  "GeoSampa WFS answered with valid GeoJSON but returned no features "
-                  "for the smoke-test query nm_logradouro_completo ILIKE '%PAMPLONA%'."
+                  "FAIL: current SLUI endpoint is not returning a usable feature for the live address query. "
+                  "See both endpoint results above; do not treat mocked unit tests as live validation."
               )
-
-          feature = payload["features"][0]
-          properties = feature.get("properties") or {}
-          print("PASS: live GeoSampa WFS returned HTTP 200 and at least one feature.")
-          print(f"Endpoint: {endpoint}")
-          print(f"Layer: {params['typeName']}")
-          print(f"Feature properties received: {len(properties)}")
-          print("Sample fields: " + ", ".join(list(properties)[:12]))
+          print("PASS: current SLUI endpoint returned at least one live feature.")
           PY
