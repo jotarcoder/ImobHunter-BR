@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QGraphicsView,
     QGraphicsPolygonItem,
     QFrame,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -28,6 +29,7 @@ from PySide6.QtWidgets import (
 
 from .application.coverage import DDDCoverageRegistry, load_ddd_coverage
 from .application.search import SearchResult, SearchService
+from .application.export import export_search_result_csv, export_search_result_json
 from .domain.models import SearchRequest
 import json
 from .ui_market import MarketIntelligenceDialog
@@ -259,6 +261,15 @@ class SearchResultsWindow(QMainWindow):
         )
         layout.addWidget(self.details, 1)
         actions = QHBoxLayout()
+        self._result: SearchResult | None = None
+        self.export_csv_button = QPushButton("Exportar CSV")
+        self.export_csv_button.setEnabled(False)
+        self.export_csv_button.clicked.connect(self._export_csv)
+        actions.addWidget(self.export_csv_button)
+        self.export_json_button = QPushButton("Exportar JSON")
+        self.export_json_button.setEnabled(False)
+        self.export_json_button.clicked.connect(self._export_json)
+        actions.addWidget(self.export_json_button)
         self.map_button = QPushButton("Mapa cadastral dos lotes")
         self.map_button.setEnabled(False)
         self.map_button.clicked.connect(self._open_cadastral_map)
@@ -282,12 +293,45 @@ class SearchResultsWindow(QMainWindow):
             "Confira as integrações e tente novamente; esta mensagem não significa que o imóvel não exista."
         )
 
+    def _export_csv(self) -> None:
+        if self._result is None:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Exportar dossiê em CSV", "imobhunter-dossie.csv", "CSV (*.csv)"
+        )
+        if not path:
+            return
+        try:
+            export_search_result_csv(self._result, Path(path))
+        except (OSError, ValueError, TypeError) as exc:
+            QMessageBox.warning(self, "Exportação CSV", f"Não foi possível exportar o arquivo: {exc}")
+            return
+        self.summary.setText(f"Exportação CSV concluída: {path}")
+
+    def _export_json(self) -> None:
+        if self._result is None:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Exportar dossiê em JSON", "imobhunter-dossie.json", "JSON (*.json)"
+        )
+        if not path:
+            return
+        try:
+            export_search_result_json(self._result, Path(path))
+        except (OSError, ValueError, TypeError) as exc:
+            QMessageBox.warning(self, "Exportação JSON", f"Não foi possível exportar o arquivo: {exc}")
+            return
+        self.summary.setText(f"Exportação JSON concluída: {path}")
+
     def _open_cadastral_map(self) -> None:
         records = getattr(self, "_map_records", [])
         dialog = CadastralMapDialog(records, self)
         dialog.exec()
 
     def set_result(self, result: SearchResult) -> None:
+        self._result = result
+        self.export_csv_button.setEnabled(True)
+        self.export_json_button.setEnabled(True)
         self._completed = True
         self._watchdog.stop()
         self._map_records = [r for r in result.records if r.attributes.get("geometry_geojson")]
