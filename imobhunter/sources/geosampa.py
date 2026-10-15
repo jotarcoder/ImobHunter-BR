@@ -173,7 +173,7 @@ class GeoSampaAdapter(SourceAdapter):
                         f"Content-Type={content_type or 'ausente'}; resposta={body or '(vazia)'}"
                     ) from exc
                 if not isinstance(payload, dict):
-                    raise RuntimeError("GeoSampa: resposta JSON válida, mas não é um objeto GeoJSON")
+                    raise TypeError("GeoSampa: resposta JSON válida, mas não é um objeto GeoJSON")
                 if payload.get("type") == "ExceptionReport" or "ServiceException" in payload:
                     raise RuntimeError("GeoSampa WFS reportou uma exceção: " + " ".join(str(payload)[:300].split()))
                 records = self._parse_features(payload)
