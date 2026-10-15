@@ -79,5 +79,5 @@ def test_explicit_house_number_takes_precedence_over_inline_number() -> None:
     result = normalize_request(
         SearchRequest(address="Rua Pamplona, 1578", number="1600")
     )
-    assert result.street_name == "PAMPLONA 1578"
+    assert result.street_name == "PAMPLONA"
     assert result.number == "1600"
