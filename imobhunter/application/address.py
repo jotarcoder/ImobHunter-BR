@@ -8,7 +8,7 @@ _PUNCT = re.compile(r"[,.;:]+")
 # Accept a house number typed at the end of the address field, e.g. "Rua X, 42",
 # "Av X nº 42" or "Rua X 42-A".
 _TRAILING_HOUSE_NUMBER = re.compile(
-    r"\s+(?:N(?:O|[º°.]|UMERO)?\s*)?(\d+[A-Z]?(?:[-/]\d+[A-Z]?)?)$"
+    r"\s+(?:N(?:\s*O|[º°.]|UMERO)?\s*)?(\d+[A-Z]?(?:[-/]\d+[A-Z]?)?)$"
 )
 _VALID_UFS = frozenset(
     [
