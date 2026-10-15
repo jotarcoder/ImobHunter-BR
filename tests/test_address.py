@@ -56,3 +56,28 @@ def test_geosampa_preserves_untyped_street_name() -> None:
     assert result.street_type is None
     assert result.street_title is None
     assert result.street_name == "PAMPLONA"
+
+
+def test_geosampa_extracts_house_number_from_combined_address() -> None:
+    result = normalize_request(
+        SearchRequest(address="Rua Pamplona, 1578", city="São Paulo", state="SP")
+    )
+    assert result.street_type == "R"
+    assert result.street_name == "PAMPLONA"
+    assert result.number == "1578"
+    assert result.normalized == "RUA PAMPLONA 1578"
+
+
+def test_geosampa_extracts_number_marker_and_suffix() -> None:
+    result = normalize_request(SearchRequest(address="Av Paulista nº 1578-A"))
+    assert result.street_type == "AV"
+    assert result.street_name == "PAULISTA"
+    assert result.number == "1578-A"
+
+
+def test_explicit_house_number_takes_precedence_over_inline_number() -> None:
+    result = normalize_request(
+        SearchRequest(address="Rua Pamplona, 1578", number="1600")
+    )
+    assert result.street_name == "PAMPLONA 1578"
+    assert result.number == "1600"
