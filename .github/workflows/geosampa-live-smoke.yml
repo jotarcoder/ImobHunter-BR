@@ -28,14 +28,14 @@ jobs:
 
           probes = [
               (
-                  "current SLUI",
-                  "https://geoserver.slui.dev/geoserver/slui/ows",
-                  "slui:view_lote_cidadao",
-              ),
-              (
-                  "legacy GeoSampa",
+                  "current adapter endpoint (legacy public WFS)",
                   "https://wfs.geosampa.prefeitura.sp.gov.br/geoserver/geoportal/wfs",
                   "geoportal:lote_cidadao",
+              ),
+              (
+                  "documented SLUI endpoint (diagnostic)",
+                  "https://geoserver.slui.dev/geoserver/slui/ows",
+                  "slui:view_lote_cidadao",
               ),
           ]
           params_base = {
@@ -76,8 +76,8 @@ jobs:
           current = results[0]
           if current[2] != 200 or current[3] != "GeoJSON FeatureCollection" or current[4] < 1:
               raise SystemExit(
-                  "FAIL: current SLUI endpoint is not returning a usable feature for the live address query. "
+                  "FAIL: current adapter endpoint is not returning a usable feature for the live address query. "
                   "See both endpoint results above; do not treat mocked unit tests as live validation."
               )
-          print("PASS: current SLUI endpoint returned at least one live feature.")
+          print("PASS: current adapter endpoint returned at least one live feature.")
           PY
