@@ -256,8 +256,8 @@ def test_geosampa_falls_back_to_street_when_exact_house_number_has_no_match() ->
 
 
 def test_geosampa_uses_official_wfs_endpoint_path() -> None:
-    assert DEFAULT_WFS_URL == "https://geoserver.slui.dev/geoserver/slui/ows"
-    assert GeoSampaAdapter().layer == "slui:view_lote_cidadao"
+    assert DEFAULT_WFS_URL == "https://wfs.geosampa.prefeitura.sp.gov.br/geoserver/geoportal/wfs"
+    assert GeoSampaAdapter().layer == "geoportal:lote_cidadao"
 
 
 
@@ -333,7 +333,7 @@ def test_geosampa_returns_empty_list_for_valid_empty_geojson() -> None:
     assert records == []
 
 
-def test_geosampa_uses_new_slui_endpoint_and_wfs_parameters() -> None:
+def test_geosampa_uses_live_public_wfs_endpoint_and_parameters() -> None:
     captured: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -345,10 +345,10 @@ def test_geosampa_uses_new_slui_endpoint_and_wfs_parameters() -> None:
     GeoSampaAdapter(client=client).search(
         SearchRequest(address="Av Paulista", city="São Paulo", state="SP")
     )
-    assert str(captured["url"]).startswith("https://geoserver.slui.dev/geoserver/slui/ows?")
+    assert str(captured["url"]).startswith("https://wfs.geosampa.prefeitura.sp.gov.br/geoserver/geoportal/wfs?")
     params = captured["params"]
     assert params["service"] == "WFS"
     assert params["request"] == "GetFeature"
-    assert params["typeName"] == "slui:view_lote_cidadao"
+    assert params["typeName"] == "geoportal:lote_cidadao"
     assert params["outputFormat"] == "json"
     assert params["srsName"] == "EPSG:4326"
