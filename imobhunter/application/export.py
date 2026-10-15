@@ -12,7 +12,7 @@ def _provenance(value: Any) -> dict[str, Any]:
     return {
         "source_id": value.source_id,
         "confidence": value.confidence,
-        "retrieved_at": value.retrieved_at,
+        "retrieved_at": value.retrieved_at.isoformat(),
     }
 
 
