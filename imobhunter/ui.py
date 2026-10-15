@@ -246,6 +246,11 @@ class SearchResultsWindow(QMainWindow):
         self.summary.setObjectName("section")
         self.summary.setWordWrap(True)
         layout.addWidget(self.summary)
+        self._completed = False
+        self._watchdog = QTimer(self)
+        self._watchdog.setSingleShot(True)
+        self._watchdog.timeout.connect(self._show_timeout)
+        self._watchdog.start(90000)
         self.details = QTextBrowser()
         self.details.setOpenExternalLinks(True)
         self.details.setStyleSheet(
@@ -267,12 +272,24 @@ class SearchResultsWindow(QMainWindow):
         layout.addLayout(actions)
         self.setCentralWidget(root)
 
+    def _show_timeout(self) -> None:
+        if self._completed:
+            return
+        self._completed = True
+        self.summary.setText("Tempo limite excedido. Uma ou mais fontes não finalizaram a consulta.")
+        self.details.setPlainText(
+            "A consulta ultrapassou 90 segundos. Feche esta janela ou continue usando a tela principal. "
+            "Confira as integrações e tente novamente; esta mensagem não significa que o imóvel não exista."
+        )
+
     def _open_cadastral_map(self) -> None:
         records = getattr(self, "_map_records", [])
         dialog = CadastralMapDialog(records, self)
         dialog.exec()
 
     def set_result(self, result: SearchResult) -> None:
+        self._completed = True
+        self._watchdog.stop()
         self._map_records = [r for r in result.records if r.attributes.get("geometry_geojson")]
         self.map_button.setEnabled(bool(self._map_records))
         sources = result.sources
@@ -315,6 +332,8 @@ class SearchResultsWindow(QMainWindow):
         self.details.setHtml("".join(parts))
 
     def set_error(self, message: str) -> None:
+        self._completed = True
+        self._watchdog.stop()
         self.summary.setText("A pesquisa não pôde ser concluída.")
         self.details.setPlainText(message)
 
@@ -828,6 +847,11 @@ class MainWindow(QMainWindow):
         result_window.raise_()
         result_window.activateWindow()
         self.search_button.setEnabled(False)
+        self._active_search_window = result_window
+        self._search_watchdog = QTimer(self)
+        self._search_watchdog.setSingleShot(True)
+        self._search_watchdog.timeout.connect(self._search_timeout)
+        self._search_watchdog.start(90000)
         self.search_status.setText("Consultando fontes configuradas… A tela principal continua disponível.")
         worker = SearchWorker(self.service, request)
         worker.signals.finished.connect(lambda result, w=result_window: self._search_finished_in_window(w, result))
@@ -835,12 +859,23 @@ class MainWindow(QMainWindow):
         self.thread_pool.start(worker)
 
 
+    def _search_timeout(self) -> None:
+        self.search_button.setEnabled(True)
+        self.search_status.setText("Tempo limite da pesquisa excedido. Você já pode iniciar outra consulta.")
+        window = getattr(self, "_active_search_window", None)
+        if window is not None:
+            window._show_timeout()
+
     def _search_finished_in_window(self, window: SearchResultsWindow, result: SearchResult) -> None:
+        if hasattr(self, "_search_watchdog"):
+            self._search_watchdog.stop()
         self.search_button.setEnabled(True)
         self.search_status.setText("Pesquisa concluída. Você pode iniciar outra pesquisa sem fechar esta janela.")
         window.set_result(result)
 
     def _search_failed_in_window(self, window: SearchResultsWindow, message: str) -> None:
+        if hasattr(self, "_search_watchdog"):
+            self._search_watchdog.stop()
         self.search_button.setEnabled(True)
         self.search_status.setText("A pesquisa falhou. Os detalhes estão na janela desta pesquisa.")
         window.set_error(message)
