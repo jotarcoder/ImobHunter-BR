@@ -8,6 +8,8 @@ import unicodedata
 from pathlib import Path
 from typing import Any
 
+from .cnpj_api import CNPJApiClient
+
 from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest, SourceStatus
 
 from .base import SourceAdapter
@@ -29,6 +31,7 @@ class CNPJAdapter(SourceAdapter):
     def __init__(self, data_path: str | Path | None = None) -> None:
         configured = data_path or os.getenv("IMOBHUNTER_CNPJ_PATH")
         self.data_path = Path(configured) if configured else None
+        self.api_client = CNPJApiClient.from_environment()
 
     def status(self) -> SourceStatus:
         if not self.data_path:
@@ -77,7 +80,19 @@ class CNPJAdapter(SourceAdapter):
             if state and row_state and row_state != state:
                 continue
 
-            records.append(self._to_record(row))
+            record = self._to_record(row)
+            if self.api_client and record.owner_document:
+                try:
+                    record.attributes["conectagov_api"] = self.api_client.lookup(
+                        record.owner_document
+                    )
+                    record.attributes["conectagov_api_status"] = "ok"
+                except Exception as exc:  # noqa: BLE001 - keep local results usable.
+                    record.attributes["conectagov_api_status"] = "error"
+                    record.attributes["conectagov_api_message"] = (
+                        f"{type(exc).__name__}: {exc}"
+                    )
+            records.append(record)
         return records
 
     def _load(self) -> list[dict[str, Any]]:
