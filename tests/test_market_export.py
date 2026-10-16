@@ -68,7 +68,7 @@ def test_export_market_results_xlsx_creates_readable_workbook(tmp_path: Path) ->
     target = tmp_path / "market.xlsx"
     export_market_results(sample_results(), target)
 
-    sheet = load_workbook(target, read_only=True, data_only=True).active
+    sheet = load_workbook(target, read_only=False, data_only=True).active
     assert sheet["A1"].value == "name"
     assert sheet["A2"].value == "Empresa & Filhos"
     assert sheet["J2"].value == 125000.0
