@@ -393,8 +393,10 @@ class CadastralMapDialog(QDialog):
         lines = [
             f"<b>Endereço:</b> {escape(record.address or 'Não informado')}",
             f"<b>SQL/IPTU:</b> {escape(str(record.property_id or 'Não informado'))}",
-            f"<b>Quadra fiscal:</b> {escape(str(record.block or '—'))} · "
-            f"<b>Lote:</b> {escape(str(record.lot or '—'))}",
+            (
+                f"<b>Quadra fiscal:</b> {escape(str(record.block or '—'))} · "
+                f"<b>Lote:</b> {escape(str(record.lot or '—'))}"
+            ),
             f"<b>Área do terreno:</b> {escape(area)}",
             "<b>Atributos fornecidos pela fonte:</b><br>"
             + "<br>".join(
