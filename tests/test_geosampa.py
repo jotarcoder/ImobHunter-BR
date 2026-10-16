@@ -364,11 +364,13 @@ def test_geosampa_wildcards_each_street_token_for_source_abbreviations() -> None
         SearchRequest(address="Rua Doutor Arnaldo", number="100", city="São Paulo", state="SP")
     )
 
-    assert len(captured) == 2
+    assert len(captured) == 3
     assert "nm_logradouro_completo ILIKE '%ARNALDO%'" in captured[0]
     assert "cd_numero_porta='100'" in captured[0]
     assert "nm_logradouro_completo ILIKE '%ARNALDO%'" in captured[1]
-    assert "cd_numero_porta" not in captured[1]
+    assert "cd_numero_porta=100" in captured[1]
+    assert "nm_logradouro_completo ILIKE '%ARNALDO%'" in captured[2]
+    assert "cd_numero_porta" not in captured[2]
 
 
 def test_geosampa_returns_empty_list_for_valid_empty_geojson() -> None:
