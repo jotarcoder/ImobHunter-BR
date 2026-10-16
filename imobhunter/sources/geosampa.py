@@ -285,7 +285,7 @@ class GeoSampaAdapter(SourceAdapter):
         query = ", ".join(
             part
             for part in (
-                " ".join(part for part in (request.address, normalized.number) if part),
+                normalized.normalized,
                 request.city,
                 request.state,
                 "Brasil",
