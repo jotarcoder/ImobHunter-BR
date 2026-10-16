@@ -145,9 +145,17 @@ class GeoSampaAdapter(SourceAdapter):
             street_term = "%".join(
                 token for token in (normalized.street_name or "").split() if token
             )
-            query_filters.append([
-                f"nm_logradouro_completo ILIKE '%{_escape_cql(street_term)}%'"
-            ])
+            street_filter = f"nm_logradouro_completo ILIKE '%{_escape_cql(street_term)}%'"
+            # GeoServer layers may expose the door number as an integer even
+            # though the address form supplies text. Try the numeric CQL
+            # literal as a second exact lookup before falling back to all
+            # parcels on the street.
+            if normalized.number.isdigit():
+                query_filters.append([
+                    street_filter,
+                    f"cd_numero_porta={normalized.number}",
+                ])
+            query_filters.append([street_filter])
 
         client = self._client or httpx.Client(timeout=self.timeout)
         close_client = self._client is None
@@ -213,7 +221,7 @@ class GeoSampaAdapter(SourceAdapter):
                     # street-only fallback. If the fallback still has no
                     # number match, keep parcels as candidates but mark them
                     # explicitly so the UI/dossier cannot imply an exact match.
-                    if len(query_filters) > 1 and active_filters is query_filters[0]:
+                    if len(query_filters) > 1 and active_filters is not query_filters[-1]:
                         records = []
                         continue
                     for record in records:
