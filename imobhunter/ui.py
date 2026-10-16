@@ -213,6 +213,10 @@ class CadastralMapDialog(QDialog):
         record = selected[0].data(0)
         attributes = dict(record.attributes)
         attributes.pop("geometry_geojson", None)
+        # Raw properties are rendered as individual facts in the full dossier;
+        # do not duplicate the entire nested payload in the compact map popup.
+        attributes.pop("source_attributes", None)
+        attributes.pop("source_attribute_names", None)
         lines = [f"<b>Endereço:</b> {record.address or 'Não informado'}",
                  f"<b>Quadra:</b> {record.block or '—'} · <b>Lote:</b> {record.lot or '—'}",
                  f"<b>Área:</b> {record.area_m2 if record.area_m2 is not None else 'Não informada'} m²",
