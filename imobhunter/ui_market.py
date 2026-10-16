@@ -9,10 +9,11 @@ from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QFileDialog, QHBoxLayout, QInputDialog, QLabel,
     QLineEdit, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem,
-    QVBoxLayout,
+    QVBoxLayout, QTabWidget, QFrame, QWidget,
 )
 
 from .application.market_intelligence import MarketIntelligenceStore
+from .application.market_export import export_market_results
 from .application.receita_import import import_receita_archives, search_receita_establishments
 from .application.receita_geo import import_receita_coordinates, save_geocoded_establishment
 from .application.address_geocoding import CachedAddressGeocoder, GeocodingError
@@ -93,12 +94,18 @@ class MarketIntelligenceDialog(QDialog):
             QHeaderView::section { background:#102332; color:#a9bdcb; padding:7px; border:0; }
         """)
         root = QVBoxLayout(self)
+        self.tabs = QTabWidget(self)
+        root.addWidget(self.tabs)
+        self.search_page = QWidget()
+        search_layout = QVBoxLayout(self.search_page)
+        search_layout.setContentsMargins(12, 12, 12, 12)
+        search_layout.setSpacing(10)
         title = QLabel("Inteligência de Mercado")
         title.setStyleSheet("font-size:26px;font-weight:800;color:#f4f8fb")
-        root.addWidget(title)
+        search_layout.addWidget(title)
         subtitle = QLabel("Explore empresas por raio e consulte dados econômicos armazenados no seu computador.")
         subtitle.setObjectName("muted")
-        root.addWidget(subtitle)
+        search_layout.addWidget(subtitle)
 
         controls = QHBoxLayout()
         self.latitude = QLineEdit()
@@ -118,7 +125,7 @@ class MarketIntelligenceDialog(QDialog):
         search.setObjectName("primary")
         search.clicked.connect(self._search)
         controls.addWidget(search)
-        root.addLayout(controls)
+        search_layout.addLayout(controls)
 
         # Ações em grelha: evita que os rótulos fiquem cortados em ecrãs menores.
         from PySide6.QtWidgets import QGridLayout
@@ -144,8 +151,9 @@ class MarketIntelligenceDialog(QDialog):
         self.online_button.setToolTip("Consulta estabelecimentos mapeados no OpenStreetMap dentro do raio informado.")
         self.online_button.setObjectName("primary")
         self.online_button.clicked.connect(self._search_online)
-        export_button = QPushButton("Exportar resultados CSV")
-        export_button.clicked.connect(self._export_csv)
+        export_button = QPushButton("Salvar pesquisa…")
+        export_button.setToolTip("Salve os resultados em CSV, Excel (.xlsx), JSON ou HTML.")
+        export_button.clicked.connect(self._export_results)
         action_buttons = [
             geocode_button, import_button, receita_button, geo_button,
             browse_button, sidra_button, self.online_button, export_button,
@@ -154,15 +162,15 @@ class MarketIntelligenceDialog(QDialog):
             button.setMinimumHeight(38)
             button.setSizePolicy(button.sizePolicy().Policy.Expanding, button.sizePolicy().Policy.Fixed)
             actions.addWidget(button, index // 4, index % 4)
-        root.addLayout(actions)
+        search_layout.addLayout(actions)
         self.status = QLabel("Base local pronta. Localize um endereço ou importe dados empresariais para começar.")
         self.status.setObjectName("muted")
         self.status.setWordWrap(True)
-        root.addWidget(self.status)
+        search_layout.addWidget(self.status)
 
         map_title = QLabel("Mapa de calor — concentração de estabelecimentos")
         map_title.setStyleSheet("font-size:17px;font-weight:750;padding-top:6px;")
-        root.addWidget(map_title)
+        search_layout.addWidget(map_title)
         try:
             from PySide6.QtWebEngineCore import QWebEnginePage
             from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -188,7 +196,7 @@ class MarketIntelligenceDialog(QDialog):
             self.map_page = MapPage(self.map_view)
             self.map_page.map_clicked.connect(self._map_clicked)
             self.map_view.setPage(self.map_page)
-            root.addWidget(self.map_view, 2)
+            search_layout.addWidget(self.map_view, 2)
         except ImportError:
             self.map_view = None
             fallback = QLabel(
@@ -197,7 +205,7 @@ class MarketIntelligenceDialog(QDialog):
             )
             fallback.setObjectName("muted")
             fallback.setWordWrap(True)
-            root.addWidget(fallback)
+            search_layout.addWidget(fallback)
 
         self.table = QTableWidget(0, 8)
         self.table.setMinimumHeight(220)
@@ -211,12 +219,62 @@ class MarketIntelligenceDialog(QDialog):
         self.table.setAlternatingRowColors(True)
         self.table.setSortingEnabled(True)
         self.table.horizontalHeader().setStretchLastSection(True)
-        root.addWidget(self.table, 1)
+        search_layout.addWidget(self.table, 1)
         note = QLabel("Os valores de faturamento só são exibidos quando constam no arquivo importado. Estimativas devem incluir metodologia e fonte; o aplicativo não inventa valores nem consulta o seu servidor.")
         note.setObjectName("muted")
         note.setWordWrap(True)
-        root.addWidget(note)
+        search_layout.addWidget(note)
         self.results = []
+        self.tabs.addTab(self.search_page, "Pesquisar e mapa")
+
+        self.results_page = QWidget()
+        results_layout = QVBoxLayout(self.results_page)
+        results_layout.setContentsMargins(16, 16, 16, 16)
+        results_layout.setSpacing(12)
+        results_title = QLabel("Resultados da pesquisa")
+        results_title.setStyleSheet("font-size:24px;font-weight:800;color:#f4f8fb")
+        results_layout.addWidget(results_title)
+        results_subtitle = QLabel("Tabela pronta para análise e exportação. Os dados e as fontes permanecem identificados.")
+        results_subtitle.setObjectName("muted")
+        results_subtitle.setWordWrap(True)
+        results_layout.addWidget(results_subtitle)
+
+        metrics = QHBoxLayout()
+        self.metric_count = self._metric_card("Empresas encontradas", "0")
+        self.metric_reported = self._metric_card("Faturamento divulgado", "0")
+        self.metric_estimated = self._metric_card("Com estimativa", "0")
+        self.metric_radius = self._metric_card("Raio pesquisado", "—")
+        for card in (self.metric_count, self.metric_reported, self.metric_estimated, self.metric_radius):
+            metrics.addWidget(card, 1)
+        results_layout.addLayout(metrics)
+
+        results_actions = QHBoxLayout()
+        self.results_status = QLabel("Faça uma pesquisa para preencher esta aba.")
+        self.results_status.setObjectName("muted")
+        results_actions.addWidget(self.results_status, 1)
+        save_results = QPushButton("Exportar / salvar pesquisa…")
+        save_results.setObjectName("primary")
+        save_results.clicked.connect(self._export_results)
+        results_actions.addWidget(save_results)
+        results_layout.addLayout(results_actions)
+
+        self.results_table = QTableWidget(0, 8)
+        self.results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.results_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.results_table.setHorizontalHeaderLabels([
+            "Empresa", "CNPJ", "CNAE", "Endereço", "Distância km",
+            "Faturamento divulgado", "Faturamento estimado", "Fonte / atualização"
+        ])
+        self.results_table.setAlternatingRowColors(True)
+        self.results_table.setSortingEnabled(True)
+        self.results_table.horizontalHeader().setStretchLastSection(True)
+        self.results_table.verticalHeader().setDefaultSectionSize(32)
+        results_layout.addWidget(self.results_table, 1)
+        results_note = QLabel("A exportação inclui os registros retornados pela pesquisa, coordenadas disponíveis, origem dos dados e campos de faturamento sem preencher valores ausentes.")
+        results_note.setObjectName("muted")
+        results_note.setWordWrap(True)
+        results_layout.addWidget(results_note)
+        self.tabs.addTab(self.results_page, "Resultados e exportação")
 
     def _refresh_count(self) -> None:
         self.status.setText(f"{self.store.count()} empresa(s) no banco local.")
@@ -374,25 +432,65 @@ class MarketIntelligenceDialog(QDialog):
         except (ValueError, OSError) as exc:
             QMessageBox.warning(self, "Pesquisa regional", str(exc))
             return
-        self.table.setSortingEnabled(False)
-        self.table.setRowCount(len(self.results))
+
+        self._populate_results_table(self.table)
+        self._populate_results_table(self.results_table)
+        self._render_heatmap(lat, lon)
+        reported_count = sum(item.get("revenue_reported") is not None for item in self.results)
+        estimated_count = sum(item.get("revenue_estimate") is not None for item in self.results)
+        self.metric_count.findChild(QLabel, "metricValue").setText(f"{len(self.results):,}".replace(",", "."))
+        self.metric_reported.findChild(QLabel, "metricValue").setText(str(reported_count))
+        self.metric_estimated.findChild(QLabel, "metricValue").setText(str(estimated_count))
+        self.metric_radius.findChild(QLabel, "metricValue").setText(f"{radius:g} km")
+        summary = f"{len(self.results)} empresa(s) encontrada(s) no raio de {radius:g} km."
+        self.status.setText(summary)
+        self.results_status.setText(
+            f"{summary} Segmento: {segment or 'todos'} · "
+            f"{reported_count} com faturamento divulgado · {estimated_count} com estimativa."
+        )
+        self.tabs.setCurrentWidget(self.results_page)
+
+    def _populate_results_table(self, table: QTableWidget) -> None:
+        table.setSortingEnabled(False)
+        table.setRowCount(len(self.results))
         for row_index, item in enumerate(self.results):
-            reported = item.get("revenue_reported")
-            estimate = item.get("revenue_estimate")
             values = [
-                item.get("name",""), item.get("cnpj",""), item.get("cnae",""),
-                item.get("address",""), f'{item["distance_km"]:.2f}',
-                self._money(reported), self._money(estimate),
-                " • ".join(x for x in [item.get("source",""), item.get("updated_at","")] if x),
+                item.get("name", ""), item.get("cnpj", ""), item.get("cnae", ""),
+                item.get("address", ""), f'{item["distance_km"]:.2f}',
+                self._money(item.get("revenue_reported")),
+                self._money(item.get("revenue_estimate")),
+                " • ".join(
+                    value for value in (item.get("source", ""), item.get("updated_at", ""))
+                    if value
+                ),
             ]
             for column, value in enumerate(values):
                 cell = QTableWidgetItem(str(value))
-                if column in (4,5,6):
-                    cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                self.table.setItem(row_index, column, cell)
-        self.table.setSortingEnabled(True)
-        self._render_heatmap(lat, lon)
-        self.status.setText(f"{len(self.results)} empresa(s) encontrada(s) no raio de {radius:g} km.")
+                if column in (4, 5, 6):
+                    cell.setTextAlignment(
+                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                    )
+                table.setItem(row_index, column, cell)
+        table.setSortingEnabled(True)
+
+    @staticmethod
+    def _metric_card(label: str, value: str) -> QFrame:
+        card = QFrame()
+        card.setStyleSheet(
+            "QFrame { background:#0b1926; border:1px solid #254156; border-radius:12px; }"
+            "QLabel { border:0; }"
+        )
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(14, 12, 14, 12)
+        heading = QLabel(label)
+        heading.setObjectName("muted")
+        heading.setWordWrap(True)
+        number = QLabel(value)
+        number.setObjectName("metricValue")
+        number.setStyleSheet("font-size:22px;font-weight:800;color:#35ff77;")
+        layout.addWidget(heading)
+        layout.addWidget(number)
+        return card
 
     def _map_clicked(self, latitude: float, longitude: float) -> None:
         """Recenter the regional search on the point selected on the map."""
@@ -510,24 +608,45 @@ map.on('click', function(event) {{
         self.status.setText("A consulta ao IBGE falhou; o restante do aplicativo continua disponível.")
         QMessageBox.warning(self, "Consulta IBGE / SIDRA", message)
 
-    def _export_csv(self) -> None:
+    def _export_results(self) -> None:
         if not self.results:
-            QMessageBox.information(self, "Exportar", "Faça uma pesquisa antes de exportar.")
+            QMessageBox.information(self, "Salvar pesquisa", "Faça uma pesquisa antes de exportar.")
             return
-        path, _ = QFileDialog.getSaveFileName(self, "Exportar resultados", "imobhunter-empresas.csv", "CSV (*.csv)")
+        path, selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "Exportar / salvar pesquisa de Inteligência de Mercado",
+            "imobhunter-inteligencia-mercado.csv",
+            "CSV — planilha compatível (*.csv);;Excel — pasta de trabalho (*.xlsx);;JSON — dados estruturados (*.json);;HTML — relatório para navegador (*.html)",
+        )
         if not path:
             return
-        fields = ["name","cnpj","cnae","address","city","state","latitude","longitude","distance_km",
-                  "revenue_reported","revenue_period","revenue_estimate","estimate_method","revenue_status","source","updated_at"]
-        try:
-            with open(path, "w", encoding="utf-8-sig", newline="") as handle:
-                writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
-                writer.writeheader()
-                writer.writerows(self.results)
-        except OSError as exc:
-            QMessageBox.warning(self, "Exportar", str(exc))
+        target = Path(path)
+        filter_extensions = {
+            "CSV — planilha compatível (*.csv)": ".csv",
+            "Excel — pasta de trabalho (*.xlsx)": ".xlsx",
+            "JSON — dados estruturados (*.json)": ".json",
+            "HTML — relatório para navegador (*.html)": ".html",
+        }
+        if not target.suffix and selected_filter in filter_extensions:
+            target = target.with_suffix(filter_extensions[selected_filter])
+        if target.suffix.lower() not in {".csv", ".xlsx", ".json", ".html", ".htm"}:
+            QMessageBox.warning(
+                self, "Formato não reconhecido",
+                "Escolha CSV, Excel (.xlsx), JSON ou HTML para salvar a pesquisa."
+            )
             return
-        QMessageBox.information(self, "Exportar", "Resultados exportados localmente.")
+        query = {
+            "latitude": self.latitude.text().strip(),
+            "longitude": self.longitude.text().strip(),
+            "radius_km": self.radius.text().strip(),
+            "segment": self.segment.currentText(),
+        }
+        try:
+            export_market_results(self.results, target, query)
+        except (OSError, ValueError, TypeError, ImportError) as exc:
+            QMessageBox.warning(self, "Salvar pesquisa", f"Não foi possível exportar o arquivo:\\n{exc}")
+            return
+        QMessageBox.information(self, "Pesquisa salva", f"Pesquisa exportada com sucesso:\\n{target}")
 
 
 
