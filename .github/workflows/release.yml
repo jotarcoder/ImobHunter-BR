@@ -79,8 +79,41 @@ jobs:
           echo "should_release=$SHOULD_RELEASE" >> "$GITHUB_OUTPUT"
           echo "Version: $VERSION; should_release=$SHOULD_RELEASE; ref=$REF"
 
-  windows:
+  icon:
     needs: meta
+    if: github.event_name == 'pull_request' || needs.meta.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.meta.outputs.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Render application logo as a Windows ICO
+        run: |
+          python -m pip install Pillow CairoSVG
+          python - <<'PY'
+          from io import BytesIO
+          from pathlib import Path
+          import cairosvg
+          from PIL import Image
+
+          svg = Path("imobhunter/assets/logo.svg").read_bytes()
+          png = cairosvg.svg2png(bytestring=svg, output_width=256, output_height=256)
+          image = Image.open(BytesIO(png)).convert("RGBA")
+          image.save("imobhunter.ico", format="ICO", sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])
+          assert Path("imobhunter.ico").stat().st_size > 0
+          print("Windows icon generated from imobhunter/assets/logo.svg")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-app-icon
+          path: imobhunter.ico
+          if-no-files-found: error
+
+  windows:
+    needs: [meta, icon]
     if: github.event_name == 'pull_request' || needs.meta.outputs.should_release == 'true'
     runs-on: windows-latest
     steps:
@@ -90,6 +123,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-app-icon
+          path: packaging/windows
       - name: Install application and packaging tools
         run: python -m pip install -e ".[desktop]" pyinstaller
       - name: Install Inno Setup
@@ -106,7 +143,7 @@ jobs:
           Write-Host "Versão validada: $projectVersion"
       - name: Build executable
         shell: powershell
-        run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --version-file packaging/windows/version_info.txt --add-data "imobhunter/assets;imobhunter/assets" --add-data "data/coverage/ddd.json;data/coverage" packaging/entrypoint.py
+        run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --version-file packaging/windows/version_info.txt --icon packaging/windows/imobhunter.ico --add-data "imobhunter/assets;imobhunter/assets" --add-data "data/coverage/ddd.json;data/coverage" packaging/entrypoint.py
       - name: Verify bundled HTTPS certificate authorities
         shell: powershell
         run: |
