@@ -4,7 +4,8 @@ import csv
 import html
 import json
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 
 MARKET_FIELDS = (
