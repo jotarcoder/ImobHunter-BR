@@ -6,6 +6,8 @@ import httpx
 from urllib.parse import urlparse
 
 from PySide6.QtCore import QSettings
+from .sources.geosampa import DEFAULT_WFS_URL
+
 from PySide6.QtWidgets import (
     QDialog, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
     QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget,
@@ -82,12 +84,16 @@ class SourceSettingsDialog(QDialog):
             form.addRow(label, row)
 
         geosampa = registry.get("geosampa")
-        self.geosampa_url = QLineEdit(
-            str(self.settings.value(
-                "sources/geosampa/endpoint",
-                getattr(geosampa, "endpoint", "https://wfs.geosampa.prefeitura.sp.gov.br/geoserver/geoportal/ows"),
-            ))
-        )
+        saved_geosampa_endpoint = str(
+            self.settings.value("sources/geosampa/endpoint", "") or ""
+        ).strip()
+        # Migrate the previous built-in default to the exact endpoint exercised
+        # by the GeoSampa adapter and live integration test. Keep user-supplied
+        # custom endpoints unchanged.
+        legacy_default = "https://wfs.geosampa.prefeitura.sp.gov.br/geoserver/geoportal/ows"
+        if not saved_geosampa_endpoint or saved_geosampa_endpoint.rstrip("/") == legacy_default:
+            saved_geosampa_endpoint = getattr(geosampa, "endpoint", DEFAULT_WFS_URL)
+        self.geosampa_url = QLineEdit(saved_geosampa_endpoint)
         geosampa_row = QHBoxLayout()
         geosampa_row.addWidget(self.geosampa_url, 1)
         geosampa_test = QPushButton("Testar conexão")
