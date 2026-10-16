@@ -81,3 +81,33 @@ def test_explicit_house_number_takes_precedence_over_inline_number() -> None:
     )
     assert result.street_name == "PAMPLONA"
     assert result.number == "1600"
+
+
+
+def test_geosampa_strips_duplicated_city_and_state_from_pasted_full_address() -> None:
+    result = normalize_request(
+        SearchRequest(
+            address="R. Jocelina de Souza Cesar 20 São Paulo SP",
+            city="São Paulo",
+            state="SP",
+        )
+    )
+    assert result.street_type == "R"
+    assert result.street_name == "JOCELINA DE SOUZA CESAR"
+    assert result.number == "20"
+    assert result.normalized == "R JOCELINA DE SOUZA CESAR 20"
+    assert result.city == "SAO PAULO"
+    assert result.state == "SP"
+
+
+def test_geosampa_keeps_explicit_number_when_location_suffix_is_duplicated() -> None:
+    result = normalize_request(
+        SearchRequest(
+            address="R. Jocelina de Souza Cesar 20, São Paulo SP",
+            number="20",
+            city="São Paulo",
+            state="SP",
+        )
+    )
+    assert result.street_name == "JOCELINA DE SOUZA CESAR"
+    assert result.number == "20"

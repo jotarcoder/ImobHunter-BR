@@ -133,6 +133,22 @@ def _parse_street(address: str | None) -> tuple[str | None, str | None, str | No
 def normalize_request(request: SearchRequest) -> NormalizedAddress:
     address = normalize_text(request.address) or ""
     number = normalize_text(request.number)
+    city = normalize_text(request.city)
+    state = normalize_text(request.state)
+    if state and state not in _VALID_UFS:
+        raise ValueError(f"invalid Brazilian state: {state}")
+
+    # Users sometimes paste the entire address into the street field even
+    # though the form also has separate city/UF fields, e.g.
+    # "R. Jocelina de Souza Cesar 20 São Paulo SP". Remove a duplicated
+    # trailing location before extracting the house number and street name.
+    if address and city and state:
+        location_suffix = f"{city} {state}"
+        if address == location_suffix:
+            address = ""
+        elif address.endswith(f" {location_suffix}"):
+            address = address[: -(len(location_suffix) + 1)].strip()
+
     # The desktop form may send "Rua Pamplona, 1578" as one field instead of
     # separating the number. Split it before deriving the street name; otherwise
     # the WFS filter incorrectly searches for a street literally named
@@ -143,11 +159,6 @@ def normalize_request(request: SearchRequest) -> NormalizedAddress:
             if not number:
                 number = match.group(1)
             address = address[: match.start()].strip()
-
-    state = normalize_text(request.state)
-    if state and state not in _VALID_UFS:
-        raise ValueError(f"invalid Brazilian state: {state}")
-    city = normalize_text(request.city)
 
     street_type, street_title, street_name = _parse_street(address)
     normalized = " ".join(part for part in (address, number) if part)
