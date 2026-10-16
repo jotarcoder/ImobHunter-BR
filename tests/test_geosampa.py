@@ -305,6 +305,71 @@ def test_geosampa_retries_numeric_house_number_filter_before_street_fallback() -
     assert records[0].attributes["door_number"] == "1578"
 
 
+def test_geosampa_uses_geocoded_point_to_select_parcel_when_number_filter_misses() -> None:
+    captured: list[dict[str, str]] = []
+
+    class FakeGeocoder:
+        def geocode(self, address: str) -> dict[str, object]:
+            return {
+                "latitude": -23.57,
+                "longitude": -46.65,
+                "provider": "test-geocoder",
+                "display_name": address,
+            }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        params = dict(request.url.params)
+        captured.append(params)
+        if "bbox" not in params:
+            return httpx.Response(
+                200,
+                json={"type": "FeatureCollection", "features": []},
+                request=request,
+            )
+        return httpx.Response(
+            200,
+            json={
+                "type": "FeatureCollection",
+                "features": [{
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[
+                            [-46.651, -23.571],
+                            [-46.649, -23.571],
+                            [-46.649, -23.569],
+                            [-46.651, -23.569],
+                            [-46.651, -23.571],
+                        ]],
+                    },
+                    "properties": {
+                        "cd_numero_porta": "1578",
+                        "cd_quadra_fiscal": "020",
+                        "cd_lote": "0030",
+                        "nr_contribuinte": "010.020.0030-1",
+                        "nm_logradouro_completo": "R PAMPLONA",
+                        "qt_area_terreno": 420,
+                    },
+                }],
+            },
+            request=request,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    records = GeoSampaAdapter(client=client, geocoder=FakeGeocoder()).search(
+        SearchRequest(address="Rua Pamplona", number="1578", city="São Paulo", state="SP")
+    )
+
+    assert len(records) == 1
+    assert len(captured) == 4
+    assert "bbox" in captured[-1]
+    assert records[0].attributes["house_number_match"] == "geocoded_spatial_match"
+    assert records[0].attributes["address_geocoding_provider"] == "test-geocoder"
+    assert records[0].attributes["source_attributes"]["cd_numero_porta"] == "1578"
+    assert records[0].block == "020"
+    assert records[0].lot == "0030"
+
+
 def test_geosampa_uses_official_wfs_endpoint_path() -> None:
     assert DEFAULT_WFS_URL == "https://wfs.geosampa.prefeitura.sp.gov.br/geoserver/geoportal/wfs"
     assert GeoSampaAdapter().layer == "geoportal:lote_cidadao"
