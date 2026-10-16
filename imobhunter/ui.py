@@ -213,6 +213,10 @@ class CadastralMapDialog(QDialog):
         record = selected[0].data(0)
         attributes = dict(record.attributes)
         attributes.pop("geometry_geojson", None)
+        # Raw properties are rendered as individual facts in the full dossier;
+        # do not duplicate the entire nested payload in the compact map popup.
+        attributes.pop("source_attributes", None)
+        attributes.pop("source_attribute_names", None)
         lines = [f"<b>Endereço:</b> {record.address or 'Não informado'}",
                  f"<b>Quadra:</b> {record.block or '—'} · <b>Lote:</b> {record.lot or '—'}",
                  f"<b>Área:</b> {record.area_m2 if record.area_m2 is not None else 'Não informada'} m²",
@@ -1077,7 +1081,17 @@ class MainWindow(QMainWindow):
             card.setObjectName("card")
             card_layout = QVBoxLayout(card)
             card_layout.setContentsMargins(14, 12, 14, 12)
-            raw_label = labels.get(fact.field, fact.field.replace("attribute:", "").replace("_", " ").capitalize())
+            if fact.field.startswith("source_attribute:"):
+                _, source_id, source_field = fact.field.split(":", 2)
+                raw_label = (
+                    f"{source_id.replace('_', ' ').title()} · "
+                    f"{source_field.replace('_', ' ')}"
+                )
+            else:
+                raw_label = labels.get(
+                    fact.field,
+                    fact.field.replace("attribute:", "").replace("_", " ").capitalize(),
+                )
             label = QLabel(escape(raw_label))
             label.setObjectName("muted")
             value = QLabel(escape(str(fact.value)))

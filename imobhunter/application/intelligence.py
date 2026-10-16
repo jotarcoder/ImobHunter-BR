@@ -45,6 +45,26 @@ def _priority(source_id: str) -> int:
 
 
 def _fields(record: PropertyRecord) -> dict[str, object]:
+    # Keep cadastral geometry in the map, not as a huge text field in the
+    # dossier. Preserve normalized adapter attributes and flatten every raw
+    # source property into its own fact so the user can inspect the complete
+    # GeoSampa response without losing fields unknown to the current UI.
+    attributes = {
+        key: value
+        for key, value in record.attributes.items()
+        if key not in {"geometry_geojson", "source_attributes", "source_attribute_names"}
+    }
+    source_attributes = record.attributes.get("source_attributes")
+    source_id = str(record.attributes.get("source") or "source")
+    raw_facts = (
+        {
+            f"source_attribute:{source_id}:{key}": value
+            for key, value in source_attributes.items()
+            if value not in (None, "")
+        }
+        if isinstance(source_attributes, dict)
+        else {}
+    )
     return {
         "address": record.address,
         "registry_number": record.registry_number,
@@ -57,7 +77,8 @@ def _fields(record: PropertyRecord) -> dict[str, object]:
         "area_m2": record.area_m2,
         "latitude": record.latitude,
         "longitude": record.longitude,
-        **{f"attribute:{key}": value for key, value in record.attributes.items()},
+        **{f"attribute:{key}": value for key, value in attributes.items()},
+        **raw_facts,
     }
 
 

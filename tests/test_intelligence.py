@@ -36,3 +36,36 @@ def test_dossier_prefers_high_confidence_and_keeps_conflict() -> None:
     assert registry.value == "12345"
     assert any(conflict.field == "area_m2" for conflict in dossier.conflicts)
     assert 0 <= dossier.score <= 100
+
+
+
+def test_dossier_flattens_raw_source_attributes_without_embedding_geometry() -> None:
+    record = PropertyRecord(
+        address="Rua Pamplona",
+        block="020",
+        lot="0030",
+        area_m2=420,
+        attributes={
+            "source": "geosampa",
+            "geometry_geojson": '{"type":"Polygon","coordinates":[]}',
+            "source_attribute_names": ["cd_numero_porta", "nm_logradouro_completo"],
+            "source_attributes": {
+                "cd_numero_porta": "1578",
+                "nm_logradouro_completo": "R PAMPLONA",
+                "field_not_mapped_yet": "preserved value",
+            },
+            "door_number": "1578",
+        },
+        provenance=[provenance("geosampa", 0.95)],
+    )
+
+    dossier = build_dossier("property-1", (record,))
+    facts = {fact.field: fact.value for fact in dossier.facts}
+
+    assert facts["source_attribute:geosampa:cd_numero_porta"] == "1578"
+    assert facts["source_attribute:geosampa:nm_logradouro_completo"] == "R PAMPLONA"
+    assert facts["source_attribute:geosampa:field_not_mapped_yet"] == "preserved value"
+    assert facts["attribute:door_number"] == "1578"
+    assert "attribute:geometry_geojson" not in facts
+    assert "attribute:source_attributes" not in facts
+    assert "attribute:source_attribute_names" not in facts
