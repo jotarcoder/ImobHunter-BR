@@ -170,10 +170,9 @@ class GeoSampaAdapter(SourceAdapter):
                     "outputFormat": "json",
                     "srsName": "EPSG:4326",
                     "CQL_FILTER": " AND ".join(active_filters),
-                    # Street-only fallback must include enough parcels for local
-                # exact-number matching; 50 can truncate a long avenue before
-                # the requested door number appears.
-                "maxFeatures": 200,
+                    # Keep street-only fallback bounded. Exact number variants
+                # are attempted separately before this broader candidate query.
+                "maxFeatures": 50,
                 }
                 try:
                     response = client.get(self.endpoint, params=params, timeout=self.timeout)
