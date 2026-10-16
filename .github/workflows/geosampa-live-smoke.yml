@@ -75,5 +75,14 @@ jobs:
                   "FAIL: GeoSampa returned records but the adapter extracted none of the expected "
                   "parcel identifiers, block/lot fields, or land area."
               )
-          exact_match = [record for record in records if str(record.attributes.get("door_number", "")).strip() == request.number and record.attributes.get("house_number_match") == "exact"]\n          if exact_match:\n              print("RESULT: EXACT address number match confirmed.")\n          else:\n              print("RESULT: ADDRESS NUMBER NOT CONFIRMED; returned records are candidates only.")\n          print("PASS: live query completed; inspect the result above to determine address match quality.")
+          exact_match = [
+              record for record in records
+              if str(record.attributes.get("door_number", "")).strip() == request.number
+              and record.attributes.get("house_number_match") == "exact"
+          ]
+          if exact_match:
+              print("RESULT: EXACT address number match confirmed.")
+          else:
+              print("RESULT: ADDRESS NUMBER NOT CONFIRMED; returned records are candidates only.")
+          print("PASS: live query completed; inspect the result above to determine address match quality.")
           PY
