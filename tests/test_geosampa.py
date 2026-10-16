@@ -250,13 +250,59 @@ def test_geosampa_falls_back_to_street_when_exact_house_number_has_no_match() ->
     )
 
     assert len(records) == 1
-    assert len(captured) == 2
-    assert "cd_numero_porta" in captured[0]
-    assert "cd_numero_porta" not in captured[1]
+    assert len(captured) == 3
+    assert "cd_numero_porta='1578'" in captured[0]
+    assert "cd_numero_porta=1578" in captured[1]
+    assert "cd_numero_porta" not in captured[2]
+    assert records[0].attributes["house_number_match"] == "candidate_only"
     assert records[0].attributes["iptu_contributor"] is None
     assert records[0].attributes["iptu_registration_number"] == "010.020.0030-1"
     assert records[0].attributes["iptu_current_debt_status"] == "not_provided_by_this_layer"
     assert records[0].attributes["house_number_match"] == "candidate_only"
+
+
+def test_geosampa_retries_numeric_house_number_filter_before_street_fallback() -> None:
+    captured: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        cql = request.url.params.get("CQL_FILTER", "")
+        captured.append(cql)
+        if "cd_numero_porta=1578" in cql:
+            return httpx.Response(
+                200,
+                json={
+                    "type": "FeatureCollection",
+                    "features": [{
+                        "type": "Feature",
+                        "geometry": {"type": "Point", "coordinates": [-46.65, -23.57]},
+                        "properties": {
+                            "cd_numero_porta": 1578,
+                            "cd_quadra_fiscal": "020",
+                            "cd_lote": "0030",
+                            "nr_contribuinte": "010.020.0030-1",
+                            "nm_logradouro_completo": "R PAMPLONA",
+                        },
+                    }],
+                },
+                request=request,
+            )
+        return httpx.Response(
+            200,
+            json={"type": "FeatureCollection", "features": []},
+            request=request,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    records = GeoSampaAdapter(client=client).search(
+        SearchRequest(address="Rua Pamplona", number="1578", city="São Paulo", state="SP")
+    )
+
+    assert len(captured) == 2
+    assert "cd_numero_porta='1578'" in captured[0]
+    assert "cd_numero_porta=1578" in captured[1]
+    assert len(records) == 1
+    assert records[0].attributes["house_number_match"] == "exact"
+    assert records[0].attributes["door_number"] == "1578"
 
 
 def test_geosampa_uses_official_wfs_endpoint_path() -> None:
