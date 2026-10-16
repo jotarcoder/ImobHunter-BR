@@ -40,3 +40,13 @@ Execução desktop: python -m imobhunter
 
 ## Release
 O pipeline gera quatro artefatos: Windows .exe, Linux .AppImage, macOS Intel .dmg e macOS Apple Silicon .dmg. Os binários são publicados como assets da release do GitHub e não são versionados no repositório.
+
+### Integração autenticada CNPJ (Conecta gov.br)
+
+A consulta autenticada é opcional e **enriquece somente CNPJs já encontrados pelo índice local autorizado**; ela não substitui uma base de estabelecimentos para descobrir empresas por endereço ou raio. Configure no ambiente de execução:
+
+- `IMOBHUNTER_CNPJ_API_CLIENT_ID`
+- `IMOBHUNTER_CNPJ_API_CLIENT_SECRET`
+- `IMOBHUNTER_CNPJ_API_CPF_USUARIO`
+
+O cliente consulta os serviços Básica, Empresa e QSA com token OAuth2, timeout curto e cache de token em memória. Sem as três variáveis, o comportamento anterior baseado em CSV/JSON permanece inalterado. Se a API falhar, o resultado local continua disponível e a falha é registrada nos atributos do resultado. **Não coloque segredos no repositório, no instalador desktop ou em arquivos distribuídos aos clientes.** O acesso depende de credenciais e autorização válidas do Conecta gov.br/SERPRO.
