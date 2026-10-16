@@ -6,13 +6,14 @@ import sys
 import uuid
 
 from PySide6.QtCore import QThreadPool, QObject, QRunnable, QUrl, Qt, Signal, Slot, QPointF, QTimer
-from PySide6.QtGui import QBrush, QCursor, QDesktopServices, QFont, QIcon, QPainter, QPen, QPixmap, QPolygonF
+from PySide6.QtGui import QBrush, QColor, QCursor, QDesktopServices, QFont, QIcon, QPainter, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
     QGraphicsScene,
     QGraphicsView,
     QGraphicsPolygonItem,
+    QGraphicsEllipseItem,
     QFrame,
     QFileDialog,
     QHBoxLayout,
@@ -146,22 +147,84 @@ class MetricCard(QFrame):
 
 
 class CadastralMapDialog(QDialog):
-    """Small interactive lot map based on actual GeoJSON returned by GeoSampa."""
+    """Interactive cadastral map with a clear highlight for the exact matched parcel."""
+
     def __init__(self, records, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Mapa cadastral — GeoSampa")
-        self.resize(900, 620)
+        self.setWindowTitle("Mapa do imóvel — GeoSampa")
+        self.resize(1080, 760)
+        self.setMinimumSize(760, 560)
+        self.setStyleSheet(
+            "QDialog { background:#07111b; color:#eaf2f7; } "
+            "QLabel { color:#dce8ef; } "
+            "QPushButton { background:#102131; border:1px solid #2a465b; "
+            "border-radius:9px; padding:8px 13px; color:#eaf2f7; font-weight:650; } "
+            "QPushButton:hover { border-color:#35ff77; background:#153044; } "
+            "QTextBrowser { background:#0c1926; border:1px solid #1b3348; "
+            "border-radius:10px; padding:10px; color:#eaf2f7; }"
+        )
         layout = QVBoxLayout(self)
-        self.hint = QLabel("Selecione um polígono para consultar os atributos disponíveis.")
-        layout.addWidget(self.hint)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
+
+        header = QVBoxLayout()
+        title = QLabel("Imóvel localizado")
+        title.setStyleSheet("font-size:22px; font-weight:800; color:#f4f8fb;")
+        header.addWidget(title)
+        self.hint = QLabel(
+            "A parcela confirmada será destacada em verde e circulada em vermelho."
+        )
+        self.hint.setStyleSheet("color:#91a8b8; font-size:12px;")
+        header.addWidget(self.hint)
+        layout.addLayout(header)
+
+        toolbar = QHBoxLayout()
+        self.zoom_out_button = QPushButton("−  Zoom")
+        self.zoom_out_button.setToolTip("Afastar o mapa")
+        self.zoom_out_button.clicked.connect(lambda: self.view.scale(0.8, 0.8))
+        toolbar.addWidget(self.zoom_out_button)
+        self.zoom_in_button = QPushButton("+  Zoom")
+        self.zoom_in_button.setToolTip("Aproximar o mapa")
+        self.zoom_in_button.clicked.connect(lambda: self.view.scale(1.25, 1.25))
+        toolbar.addWidget(self.zoom_in_button)
+        self.fit_button = QPushButton("Enquadrar lotes")
+        self.fit_button.clicked.connect(self._fit_map)
+        toolbar.addWidget(self.fit_button)
+        toolbar.addStretch(1)
+        official_button = QPushButton("Abrir novo GeoSampa ↗")
+        official_button.clicked.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl("https://novogeosampa.prefeitura.sp.gov.br/")
+            )
+        )
+        toolbar.addWidget(official_button)
+        layout.addLayout(toolbar)
+
         self.view = QGraphicsView()
+        self.view.setObjectName("cadastralMapView")
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.view.setBackgroundBrush(QBrush(QColor("#091722")))
+        self.view.setStyleSheet("QGraphicsView { border:1px solid #1b3348; border-radius:12px; }")
         self.scene = QGraphicsScene(self)
         self.view.setScene(self.scene)
         layout.addWidget(self.view, 1)
+
+        legend = QHBoxLayout()
+        swatch = QLabel("●")
+        swatch.setStyleSheet("color:#35ff77; font-size:18px;")
+        legend.addWidget(swatch)
+        legend.addWidget(QLabel("Lote cadastral"))
+        ring = QLabel("◉")
+        ring.setStyleSheet("color:#ff5d67; font-size:18px;")
+        legend.addWidget(ring)
+        legend.addWidget(QLabel("Imóvel do endereço pesquisado"))
+        legend.addStretch(1)
+        layout.addLayout(legend)
+
         self.details = QTextBrowser()
-        self.details.setMaximumHeight(170)
+        self.details.setMaximumHeight(150)
         layout.addWidget(self.details)
+
         geometries = []
         for record in records:
             try:
@@ -170,59 +233,178 @@ class CadastralMapDialog(QDialog):
                 geometry = None
             if geometry and geometry.get("type") in {"Polygon", "MultiPolygon"}:
                 geometries.append((record, geometry))
+
         if not geometries:
-            self.hint.setText("Esta consulta não retornou polígonos cadastrais. Não há geometria para desenhar.")
+            self.hint.setText(
+                "A consulta não retornou polígonos cadastrais. Não há geometria para desenhar."
+            )
+            self.details.setPlainText(
+                "Os dados cadastrais retornados pela fonte continuam disponíveis no dossiê. "
+                "O mapa só pode desenhar parcelas quando a fonte fornece geometria."
+            )
+            for button in (
+                self.zoom_out_button, self.zoom_in_button, self.fit_button
+            ):
+                button.setEnabled(False)
             return
+
+        target = next(
+            (
+                record for record, _geometry in geometries
+                if record.attributes.get("house_number_match") == "exact"
+            ),
+            None,
+        )
+        if target is not None:
+            self.hint.setText(
+                "Número predial confirmado: parcela destacada em verde e circulada em vermelho."
+            )
+        else:
+            self.hint.setText(
+                "Parcelas candidatas da rua. A fonte não confirmou um número predial exato."
+            )
+
         all_points = []
-        for record, geometry in geometries:
-            polygons = [geometry["coordinates"]] if geometry["type"] == "Polygon" else geometry["coordinates"]
+        for _record, geometry in geometries:
+            polygons = (
+                [geometry["coordinates"]]
+                if geometry["type"] == "Polygon"
+                else geometry["coordinates"]
+            )
             for polygon in polygons:
                 if not polygon or not polygon[0]:
                     continue
-                ring = polygon[0]
-                all_points.extend((float(p[0]), -float(p[1])) for p in ring if len(p) >= 2)
+                all_points.extend(
+                    (float(point[0]), -float(point[1]))
+                    for point in polygon[0]
+                    if len(point) >= 2
+                )
         if not all_points:
             self.hint.setText("A geometria recebida não contém coordenadas válidas.")
             return
-        min_x, max_x = min(p[0] for p in all_points), max(p[0] for p in all_points)
-        min_y, max_y = min(p[1] for p in all_points), max(p[1] for p in all_points)
-        scale = min(760 / max(max_x-min_x, 1e-7), 440 / max(max_y-min_y, 1e-7))
+
+        min_x = min(point[0] for point in all_points)
+        max_x = max(point[0] for point in all_points)
+        min_y = min(point[1] for point in all_points)
+        max_y = max(point[1] for point in all_points)
+        scale = min(
+            820 / max(max_x - min_x, 1e-7),
+            480 / max(max_y - min_y, 1e-7),
+        )
+        margin = 28
+        target_center = None
+
         for record, geometry in geometries:
-            polygons = [geometry["coordinates"]] if geometry["type"] == "Polygon" else geometry["coordinates"]
+            is_target = record is target
+            polygons = (
+                [geometry["coordinates"]]
+                if geometry["type"] == "Polygon"
+                else geometry["coordinates"]
+            )
             for polygon in polygons:
                 if not polygon or not polygon[0]:
                     continue
-                points = [((float(p[0])-min_x)*scale, (-float(p[1])-min_y)*scale) for p in polygon[0] if len(p) >= 2]
+                points = [
+                    (
+                        margin + (float(point[0]) - min_x) * scale,
+                        margin + (-float(point[1]) - min_y) * scale,
+                    )
+                    for point in polygon[0]
+                    if len(point) >= 2
+                ]
                 if len(points) < 3:
                     continue
-                item = QGraphicsPolygonItem(QPolygonF([QPointF(x, y) for x, y in points]))
-                item.setBrush(QBrush(Qt.GlobalColor.darkCyan))
-                item.setPen(QPen(Qt.GlobalColor.white, 1))
+                item = QGraphicsPolygonItem(
+                    QPolygonF([QPointF(x, y) for x, y in points])
+                )
+                item.setBrush(
+                    QBrush(QColor("#35ff77" if is_target else "#174456"))
+                )
+                item.setPen(
+                    QPen(
+                        QColor("#ff5d67" if is_target else "#64869a"),
+                        3.5 if is_target else 1.2,
+                    )
+                )
                 item.setFlag(item.GraphicsItemFlag.ItemIsSelectable, True)
                 item.setData(0, record)
-                item.setToolTip(f"Quadra {record.block or '—'} · Lote {record.lot or '—'}")
+                item.setData(1, is_target)
+                item.setZValue(2 if is_target else 1)
+                item.setToolTip(
+                    f"Quadra {record.block or '—'} · Lote {record.lot or '—'}"
+                    + (" · ENDEREÇO EXATO" if is_target else "")
+                )
                 self.scene.addItem(item)
-        self.scene.setSceneRect(self.scene.itemsBoundingRect())
+                if is_target:
+                    # A red ring around the parcel makes the requested property
+                    # unmistakable without altering the GeoSampa geometry.
+                    center_x = sum(point[0] for point in points) / len(points)
+                    center_y = sum(point[1] for point in points) / len(points)
+                    target_center = (center_x, center_y)
+
+        if target_center:
+            center_x, center_y = target_center
+            radius = 20
+            circle = QGraphicsEllipseItem(
+                center_x - radius, center_y - radius, radius * 2, radius * 2
+            )
+            circle.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+            circle.setPen(QPen(QColor("#ff5d67"), 3.5))
+            circle.setZValue(10)
+            circle.setFlag(circle.GraphicsItemFlag.ItemIsSelectable, False)
+            circle.setToolTip("Imóvel correspondente ao número predial pesquisado")
+            self.scene.addItem(circle)
+
+        self.scene.setSceneRect(self.scene.itemsBoundingRect().adjusted(-32, -32, 32, 32))
         self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
         self.scene.selectionChanged.connect(self._show_selection)
 
+        if target is not None:
+            for item in self.scene.items():
+                if isinstance(item, QGraphicsPolygonItem) and item.data(1):
+                    item.setSelected(True)
+                    break
+        else:
+            for item in self.scene.items():
+                if isinstance(item, QGraphicsPolygonItem):
+                    item.setSelected(True)
+                    break
+
+    def _fit_map(self):
+        self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+
     def _show_selection(self):
-        selected = self.scene.selectedItems()
+        selected = [
+            item for item in self.scene.selectedItems()
+            if isinstance(item, QGraphicsPolygonItem)
+        ]
         if not selected:
             return
         record = selected[0].data(0)
         attributes = dict(record.attributes)
         attributes.pop("geometry_geojson", None)
-        # Raw properties are rendered as individual facts in the full dossier;
-        # do not duplicate the entire nested payload in the compact map popup.
         attributes.pop("source_attributes", None)
         attributes.pop("source_attribute_names", None)
-        lines = [f"<b>Endereço:</b> {record.address or 'Não informado'}",
-                 f"<b>Quadra:</b> {record.block or '—'} · <b>Lote:</b> {record.lot or '—'}",
-                 f"<b>Área:</b> {record.area_m2 if record.area_m2 is not None else 'Não informada'} m²",
-                 "<b>Atributos fornecidos pela fonte:</b><br>" +
-                 "<br>".join(f"{escape(str(k))}: {escape(str(v))}" for k,v in attributes.items() if v not in (None, ""))]
+        area = (
+            f"{record.area_m2:g} m²"
+            if record.area_m2 is not None
+            else "Não informada"
+        )
+        lines = [
+            f"<b>Endereço:</b> {escape(record.address or 'Não informado')}",
+            f"<b>SQL/IPTU:</b> {escape(str(record.property_id or 'Não informado'))}",
+            f"<b>Quadra fiscal:</b> {escape(str(record.block or '—'))} · "
+            f"<b>Lote:</b> {escape(str(record.lot or '—'))}",
+            f"<b>Área do terreno:</b> {escape(area)}",
+            "<b>Atributos fornecidos pela fonte:</b><br>"
+            + "<br>".join(
+                f"{escape(str(key))}: {escape(str(value))}"
+                for key, value in attributes.items()
+                if value not in (None, "")
+            ),
+        ]
         self.details.setHtml("<br>".join(lines))
+
 
 
 class SearchResultsWindow(QMainWindow):
