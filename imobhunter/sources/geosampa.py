@@ -37,6 +37,10 @@ def _escape_cql(value: str) -> str:
     return value.replace("'", "''")
 
 
+def _normalize_number(value: str) -> str:
+    return "".join(str(value or "").upper().split())
+
+
 def _representative_point(geometry: dict[str, Any]) -> tuple[float | None, float | None]:
     geometry_type = geometry.get("type")
     coordinates = geometry.get("coordinates")
@@ -158,7 +162,10 @@ class GeoSampaAdapter(SourceAdapter):
                     "outputFormat": "json",
                     "srsName": "EPSG:4326",
                     "CQL_FILTER": " AND ".join(active_filters),
-                    "maxFeatures": 50,
+                    # Street-only fallback must include enough parcels for local
+                # exact-number matching; 50 can truncate a long avenue before
+                # the requested door number appears.
+                "maxFeatures": 200,
                 }
                 try:
                     response = client.get(self.endpoint, params=params, timeout=self.timeout)
@@ -185,8 +192,35 @@ class GeoSampaAdapter(SourceAdapter):
                 if payload.get("type") == "ExceptionReport" or "ServiceException" in payload:
                     raise RuntimeError("GeoSampa WFS reportou uma exceção: " + " ".join(str(payload)[:300].split()))
                 records = self._parse_features(payload)
-                if records:
+                if not records:
+                    continue
+
+                if normalized.number and not (block and lot):
+                    requested_number = _normalize_number(normalized.number)
+                    exact_matches = [
+                        record for record in records
+                        if _normalize_number(
+                            str(record.attributes.get("door_number") or "")
+                        ) == requested_number
+                    ]
+                    if exact_matches:
+                        for record in exact_matches:
+                            record.attributes["house_number_match"] = "exact"
+                        records = exact_matches
+                        break
+
+                    # If an exact-number query returned nothing, try the
+                    # street-only fallback. If the fallback still has no
+                    # number match, keep parcels as candidates but mark them
+                    # explicitly so the UI/dossier cannot imply an exact match.
+                    if len(query_filters) > 1 and active_filters is query_filters[0]:
+                        records = []
+                        continue
+                    for record in records:
+                        record.attributes["house_number_match"] = "candidate_only"
                     break
+
+                break
         finally:
             if close_client:
                 client.close()
@@ -251,6 +285,12 @@ class GeoSampaAdapter(SourceAdapter):
                     longitude=longitude,
                     attributes={
                         "source": self.source_id,
+                        # Preserve every field returned by the official layer.
+                        # The normalized fields below support common UI views;
+                        # raw fields ensure the dossier does not discard data
+                        # just because a field name is not yet mapped.
+                        "source_attributes": properties,
+                        "source_attribute_names": sorted(str(key) for key in properties),
                         "geometry_geojson": geometry_json,
                         "source_scope": "municipal_fiscal_cadastre",
                         "sector": setor,
@@ -283,6 +323,11 @@ class GeoSampaAdapter(SourceAdapter):
                             properties,
                             "cd_numero_porta",
                             "numero_porta",
+                            "nr_numero_porta",
+                            "nr_endereco",
+                            "numero",
+                            "nr_porta",
+                            "numero_predial",
                         ),
                         "lot_type": _text(properties, "tx_tipo_lote", "tipo_lote"),
                         "block_type": _text(properties, "tx_tipo_quadra", "cd_tipo_quadra"),
