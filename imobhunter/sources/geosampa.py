@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import httpx
 import json
+
+from imobhunter.application.address_geocoding import CachedAddressGeocoder, GeocodingError
 
 from imobhunter.application.address import normalize_request
 from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest, SourceStatus
@@ -85,11 +88,16 @@ class GeoSampaAdapter(SourceAdapter):
         layer: str = DEFAULT_LAYER,
         timeout: float = 20.0,
         client: Any | None = None,
+        geocoder: Any | None = None,
     ) -> None:
         self.endpoint = endpoint
         self.layer = layer
         self.timeout = timeout
         self._client = client
+        self._geocoder = geocoder
+        # Mocked HTTP clients in unit tests should never trigger external
+        # geocoding unless a fake/real geocoder is explicitly injected.
+        self._geocoding_enabled = geocoder is not None or client is None
 
     def status(self) -> SourceStatus:
         return SourceStatus(
@@ -232,7 +240,184 @@ class GeoSampaAdapter(SourceAdapter):
             if close_client:
                 client.close()
 
+        if (
+            normalized.number
+            and not (block and lot)
+            and self._geocoding_enabled
+            and (
+                not records
+                or all(
+                    record.attributes.get("house_number_match") == "candidate_only"
+                    for record in records
+                )
+            )
+        ):
+            try:
+                spatial_records = self._search_by_geocoded_point(request, normalized)
+                if spatial_records:
+                    records = spatial_records
+            except (GeocodingError, httpx.HTTPError, RuntimeError, ValueError, TypeError) as exc:
+                # Keep the street candidates if geocoding/spatial lookup is
+                # unavailable, but expose why the exact address could not be
+                # resolved instead of silently implying an exact match.
+                for record in records:
+                    record.attributes["spatial_lookup_status"] = "failed"
+                    record.attributes["spatial_lookup_error"] = type(exc).__name__
+
         return records
+
+    def _search_by_geocoded_point(
+        self, request: SearchRequest, normalized: Any
+    ) -> list[PropertyRecord]:
+        if self._geocoder is None:
+            cache_path = (
+                Path.home()
+                / ".imobhunter"
+                / "cache"
+                / "geosampa"
+                / "address-geocoding.sqlite3"
+            )
+            self._geocoder = CachedAddressGeocoder(
+                cache_path,
+                "ImobHunter-BR/0.1.18 (GeoSampa address-to-parcel lookup)",
+            )
+
+        query = ", ".join(
+            part
+            for part in (
+                " ".join(part for part in (request.address, normalized.number) if part),
+                request.city,
+                request.state,
+                "Brasil",
+            )
+            if part
+        )
+        geocoded = self._geocoder.geocode(query)
+        latitude = float(geocoded["latitude"])
+        longitude = float(geocoded["longitude"])
+        import math
+
+        lat_delta = 20.0 / 111_000.0
+        lon_delta = 20.0 / (
+            111_000.0 * max(abs(math.cos(math.radians(latitude))), 0.1)
+        )
+        params = {
+            "service": "WFS",
+            "version": "1.0.0",
+            "request": "GetFeature",
+            "typeName": self.layer,
+            "outputFormat": "json",
+            "srsName": "EPSG:4326",
+            "bbox": (
+                f"{longitude - lon_delta},{latitude - lat_delta},"
+                f"{longitude + lon_delta},{latitude + lat_delta},EPSG:4326"
+            ),
+            "maxFeatures": 50,
+        }
+        client = self._client or httpx.Client(timeout=self.timeout)
+        close_client = self._client is None
+        try:
+            response = client.get(self.endpoint, params=params, timeout=self.timeout)
+            response.raise_for_status()
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                raise RuntimeError("GeoSampa WFS bbox returned invalid JSON") from exc
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"GeoSampa spatial lookup failed: {exc}") from exc
+        finally:
+            if close_client:
+                client.close()
+
+        if not isinstance(payload, dict) or not isinstance(payload.get("features"), list):
+            raise RuntimeError("GeoSampa spatial lookup did not return a GeoJSON FeatureCollection")
+
+        candidates = self._parse_features(payload)
+        for record in candidates:
+            record.attributes["address_geocoding_provider"] = str(
+                geocoded.get("provider") or "configured geocoder"
+            )
+            record.attributes["geocoded_address"] = str(
+                geocoded.get("display_name") or query
+            )
+            record.attributes["geocoded_latitude"] = latitude
+            record.attributes["geocoded_longitude"] = longitude
+            record.attributes["spatial_lookup_status"] = "completed"
+
+        matches = [
+            record for record in candidates
+            if self._geometry_contains_point(
+                record.attributes.get("geometry_geojson"), longitude, latitude
+            )
+        ]
+        if matches:
+            for record in matches:
+                record.attributes["house_number_match"] = "geocoded_spatial_match"
+            return matches
+
+        # A geocoded point can land just outside a cadastral polygon due to
+        # address interpolation. Return only the nearest parcel as an explicit
+        # candidate, not as a confirmed address match.
+        candidates_with_coordinates = [
+            record for record in candidates
+            if record.latitude is not None and record.longitude is not None
+        ]
+        if not candidates_with_coordinates:
+            return []
+        nearest = min(
+            candidates_with_coordinates,
+            key=lambda record: (
+                (float(record.longitude) - longitude) ** 2
+                + (float(record.latitude) - latitude) ** 2
+            ),
+        )
+        nearest.attributes["house_number_match"] = "geocoded_spatial_candidate"
+        return [nearest]
+
+    @staticmethod
+    def _geometry_contains_point(
+        geometry_json: Any, longitude: float, latitude: float
+    ) -> bool:
+        if not geometry_json:
+            return False
+        try:
+            geometry = json.loads(geometry_json) if isinstance(geometry_json, str) else geometry_json
+        except (TypeError, ValueError):
+            return False
+
+        def in_ring(ring: Any) -> bool:
+            if not isinstance(ring, list) or len(ring) < 4:
+                return False
+            inside = False
+            previous = ring[-1]
+            for current in ring:
+                if not (
+                    isinstance(current, list) and len(current) >= 2
+                    and isinstance(previous, list) and len(previous) >= 2
+                ):
+                    previous = current
+                    continue
+                x1, y1 = float(previous[0]), float(previous[1])
+                x2, y2 = float(current[0]), float(current[1])
+                if (y1 > latitude) != (y2 > latitude):
+                    crossing_x = (x2 - x1) * (latitude - y1) / (y2 - y1) + x1
+                    if longitude < crossing_x:
+                        inside = not inside
+                previous = current
+            return inside
+
+        def in_polygon(rings: Any) -> bool:
+            if not isinstance(rings, list) or not rings or not in_ring(rings[0]):
+                return False
+            return not any(in_ring(hole) for hole in rings[1:])
+
+        kind = geometry.get("type") if isinstance(geometry, dict) else None
+        coordinates = geometry.get("coordinates") if isinstance(geometry, dict) else None
+        if kind == "Polygon":
+            return in_polygon(coordinates)
+        if kind == "MultiPolygon" and isinstance(coordinates, list):
+            return any(in_polygon(polygon) for polygon in coordinates)
+        return False
 
     def _parse_features(self, payload: dict[str, Any]) -> list[PropertyRecord]:
         records: list[PropertyRecord] = []
