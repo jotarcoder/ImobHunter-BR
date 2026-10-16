@@ -78,6 +78,9 @@ def test_geosampa_search_builds_filtered_wfs_request_and_parses_current_fields()
     assert records[0].attributes["iptu_current_debt_status"] == "not_provided_by_this_layer"
     assert records[0].attributes["built_area_m2"] == 210.25
     assert records[0].attributes["lot_status"] == "ATIVO"
+    assert records[0].attributes["house_number_match"] == "exact"
+    assert records[0].attributes["source_attributes"]["cd_numero_porta"] == "1578"
+    assert "nm_logradouro_completo" in records[0].attributes["source_attribute_names"]
     assert records[0].attributes["taxpayer_name_status"] == "not_provided_by_this_layer"
     assert records[0].attributes["owner_document_status"] == "not_provided_by_this_layer"
     assert records[0].owner_name is None
@@ -253,6 +256,7 @@ def test_geosampa_falls_back_to_street_when_exact_house_number_has_no_match() ->
     assert records[0].attributes["iptu_contributor"] is None
     assert records[0].attributes["iptu_registration_number"] == "010.020.0030-1"
     assert records[0].attributes["iptu_current_debt_status"] == "not_provided_by_this_layer"
+    assert records[0].attributes["house_number_match"] == "candidate_only"
 
 
 def test_geosampa_uses_official_wfs_endpoint_path() -> None:
