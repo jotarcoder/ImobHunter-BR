@@ -1077,7 +1077,17 @@ class MainWindow(QMainWindow):
             card.setObjectName("card")
             card_layout = QVBoxLayout(card)
             card_layout.setContentsMargins(14, 12, 14, 12)
-            raw_label = labels.get(fact.field, fact.field.replace("attribute:", "").replace("_", " ").capitalize())
+            if fact.field.startswith("source_attribute:"):
+                _, source_id, source_field = fact.field.split(":", 2)
+                raw_label = (
+                    f"{source_id.replace('_', ' ').title()} · "
+                    f"{source_field.replace('_', ' ')}"
+                )
+            else:
+                raw_label = labels.get(
+                    fact.field,
+                    fact.field.replace("attribute:", "").replace("_", " ").capitalize(),
+                )
             label = QLabel(escape(raw_label))
             label.setObjectName("muted")
             value = QLabel(escape(str(fact.value)))
