@@ -143,9 +143,22 @@ class MarketIntelligenceStore:
                         ).fetchone()
                     if existing:
                         db.execute(
-                            """UPDATE businesses SET name=?,cnpj=?,cnae=?,address=?,city=?,state=?,
-                               latitude=?,longitude=?,revenue_reported=?,revenue_period=?,
-                               revenue_estimate=?,estimate_method=?,source=?,updated_at=? WHERE id=?""",
+                            """UPDATE businesses SET
+                               name=COALESCE(NULLIF(?,''),name),
+                               cnpj=COALESCE(NULLIF(?,''),cnpj),
+                               cnae=COALESCE(NULLIF(?,''),cnae),
+                               address=COALESCE(NULLIF(?,''),address),
+                               city=COALESCE(NULLIF(?,''),city),
+                               state=COALESCE(NULLIF(?,''),state),
+                               latitude=COALESCE(?,latitude),
+                               longitude=COALESCE(?,longitude),
+                               revenue_reported=COALESCE(?,revenue_reported),
+                               revenue_period=COALESCE(NULLIF(?,''),revenue_period),
+                               revenue_estimate=COALESCE(?,revenue_estimate),
+                               estimate_method=COALESCE(NULLIF(?,''),estimate_method),
+                               source=COALESCE(NULLIF(?,''),source),
+                               updated_at=COALESCE(NULLIF(?,''),updated_at)
+                               WHERE id=?""",
                             (*values, existing["id"]),
                         )
                     else:
