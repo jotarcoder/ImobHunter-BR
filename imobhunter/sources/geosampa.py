@@ -330,7 +330,9 @@ class GeoSampaAdapter(SourceAdapter):
                 client.close()
 
         if not isinstance(payload, dict) or not isinstance(payload.get("features"), list):
-            raise RuntimeError("GeoSampa spatial lookup did not return a GeoJSON FeatureCollection")
+            raise RuntimeError(
+                "GeoSampa spatial lookup did not return a GeoJSON FeatureCollection"
+            )
 
         candidates = self._parse_features(payload)
         for record in candidates:
