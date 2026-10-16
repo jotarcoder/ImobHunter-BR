@@ -38,8 +38,8 @@ jobs:
           from imobhunter.sources.geosampa import DEFAULT_LAYER, DEFAULT_WFS_URL, GeoSampaAdapter
 
           request = SearchRequest(
-              address="Rua Pamplona",
-              number="1578",
+              address="R Padre Luís Rossi",
+              number="133",
               city="São Paulo",
               state="SP",
           )
@@ -65,7 +65,7 @@ jobs:
           if not records:
               raise SystemExit(
                   "FAIL: the actual ImobHunter GeoSampa adapter returned no records "
-                  "for the known PAMPLONA address. Unit tests alone do not count as live validation."
+                  "for the requested Padre Luís Rossi address. Unit tests alone do not count as live validation."
               )
           if not any(
               record.property_id or record.block or record.lot or record.area_m2 is not None
@@ -75,5 +75,5 @@ jobs:
                   "FAIL: GeoSampa returned records but the adapter extracted none of the expected "
                   "parcel identifiers, block/lot fields, or land area."
               )
-          print("PASS: live GeoSampa query returned records with usable cadastral attributes.")
+          exact_match = [record for record in records if str(record.attributes.get("door_number", "")).strip() == request.number and record.attributes.get("house_number_match") == "exact"]\n          if exact_match:\n              print("RESULT: EXACT address number match confirmed.")\n          else:\n              print("RESULT: ADDRESS NUMBER NOT CONFIRMED; returned records are candidates only.")\n          print("PASS: live query completed; inspect the result above to determine address match quality.")
           PY
