@@ -55,8 +55,11 @@ jobs:
                   f"Record {index}: address={record.address!r}; "
                   f"SQL={record.attributes.get('sql')!r}; "
                   f"block={record.block!r}; lot={record.lot!r}; "
+                  f"door_number={record.attributes.get('door_number')!r}; "
+                  f"number_match={record.attributes.get('house_number_match')!r}; "
                   f"area_m2={record.area_m2!r}; "
-                  f"geometry={'yes' if record.attributes.get('geometry_geojson') else 'no'}"
+                  f"geometry={'yes' if record.attributes.get('geometry_geojson') else 'no'}; "
+                  f"raw_fields={record.attributes.get('source_attribute_names', [])!r}"
               )
 
           if not records:
