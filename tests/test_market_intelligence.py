@@ -68,3 +68,32 @@ def test_segment_filters_match_cnae_groups_and_osm_tags(tmp_path: Path):
     assert {x["name"] for x in store.search_radius(-23.55, -46.63, 1, "serviços")} == {"Serviço", "Café OSM"}
     assert {x["name"] for x in store.search_radius(-23.55, -46.63, 1, "indústria")} == {"Fábrica"}
     assert {x["name"] for x in store.search_radius(-23.55, -46.63, 1, "construção")} == {"Construtora"}
+
+def test_import_does_not_overwrite_existing_company_details_with_blank_values(tmp_path: Path):
+    csv_path = tmp_path / "companies.csv"
+    database_path = tmp_path / "market.sqlite3"
+    store = MarketIntelligenceStore(database_path)
+    csv_path.write_text(
+        "name,cnpj,cnae,address,city,state,latitude,longitude,revenue_reported,revenue_period,source,updated_at\n"
+        "Empresa A,12.345.678/0001-90,4711301,Rua A,Sao Paulo,SP,-23.55,-46.63,250000,2025,Receita oficial,2026-10-01\n",
+        encoding="utf-8",
+    )
+    assert store.import_csv(csv_path) == 1
+
+    csv_path.write_text(
+        "name,cnpj,cnae,address,city,state,latitude,longitude,revenue_reported,revenue_period,source,updated_at\n"
+        "Empresa A,12.345.678/0001-90,,,,,-23.55,-46.63,,,,\n",
+        encoding="utf-8",
+    )
+    assert store.import_csv(csv_path) == 0
+
+    found = store.search_radius(-23.55, -46.63, 1)
+    assert len(found) == 1
+    assert found[0]["cnpj"] == "12345678000190"
+    assert found[0]["cnae"] == "4711301"
+    assert found[0]["address"] == "Rua A"
+    assert found[0]["city"] == "Sao Paulo"
+    assert found[0]["state"] == "SP"
+    assert found[0]["revenue_reported"] == 250000
+    assert found[0]["revenue_period"] == "2025"
+    assert found[0]["source"] == "Receita oficial"
