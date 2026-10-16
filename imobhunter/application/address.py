@@ -5,6 +5,11 @@ from imobhunter.domain.models import NormalizedAddress, SearchRequest
 
 _SPACES = re.compile(r"\s+")
 _PUNCT = re.compile(r"[,.;:]+")
+# Accept a house number typed at the end of the address field, e.g. "Rua X, 42",
+# "Av X nº 42" or "Rua X 42-A".
+_TRAILING_HOUSE_NUMBER = re.compile(
+    r"\s+(?:N(?:\s*O|[º°.]|UMERO)?\s*)?(\d+(?:[A-Z]|[-/][A-Z0-9]+)?)$"
+)
 _VALID_UFS = frozenset(
     [
         "AC",
@@ -128,6 +133,17 @@ def _parse_street(address: str | None) -> tuple[str | None, str | None, str | No
 def normalize_request(request: SearchRequest) -> NormalizedAddress:
     address = normalize_text(request.address) or ""
     number = normalize_text(request.number)
+    # The desktop form may send "Rua Pamplona, 1578" as one field instead of
+    # separating the number. Split it before deriving the street name; otherwise
+    # the WFS filter incorrectly searches for a street literally named
+    # "PAMPLONA 1578". A separately supplied number takes precedence.
+    if address:
+        match = _TRAILING_HOUSE_NUMBER.search(address)
+        if match:
+            if not number:
+                number = match.group(1)
+            address = address[: match.start()].strip()
+
     state = normalize_text(request.state)
     if state and state not in _VALID_UFS:
         raise ValueError(f"invalid Brazilian state: {state}")
