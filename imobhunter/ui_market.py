@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from .application.market_intelligence import MarketIntelligenceStore
+from .application.market_export import export_market_results
 from .application.receita_import import import_receita_archives, search_receita_establishments
 from .application.receita_geo import import_receita_coordinates, save_geocoded_establishment
 from .application.address_geocoding import CachedAddressGeocoder, GeocodingError
@@ -626,104 +627,26 @@ map.on('click', function(event) {{
             "JSON — dados estruturados (*.json)": ".json",
             "HTML — relatório para navegador (*.html)": ".html",
         }
-        expected_suffix = filter_extensions.get(selected_filter)
-        if not target.suffix and expected_suffix:
-            target = target.with_suffix(expected_suffix)
-        elif target.suffix.lower() not in {".csv", ".xlsx", ".json", ".html", ".htm"}:
+        if not target.suffix and selected_filter in filter_extensions:
+            target = target.with_suffix(filter_extensions[selected_filter])
+        if target.suffix.lower() not in {".csv", ".xlsx", ".json", ".html", ".htm"}:
             QMessageBox.warning(
                 self, "Formato não reconhecido",
                 "Escolha CSV, Excel (.xlsx), JSON ou HTML para salvar a pesquisa."
             )
             return
-
-        fields = [
-            "name", "cnpj", "cnae", "address", "city", "state", "latitude", "longitude",
-            "distance_km", "revenue_reported", "revenue_period", "revenue_estimate",
-            "estimate_method", "revenue_status", "source", "updated_at",
-        ]
-        rows = [{field: item.get(field, "") for field in fields} for item in self.results]
+        query = {
+            "latitude": self.latitude.text().strip(),
+            "longitude": self.longitude.text().strip(),
+            "radius_km": self.radius.text().strip(),
+            "segment": self.segment.currentText(),
+        }
         try:
-            suffix = target.suffix.lower()
-            if suffix == ".csv":
-                with target.open("w", encoding="utf-8-sig", newline="") as handle:
-                    writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
-                    writer.writeheader()
-                    writer.writerows(rows)
-            elif suffix == ".json":
-                payload = {
-                    "title": "ImobHunter — Inteligência de Mercado",
-                    "query": {
-                        "latitude": self.latitude.text().strip(),
-                        "longitude": self.longitude.text().strip(),
-                        "radius_km": self.radius.text().strip(),
-                        "segment": self.segment.currentText(),
-                    },
-                    "count": len(rows),
-                    "records": rows,
-                }
-                target.write_text(
-                    json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False),
-                    encoding="utf-8",
-                )
-            elif suffix in {".html", ".htm"}:
-                import html
-
-                headers = "".join(f"<th>{html.escape(field)}</th>" for field in fields)
-                body = "".join(
-                    "<tr>" + "".join(
-                        f"<td>{html.escape(str(row.get(field, '') if row.get(field) is not None else ''))}</td>"
-                        for field in fields
-                    ) + "</tr>"
-                    for row in rows
-                )
-                report = f"""<!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ImobHunter — Inteligência de Mercado</title>
-<style>
-body{{font:14px system-ui,sans-serif;background:#07111b;color:#eaf2f7;margin:28px}}
-h1{{color:#35ff77}}.meta{{color:#a9bdcb;margin-bottom:18px}}
-.table-wrap{{overflow:auto;border:1px solid #254156;border-radius:10px}}
-table{{border-collapse:collapse;min-width:100%;background:#0b1926}}
-th,td{{padding:9px 11px;text-align:left;border-bottom:1px solid #254156;white-space:nowrap}}
-th{{background:#102332;color:#35ff77;position:sticky;top:0}}
-tr:nth-child(even){{background:#0d1d2b}}
-</style></head><body>
-<h1>Inteligência de Mercado</h1>
-<div class="meta">Registros: {len(rows)} · Centro: {html.escape(self.latitude.text())}, {html.escape(self.longitude.text())}
-· Raio: {html.escape(self.radius.text())} km · Segmento: {html.escape(self.segment.currentText())}</div>
-<div class="table-wrap"><table><thead><tr>{headers}</tr></thead><tbody>{body}</tbody></table></div>
-<p class="meta">ImobHunter-BR · Os valores ausentes não foram estimados automaticamente.</p>
-</body></html>"""
-                target.write_text(report, encoding="utf-8")
-            elif suffix == ".xlsx":
-                from openpyxl import Workbook
-                from openpyxl.styles import Alignment, Font, PatternFill
-                from openpyxl.utils import get_column_letter
-
-                workbook = Workbook()
-                sheet = workbook.active
-                sheet.title = "Inteligência de Mercado"
-                sheet.append(fields)
-                for row in rows:
-                    sheet.append([row.get(field, "") for field in fields])
-                for cell in sheet[1]:
-                    cell.font = Font(bold=True, color="35FF77")
-                    cell.fill = PatternFill("solid", fgColor="102332")
-                    cell.alignment = Alignment(vertical="center")
-                sheet.freeze_panes = "A2"
-                sheet.auto_filter.ref = sheet.dimensions
-                for index, field in enumerate(fields, 1):
-                    max_length = max(
-                        len(field),
-                        *(len(str(sheet.cell(row, index).value or "")) for row in range(2, sheet.max_row + 1)),
-                    )
-                    sheet.column_dimensions[get_column_letter(index)].width = min(max_length + 2, 42)
-                workbook.save(target)
+            export_market_results(self.results, target, query)
         except (OSError, ValueError, TypeError, ImportError) as exc:
-            QMessageBox.warning(self, "Salvar pesquisa", f"Não foi possível exportar o arquivo:\n{exc}")
+            QMessageBox.warning(self, "Salvar pesquisa", f"Não foi possível exportar o arquivo:\\n{exc}")
             return
-        QMessageBox.information(self, "Pesquisa salva", f"Pesquisa exportada com sucesso:\n{target}")
+        QMessageBox.information(self, "Pesquisa salva", f"Pesquisa exportada com sucesso:\\n{target}")
 
 
 
