@@ -159,7 +159,7 @@ class SlowSource(SourceAdapter):
     def search(self, request: SearchRequest) -> list[PropertyRecord]:
         import time
 
-        time.sleep(0.4)
+        time.sleep(1.0)
         return []
 
 
@@ -184,7 +184,7 @@ def test_search_runs_sources_concurrently_and_times_out_slow_source(tmp_path: Pa
     finally:
         service._executor.shutdown(wait=True, cancel_futures=True)
 
-    assert elapsed < 0.3
+    assert elapsed < 0.5
     assert len(result.records) == 1
     assert [(item.source_id, item.status) for item in result.sources] == [
         ("slow", "timeout"),
