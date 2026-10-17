@@ -104,6 +104,6 @@ class CNPJApiClient:
             response.raise_for_status()
             payload = response.json()
             if not isinstance(payload, dict):
-                raise RuntimeError(f"Resposta inválida da API CNPJ ({service})")
+                raise TypeError(f"Resposta inválida da API CNPJ ({service})")
             result[service] = payload
         return result
