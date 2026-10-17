@@ -24,6 +24,7 @@ OutputBaseFilename=ImobHunter-BR-Setup-Windows
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=imobhunter.ico
 
 [Files]
 Source: "..\..\dist\ImobHunter-BR\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
