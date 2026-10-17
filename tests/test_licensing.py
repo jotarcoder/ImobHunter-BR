@@ -71,7 +71,7 @@ def test_activation_sends_normalized_user_id_and_hex_key() -> None:
         assert request.full_url == "https://license.example/api/license/activate"
         assert request.get_method() == "POST"
         assert request.get_header("Content-type") == "application/json"
-        assert request.get_header("User-agent") == "ImobHunter-BR/0.1.18 (desktop-license-client)"
+        assert request.get_header("User-agent") == "ImobHunter-BR/0.1.19 (desktop-license-client)"
         assert timeout == 8
         assert isinstance(context, ssl.SSLContext)
         assert json.loads(request.data) == {
