@@ -32,6 +32,10 @@ RIO_ARCGIS_LAYER = (
     "https://pgeo3.rio.rj.gov.br/arcgis/rest/services/"
     "CadParcel/IMOVEIS_TERRITORIAIS/FeatureServer/0"
 )
+DF_ARCGIS_LAYER = (
+    "https://www.geoservicos.ide.df.gov.br/arcgis/rest/services/"
+    "Aplicacoes/CERTIDAO_IMOVEL/FeatureServer/0"
+)
 CADASTRAL_TERMS = (
     "lote", "lotes", "parcela", "parcelas", "quadra", "imobiliario",
     "imobiliário", "iptu", "inscricao_imobiliaria", "inscrição imobiliária",
@@ -151,9 +155,9 @@ def _lat_lon(geometry: dict[str, Any]) -> tuple[float | None, float | None]:
 class OfficialMunicipalServicesAdapter(SourceAdapter):
     """Direct integrations for documented municipal parcel services.
 
-    Current direct integrations: Praia Grande/SP (WFS), Belo Horizonte/MG (WFS),
-    and Rio de Janeiro/RJ (ArcGIS REST). São Paulo capital remains covered by
-    GeoSampaAdapter. This is not a claim of nationwide municipal coverage.
+    Current direct integrations: Praia Grande/SP and Belo Horizonte/MG (WFS),
+    Rio de Janeiro/RJ and Distrito Federal (ArcGIS REST). São Paulo capital
+    remains covered by GeoSampaAdapter. This is not nationwide coverage.
     """
 
     source_id = "official_municipal_services"
@@ -181,9 +185,9 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
 
     def status(self) -> SourceStatus:
         detail = (
-            "Integrações diretas configuradas para Praia Grande/SP, Belo Horizonte/MG "
-            "e Rio de Janeiro/RJ; São Paulo capital usa GeoSampa. Cobertura, atributos "
-            "e disponibilidade dependem da camada oficial de cada município."
+            "Integrações diretas configuradas para Praia Grande/SP, Belo Horizonte/MG, "
+            "Rio de Janeiro/RJ e Distrito Federal; São Paulo capital usa GeoSampa. "
+            "Cobertura, atributos e disponibilidade dependem da camada oficial."
         )
         if self.last_errors:
             detail += " Últimas falhas: " + "; ".join(
@@ -370,9 +374,9 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
 
     def _arcgis_records(
         self, city: str, state: str, latitude: float, longitude: float,
-        request: SearchRequest,
+        request: SearchRequest, *, layer_url: str = RIO_ARCGIS_LAYER,
     ) -> list[PropertyRecord]:
-        url = RIO_ARCGIS_LAYER + "/query"
+        url = layer_url + "/query"
         response = self._get(url, {
             "where": "1=1",
             "geometry": json.dumps({"x": longitude, "y": latitude}),
@@ -391,7 +395,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         if not isinstance(payload, dict) or not isinstance(payload.get("features"), list):
             raise TypeError("ArcGIS REST municipal retornou JSON sem a lista features.")
         self.last_diagnostics[city] = {
-            "endpoint": RIO_ARCGIS_LAYER,
+            "endpoint": layer_url,
             "geocoded_address": self.last_geocoded.get(city),
             "feature_count": len(payload["features"]),
             "fields": sorted({
@@ -414,30 +418,48 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             if not properties or not geometry:
                 continue
             lat, lon = _lat_lon(geometry)
-            sql = _first(properties, "inscricao_imobiliaria", "inscricao_cadastral", "cadastral")
+            sql = _first(
+                properties, "inscricao_imobiliaria", "inscricao_cadastral", "cadastral",
+                "iptu_imovel",
+            )
             cib = _first(properties, "cib", "cd_cib", "codigo_cib")
-            block = _first(properties, "quadra", "cod_quadra")
-            lot = _first(properties, "lote", "np", "chavegeo", "ch_lote")
+            block = _first(properties, "quadra", "cod_quadra", "lt_quadra")
+            lot = _first(properties, "lote", "np", "chavegeo", "ch_lote", "lt_lote")
             area = _area(_first(
                 properties, "area_m2", "area_descrita", "shape_area", "shape__area",
+                "iptu_area_terr",
             ))
+            built_area = _area(_first(
+                properties, "ac_area_ct", "area_construida", "area_construcao",
+            ))
+            address = _first(
+                properties, "endereco", "logradouro", "endereco_completo",
+                "iptu_endereco", "lt_endereco",
+            )
+            ciu = _first(properties, "iptu_ciu")
             registry_number = _first(properties, "matricula", "rgi")
             records.append(PropertyRecord(
                 property_id=str(_first(properties, "objectid", "globalid", "chavegeo") or "") or None,
                 registry_number=str(registry_number) if registry_number not in (None, "") else None,
                 cib=str(cib) if cib not in (None, "") else None,
-                address=str(_first(properties, "endereco", "logradouro", "endereco_completo") or request.address or ""),
+                address=str(address or request.address or ""),
                 city=city, state=state,
                 block=str(block) if block not in (None, "") else None,
                 lot=str(lot) if lot not in (None, "") else None,
                 area_m2=area, latitude=lat, longitude=lon,
                 attributes={
                     "source": self.source_id,
-                    "official_source": "Prefeitura da Cidade do Rio de Janeiro — GeoPAL/IMOVEIS_TERRITORIAIS",
-                    "service_url": RIO_ARCGIS_LAYER,
+                    "official_source": (
+                        "IDE-DF — Lotes com Inscrição do IPTU"
+                        if layer_url == DF_ARCGIS_LAYER
+                        else "Prefeitura da Cidade do Rio de Janeiro — GeoPAL/IMOVEIS_TERRITORIAIS"
+                    ),
+                    "service_url": layer_url,
                     "service_type": "ArcGIS REST",
                     "geometry_geojson": json.dumps(geometry, ensure_ascii=False),
                     "source_properties": properties,
+                    "built_area_m2": built_area,
+                    "iptu_ciu": str(ciu) if ciu not in (None, "") else None,
                     "sql": str(sql) if sql not in (None, "") else None,
                     "iptu_registration_number": str(sql) if sql not in (None, "") else None,
                     "sql_status": "provided_by_layer" if sql not in (None, "") else "not_provided_by_layer",
@@ -457,6 +479,10 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         city_key, state_key = _fold(request.city), request.state.strip().casefold()
         if city_key in {"rio de janeiro", "rio"} and state_key in {"rj", "rio de janeiro"}:
             city, state, service_key = "Rio de Janeiro", "RJ", "rio"
+            configured = None
+        elif city_key in {"brasilia", "distrito federal", "df"} and state_key in {"df", "distrito federal", "brasilia"}:
+            city, state, service_key = "Brasília", "DF", "df"
+            configured = None
         else:
             service_key = (city_key, state_key)
             configured = MUNICIPAL_WFS.get(service_key)
@@ -475,6 +501,10 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 return []
             if service_key == "rio":
                 records = self._arcgis_records(city, state, latitude, longitude, request)
+            elif service_key == "df":
+                records = self._arcgis_records(
+                    city, state, latitude, longitude, request, layer_url=DF_ARCGIS_LAYER
+                )
             else:
                 records = self._wfs_records(
                     city, state, configured["url"], latitude, longitude, request

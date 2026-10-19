@@ -18,7 +18,7 @@ Teste unitário com resposta simulada comprova comportamento diante daquela resp
 | Área | Implementação identificada | Ainda precisa ser demonstrado |
 |---|---|---|
 | Endereços nacionais | Adaptadores IBGE/CNEFE e geocodificador nacional | Precisão por município, número predial, cache, erros e fallback |
-| Cadastro municipal | WFS de Praia Grande/SP e Belo Horizonte/MG; ArcGIS REST do Rio/RJ; GeoSampa | Consultas reais por endereço, camadas e campos; municípios efetivamente cobertos |
+| Cadastro municipal | WFS de Praia Grande/SP e Belo Horizonte/MG; ArcGIS REST do Rio/RJ e Distrito Federal; GeoSampa | Consultas reais por endereço, camadas e campos; municípios efetivamente cobertos |
 | Descoberta geoespacial | Descoberta municipal e módulo de catálogo INDE | Transformar descoberta em conectores documentados e testados |
 | Mapa e lotes vizinhos | Geometrias nos adaptadores quando fornecidas pela fonte | Fluxo desktop completo, centralização, ruas, seleção e vizinhos |
 | Dossiê | Modelo de registro/proveniência e campos opcionais | Origem e estado de cada campo, deduplicação e ausência explícita |
@@ -92,4 +92,11 @@ O workflow **National municipal service discovery** é manual (`workflow_dispatc
 
 Esta é a primeira etapa automatizada de descoberta e teste de conectividade. A resposta do catálogo pode não informar cidade/UF ou camada de forma estruturada; esses campos permanecem vazios quando não são fornecidos. Serviços fora de `gov.br`, serviços sem WFS/ArcGIS reconhecido e portais que exigem autenticação precisam de validação manual antes de serem autorizados.
 
-**Não declara cobertura cadastral nacional.** Cada candidato encontrado precisa de validação por município, camada, CRS, consulta útil por endereço conhecido e campos efetivamente retornados antes de ser incorporado ao adaptador de busca do aplicativo. Os conectores existentes de GeoSampa, Praia Grande, Belo Horizonte e Rio de Janeiro não são alterados por esta etapa.
+**Não declara cobertura cadastral nacional.** Cada candidato encontrado precisa de validação por município, camada, CRS, consulta útil por endereço conhecido e campos efetivamente retornados antes de ser incorporado ao adaptador de busca do aplicativo. Os conectores existentes de GeoSampa, Praia Grande, Belo Horizonte e Rio de Janeiro são preservados. O conector ArcGIS do Distrito Federal foi adicionado para a camada oficial IDE-DF de lotes com inscrição do IPTU; isso amplia uma fonte pública, mas não declara cobertura nacional.
+
+
+## Integração adicional: Distrito Federal (IDE-DF)
+
+Foi conectado ao adaptador municipal existente o serviço oficial ArcGIS REST **Lotes com Inscrição do IPTU** da IDE-DF. A camada documenta os campos de inscrição do imóvel (`iptu_imovel`), CIU, endereço predial, quadra, lote, área de terreno e área construída total.
+
+O conector normaliza esses campos para o dossiê, preserva os atributos originais e a geometria, e mantém o estado `spatial_candidate_only`: estar dentro do raio da coordenada geocodificada não comprova correspondência exata com o endereço, titularidade nem propriedade. O teste automatizado usa resposta simulada para validar o mapeamento; a disponibilidade em produção precisa de smoke test ao vivo antes de declarar cobertura verificada.

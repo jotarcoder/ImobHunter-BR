@@ -54,9 +54,9 @@
       "category": "municipal",
       "tier": "mixed",
       "status": "implemented",
-      "validation": "limited_known_endpoints",
-      "scope": "Praia Grande/SP; Belo Horizonte/MG; Rio de Janeiro/RJ",
-      "limitations": "Não representa cobertura de todos os municípios; cada camada precisa de teste real."
+      "validation": "known_official_endpoints_with_unit_tests",
+      "scope": "São Paulo capital (GeoSampa); Praia Grande/SP; Belo Horizonte/MG; Rio de Janeiro/RJ; Distrito Federal",
+      "limitations": "Cobertura limitada às fontes listadas; no DF, camada pública informa inscrição IPTU/CIU, endereço, lote/quadra e áreas, mas o retorno espacial é candidato e não prova titularidade."
     },
     {
       "id": "national_municipal_cadastre",
