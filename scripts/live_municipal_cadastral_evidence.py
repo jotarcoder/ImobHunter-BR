@@ -46,6 +46,22 @@ CASES = [
         "adapter": "official_municipal",
     },
     {
+        "municipality": "Santos/SP",
+        "address": "Rua XV de Novembro",
+        "number": "1",
+        "city": "Santos",
+        "state": "SP",
+        "adapter": "official_municipal",
+    },
+    {
+        "municipality": "Bertioga/SP",
+        "address": "Avenida Anchieta",
+        "number": "1000",
+        "city": "Bertioga",
+        "state": "SP",
+        "adapter": "official_municipal",
+    },
+    {
         "municipality": "Brasília/DF",
         "address": "SQN 100",
         "number": "",
