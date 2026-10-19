@@ -353,19 +353,27 @@ class GeoSampaAdapter(SourceAdapter):
             )
         ]
         if matches:
+            matched_ids = {id(record) for record in matches}
             for record in matches:
                 record.attributes["house_number_match"] = "geocoded_spatial_match"
-            return matches
+            # Keep all real cadastral polygons returned by the official WFS
+            # bounding box. The map can now show adjacent lots as context while
+            # the exact spatial match remains distinguishable from neighbors.
+            for record in candidates:
+                if id(record) not in matched_ids:
+                    record.attributes["house_number_match"] = "neighboring_parcel"
+                    record.attributes["parcel_relation"] = "neighbor_candidate"
+            return candidates
 
         # A geocoded point can land just outside a cadastral polygon due to
-        # address interpolation. Return only the nearest parcel as an explicit
-        # candidate, not as a confirmed address match.
+        # address interpolation. Return the nearest parcel as an explicit
+        # candidate and preserve nearby official polygons as context.
         candidates_with_coordinates = [
             record for record in candidates
             if record.latitude is not None and record.longitude is not None
         ]
         if not candidates_with_coordinates:
-            return []
+            return candidates
         nearest = min(
             candidates_with_coordinates,
             key=lambda record: (
@@ -374,7 +382,11 @@ class GeoSampaAdapter(SourceAdapter):
             ),
         )
         nearest.attributes["house_number_match"] = "geocoded_spatial_candidate"
-        return [nearest]
+        for record in candidates:
+            if record is not nearest:
+                record.attributes["house_number_match"] = "neighboring_parcel"
+                record.attributes["parcel_relation"] = "neighbor_candidate"
+        return candidates
 
     @staticmethod
     def _geometry_contains_point(
