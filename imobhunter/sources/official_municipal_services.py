@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import math
-import time
 import unicodedata
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -297,7 +296,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         })
         payload = response.json()
         if not isinstance(payload, dict) or not isinstance(payload.get("features"), list):
-            raise RuntimeError("ArcGIS REST municipal retornou JSON sem a lista features.")
+            raise TypeError("ArcGIS REST municipal retornou JSON sem a lista features.")
         records: list[PropertyRecord] = []
         for feature in payload["features"]:
             properties = feature.get("attributes") or {}
