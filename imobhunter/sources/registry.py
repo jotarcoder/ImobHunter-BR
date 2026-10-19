@@ -11,6 +11,7 @@ from .osm import OSMAdapter
 from .geosampa import GeoSampaAdapter
 from .national_geocoder import NationalAddressGeocoderAdapter
 from .national_municipal_cadastre import NationalMunicipalCadastreAdapter
+from .official_municipal_services import OfficialMunicipalServicesAdapter
 from .sicar import SICARAdapter
 from .sigef import SIGEFAdapter
 from .sinter import SINTERAdapter
@@ -41,6 +42,7 @@ def build_default_registry() -> SourceRegistry:
     registry.register(GeoSampaAdapter())
     registry.register(NationalAddressGeocoderAdapter())
     registry.register(NationalMunicipalCadastreAdapter())
+    registry.register(OfficialMunicipalServicesAdapter())
     registry.register(CNEFEAdapter())
     registry.register(SINTERAdapter())
     registry.register(SNCRAdapter())
