@@ -8,6 +8,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from imobhunter.application.address_geocoding import CachedAddressGeocoder
 from imobhunter.domain.models import SearchRequest
 from imobhunter.sources.geosampa import GeoSampaAdapter
@@ -77,7 +79,7 @@ def build_report() -> dict[str, Any]:
             try:
                 records = adapter.search(request)
                 error = getattr(adapter, "last_errors", {}).get(city)
-            except Exception as exc:
+            except (httpx.HTTPError, RuntimeError, ValueError) as exc:
                 # Keep collecting the remaining municipalities and always emit a
                 # diagnostic artifact, even when an external service times out.
                 records = []
