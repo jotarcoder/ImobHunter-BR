@@ -10,6 +10,8 @@ from imobhunter.sources.official_municipal_services import (
     DF_ARCGIS_LAYER,
     GOIANIA_ARCGIS_LAYER,
     BLUMENAU_ARCGIS_LAYER,
+    RECIFE_CKAN_API,
+    RECIFE_IPTU_DATASET_ID,
     OfficialMunicipalServicesAdapter,
     _cadastral_layers,
     _official_url,
@@ -508,3 +510,86 @@ def test_blumenau_arcgis_maps_lot_geometry_and_keeps_iq_distinct_from_sql(tmp_pa
     assert record.attributes["service_url"] == BLUMENAU_ARCGIS_LAYER
     assert record.attributes["official_source"] == "Prefeitura de Blumenau — Cadastro de Lotes"
     assert json.loads(record.attributes["geometry_geojson"])["type"] == "Polygon"
+
+
+
+def test_recife_ckan_iptu_api_maps_only_fields_returned_by_dataset(tmp_path):
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if request.url.path.endswith("/package_show"):
+            assert request.url.params["id"] == RECIFE_IPTU_DATASET_ID
+            return httpx.Response(200, json={
+                "success": True,
+                "result": {
+                    "title": "Imposto Predial e Territorial Urbano (IPTU)",
+                    "license_id": "odc-odbl",
+                    "resources": [{
+                        "id": "resource-2026", "name": "IPTU - 2026",
+                        "format": "JSON", "datastore_active": True,
+                    }],
+                },
+            })
+        assert request.url.path.endswith("/datastore_search")
+        assert request.url.params["resource_id"] == "resource-2026"
+        return httpx.Response(200, json={
+            "success": True,
+            "result": {
+                "total": 1,
+                "fields": [{"id": "logradouro"}, {"id": "numero"}, {"id": "inscricao_imobiliaria"}, {"id": "area_terreno"}],
+                "records": [{
+                    "logradouro": "Avenida Conde da Boa Vista", "numero": "100",
+                    "inscricao_imobiliaria": "1234567", "area_terreno": 280.5,
+                    "nome_contribuinte": "Não deve ser declarado como proprietário",
+                }],
+            },
+        })
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = OfficialMunicipalServicesAdapter(cache_dir=tmp_path / "cache", client=client)
+    records = adapter.search(SearchRequest(
+        address="Avenida Conde da Boa Vista", number="100", city="Recife", state="PE"
+    ))
+    client.close()
+
+    assert len(records) == 1
+    record = records[0]
+    assert record.city == "Recife" and record.state == "PE"
+    assert record.address == "Avenida Conde da Boa Vista, 100"
+    assert record.area_m2 == 280.5
+    assert record.attributes["sql"] is None
+    assert record.attributes["iptu_registration_number"] == "1234567"
+    assert record.attributes["sql_status"] == "not_provided_by_dataset"
+    assert record.attributes["geometry_geojson"] is None
+    assert record.attributes["cadastre_match"] == "exact_address_match"
+    assert record.attributes["owner_status"] == "not_inferred_from_taxpayer_fields"
+    assert record.attributes["service_url"] == f"{RECIFE_CKAN_API}/datastore_search"
+    assert len(calls) == 2
+
+
+def test_recife_reports_public_dataset_without_row_level_api(tmp_path):
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/package_show")
+        return httpx.Response(200, json={
+            "success": True,
+            "result": {
+                "title": "IPTU",
+                "resources": [{
+                    "id": "csv-2026", "name": "IPTU - 2026", "format": "CSV",
+                    "datastore_active": False, "url": "https://dados.recife.pe.gov.br/resource.csv",
+                }],
+            },
+        })
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = OfficialMunicipalServicesAdapter(cache_dir=tmp_path / "cache", client=client)
+    records = adapter.search(SearchRequest(
+        address="Rua do Sol", number="10", city="Recife", state="PE"
+    ))
+    client.close()
+
+    assert records == []
+    diagnostic = adapter.last_diagnostics["Recife"]
+    assert diagnostic["result"] == "dataset_public_but_no_datastore_resource"
+    assert diagnostic["queryable_resource_count"] == 0
