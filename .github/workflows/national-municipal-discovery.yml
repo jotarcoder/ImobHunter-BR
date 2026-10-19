@@ -1,0 +1,42 @@
+name: National municipal service discovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_records:
+        description: Maximum INDE records per search term (1-100)
+        required: false
+        default: "50"
+      timeout:
+        description: HTTP timeout in seconds (1-30)
+        required: false
+        default: "8"
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e .
+      - name: Discover and probe official municipal services
+        run: >-
+          python -u scripts/discover_national_municipal_services.py
+          --max-records "${{ inputs.max_records }}"
+          --timeout "${{ inputs.timeout }}"
+          --report-file artifacts/national-municipal-services.json
+      - name: Upload discovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: national-municipal-services-report
+          path: artifacts/national-municipal-services.json
+          if-no-files-found: warn
+          retention-days: 14
