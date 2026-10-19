@@ -47,8 +47,8 @@ CASES = [
     },
     {
         "municipality": "Santos/SP",
-        "address": "Rua XV de Novembro",
-        "number": "1",
+        "address": "Avenida Ana Costa",
+        "number": "100",
         "city": "Santos",
         "state": "SP",
         "adapter": "official_municipal",
