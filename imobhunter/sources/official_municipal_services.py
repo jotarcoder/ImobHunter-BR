@@ -87,10 +87,10 @@ def _cadastral_layers(xml_text: str) -> list[dict[str, str]]:
     def priority(layer: dict[str, str]) -> int:
         name = _fold(layer["name"]).replace(" ", "").replace("_", "")
         if any(term in name for term in (
-            "cadastroimobiliario", "lotesfiscais", "imoveisterritoriais",
-        )):
+            "cadastroimobiliario", "imoveisterritoriais",
+        )) or name.endswith(":lotes"):
             return 0
-        if any(term in name for term in ("lotectm", "lotestotal", ":lotes")):
+        if any(term in name for term in ("lotesfiscais", "lotestotal", "lotectm")):
             return 1
         if "loteamentoaprovado" in name:
             return 2
