@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import ssl
 import unicodedata
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -26,6 +27,16 @@ MUNICIPAL_WFS = {
         "city": "Belo Horizonte",
         "state": "MG",
         "url": "https://bhmap.pbh.gov.br/v2/api/idebhgeo/wfs",
+    },
+    ("santos", "sp"): {
+        "city": "Santos",
+        "state": "SP",
+        "url": "https://egov.santos.sp.gov.br/geoserver/wfs",
+    },
+    ("bertioga", "sp"): {
+        "city": "Bertioga",
+        "state": "SP",
+        "url": "https://geoportal.bertioga.sp.gov.br/geoserver/ows",
     },
 }
 RIO_ARCGIS_LAYER = (
@@ -95,14 +106,16 @@ def _cadastral_layers(xml_text: str) -> list[dict[str, str]]:
     def priority(layer: dict[str, str]) -> int:
         name = _fold(layer["name"]).replace(" ", "").replace("_", "")
         # Fiscal parcels carry IPTU/launch attributes; query them before geometry-only layers.
-        if "lotesfiscais" in name:
+        label = _fold(f"{layer['name']} {layer['title']}").replace(" ", "").replace("_", "")
+        if any(term in label for term in ("sql", "inscricaoimobiliaria", "lotesfiscais", "geoimobiliario")):
             return 0
         if any(term in name for term in ("cadastroimobiliario", "imoveisterritoriais", "lotectm")):
             return 1
-        if name.endswith(":lotes"):
-            return 2
+        # Aggregate lot layers must come after individual parcel layers.
         if name.endswith(":lotestotal"):
             return 3
+        if "lotes" in name or "lote" in name:
+            return 2
         if "loteamentoaprovado" in name:
             return 3
         if "quadra" in name:
@@ -160,9 +173,9 @@ def _lat_lon(geometry: dict[str, Any]) -> tuple[float | None, float | None]:
 class OfficialMunicipalServicesAdapter(SourceAdapter):
     """Direct integrations for documented municipal parcel services.
 
-    Current direct integrations: Praia Grande/SP and Belo Horizonte/MG (WFS),
-    Rio de Janeiro/RJ and Distrito Federal (ArcGIS REST). São Paulo capital
-    remains covered by GeoSampaAdapter. This is not nationwide coverage.
+    Current direct integrations: Praia Grande/SP, Santos/SP, Bertioga/SP and
+    Belo Horizonte/MG (WFS), Rio de Janeiro/RJ and Distrito Federal (ArcGIS REST).
+    São Paulo capital remains covered by GeoSampaAdapter. This is not nationwide coverage.
     """
 
     source_id = "official_municipal_services"
@@ -208,6 +221,9 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         if self._client is not None:
             return self._client, False
         return httpx.Client(
+            # Use the operating system trust store while still validating TLS. Some
+            # municipal portals chain their certificates through system-installed CAs.
+            verify=ssl.create_default_context(),
             timeout=httpx.Timeout(self.timeout),
             headers={"User-Agent": "ImobHunter-BR/0.1.19 municipal-cadastre"},
             follow_redirects=True,
@@ -278,6 +294,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         self.last_diagnostics[city] = diagnostic
         records: list[PropertyRecord] = []
         for layer in layers:
+            layer_records: list[PropertyRecord] = []
             response = self._get(endpoint, {
                 "service": "WFS", "version": "2.0.0", "request": "GetFeature",
                 "typeNames": layer["name"], "outputFormat": "application/json",
@@ -304,8 +321,10 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                     continue
                 lat, lon = _lat_lon(geometry)
                 sql = _first(
-                    properties, "sql", "nr_contribuinte", "inscricao_imobiliaria",
-                    "inscricao_cadastral", "indice_cadastral", "lancamento",
+                    properties, "sql", "cod_sql", "codigo_sql", "sq_l", "s_q_l",
+                    "setor_quadra_lote", "nr_contribuinte", "inscricao_imobiliaria",
+                    "inscricao_municipal", "insc_imob", "inscricao_cadastral",
+                    "indice_cadastral", "geolot", "inscricao_do_lote", "lancamento",
                     "numero_lancamento",
                 )
                 cib = _first(properties, "cib", "cd_cib", "codigo_cib")
@@ -338,7 +357,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 address = str(street or request.address or "")
                 if number not in (None, "") and str(number) not in address:
                     address = f"{address}, {number}" if address else str(number)
-                records.append(PropertyRecord(
+                layer_records.append(PropertyRecord(
                     property_id=str(feature.get("id") or top_id or sql or "") or None,
                     cib=str(cib) if cib not in (None, "") else None,
                     address=address,
@@ -374,9 +393,21 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                         source_id=self.source_id, confidence=0.8, reference=str(sql or feature.get("id") or ""),
                     ),),
                 ))
-                if len(records) >= MAX_FEATURES:
+                if len(layer_records) >= MAX_FEATURES:
                     diagnostic["records_capped"] = MAX_FEATURES
-                    return records[:MAX_FEATURES]
+                    break
+            if layer_records:
+                # Prefer an official layer that actually returns an SQL/registration
+                # value over nearby geometry-only layers that happen to be listed first.
+                sql_records = [
+                    record for record in layer_records
+                    if (record.attributes or {}).get("sql")
+                    or (record.attributes or {}).get("iptu_registration_number")
+                ]
+                if sql_records:
+                    return sql_records[:MAX_FEATURES]
+                if not records:
+                    records.extend(layer_records[:MAX_FEATURES])
         return records
 
     def _arcgis_records(

@@ -273,3 +273,117 @@ def test_rio_uses_geopal_as_secondary_parcel_source_when_territorial_layer_is_em
     assert record.attributes["sql"] is None
     assert record.attributes["sql_status"] == "not_provided_by_layer"
     assert record.attributes["service_url"] == RIO_GEOPAL_LAYER
+
+
+
+def test_santos_and_bertioga_public_wfs_sources_are_configured():
+    assert MUNICIPAL_WFS[("santos", "sp")]["url"] == "https://egov.santos.sp.gov.br/geoserver/wfs"
+    assert MUNICIPAL_WFS[("bertioga", "sp")]["url"] == "https://geoportal.bertioga.sp.gov.br/geoserver/ows"
+    assert _official_url(MUNICIPAL_WFS[("santos", "sp")]["url"])
+    assert _official_url(MUNICIPAL_WFS[("bertioga", "sp")]["url"])
+
+
+def test_bertioga_wfs_returns_public_lot_registration_as_sql_candidate(tmp_path):
+    def handler(request: httpx.Request) -> httpx.Response:
+        params = dict(request.url.params)
+        if params.get("request") == "GetCapabilities":
+            return httpx.Response(200, text=CAPABILITIES.replace(
+                "cadastro:lotes", "CadastroLotes:Lotes"
+            ).replace("Lotes e quadras cadastrais", "Cadastro de Lotes"))
+        assert params.get("typeNames") == "CadastroLotes:Lotes"
+        return httpx.Response(200, json={
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "id": "Lotes.123",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[
+                        [-46.02, -23.85], [-46.019, -23.85],
+                        [-46.019, -23.849], [-46.02, -23.85],
+                    ]],
+                },
+                "properties": {
+                    "geolot": "01.023.0042",
+                    "quadra": "023",
+                    "lote": "42",
+                    "logradouro": "Rua Exemplo",
+                    "numero": "100",
+                    "area_terreno": 250,
+                },
+            }],
+        })
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    class BertiogaGeocoder:
+        def geocode(self, _query):
+            return {"latitude": -23.8495, "longitude": -46.0195}
+
+    adapter = OfficialMunicipalServicesAdapter(
+        cache_dir=tmp_path / "cache", client=client, geocoder=BertiogaGeocoder()
+    )
+    records = adapter.search(SearchRequest(
+        address="Rua Exemplo", number="100", city="Bertioga", state="SP"
+    ))
+    client.close()
+
+    assert len(records) == 1
+    record = records[0]
+    assert record.city == "Bertioga"
+    assert record.attributes["sql"] == "01.023.0042"
+    assert record.attributes["sql_status"] == "provided_by_layer"
+    assert record.block == "023"
+    assert record.lot == "42"
+    assert record.area_m2 == 250
+    assert record.attributes["service_url"] == MUNICIPAL_WFS[("bertioga", "sp")]["url"]
+
+
+
+def test_wfs_prefers_sql_layer_over_geometry_only_layer(tmp_path):
+    capabilities = """<?xml version="1.0"?>
+    <wfs:WFS_Capabilities xmlns:wfs="http://www.opengis.net/wfs/2.0">
+      <wfs:FeatureTypeList>
+        <wfs:FeatureType><wfs:Name>cadastro:lotes_geometria</wfs:Name><wfs:Title>Lotes geometria</wfs:Title></wfs:FeatureType>
+        <wfs:FeatureType><wfs:Name>fiscal:lotes_sql</wfs:Name><wfs:Title>Cadastro fiscal SQL</wfs:Title></wfs:FeatureType>
+      </wfs:FeatureTypeList>
+    </wfs:WFS_Capabilities>
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        params = dict(request.url.params)
+        if params.get("request") == "GetCapabilities":
+            return httpx.Response(200, text=capabilities)
+        assert params.get("typeNames") == "fiscal:lotes_sql"
+        return httpx.Response(200, json={
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "id": "fiscal.9",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[
+                        [-46.02, -23.85], [-46.019, -23.85],
+                        [-46.019, -23.849], [-46.02, -23.85],
+                    ]],
+                },
+                "properties": {"sq_l": "001.023.0042", "quadra": "023", "lote": "42"},
+            }],
+        })
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    class SantosGeocoder:
+        def geocode(self, _query):
+            return {"latitude": -23.8495, "longitude": -46.0195}
+
+    adapter = OfficialMunicipalServicesAdapter(
+        cache_dir=tmp_path / "cache", client=client, geocoder=SantosGeocoder()
+    )
+    records = adapter.search(SearchRequest(
+        address="Praça Visconde de Mauá", city="Santos", state="SP"
+    ))
+    client.close()
+
+    assert len(records) == 1
+    assert records[0].attributes["sql"] == "001.023.0042"
+    assert records[0].attributes["sql_status"] == "provided_by_layer"
+    assert records[0].attributes["wfs_layer"] == "fiscal:lotes_sql"
