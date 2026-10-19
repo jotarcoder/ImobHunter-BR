@@ -439,9 +439,42 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             "resultRecordCount": MAX_FEATURES,
         })
         payload = response.json()
+        # Some ArcGIS municipal services reject distance-buffer queries despite
+        # exposing a public layer. Retry the same point intersection without the
+        # optional distance/units parameters before reporting a source failure.
         if not isinstance(payload, dict) or not isinstance(payload.get("features"), list):
-            raise TypeError("ArcGIS REST municipal retornou JSON sem a lista features.")
+            first_error = payload.get("error") if isinstance(payload, dict) else None
+            fallback_params = {
+                "where": "1=1",
+                "geometry": json.dumps({"x": longitude, "y": latitude}),
+                "geometryType": "esriGeometryPoint",
+                "inSR": 4326,
+                "spatialRel": "esriSpatialRelIntersects",
+                "outFields": "*",
+                "returnGeometry": "true",
+                "outSR": 4326,
+                "f": "json",
+                "resultRecordCount": MAX_FEATURES,
+            }
+            fallback_payload = self._get(url, fallback_params).json()
+            if isinstance(fallback_payload, dict) and isinstance(fallback_payload.get("features"), list):
+                payload = fallback_payload
+                self.last_diagnostics[city] = {
+                    "endpoint": layer_url,
+                    "query_fallback": "point_intersection_without_distance",
+                    "initial_error": first_error,
+                }
+            else:
+                fallback_error = (
+                    fallback_payload.get("error")
+                    if isinstance(fallback_payload, dict) else type(fallback_payload).__name__
+                )
+                raise TypeError(
+                    "ArcGIS REST municipal sem lista features; "
+                    f"consulta inicial={first_error!r}; fallback={fallback_error!r}"
+                )
         self.last_diagnostics[city] = {
+            **self.last_diagnostics.get(city, {}),
             "endpoint": layer_url,
             "geocoded_address": self.last_geocoded.get(city),
             "feature_count": len(payload["features"]),
