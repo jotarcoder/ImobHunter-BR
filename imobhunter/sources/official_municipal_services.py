@@ -51,6 +51,10 @@ DF_ARCGIS_LAYER = (
     "https://www.geoservicos.ide.df.gov.br/arcgis/rest/services/"
     "Aplicacoes/CERTIDAO_IMOVEL/FeatureServer/0"
 )
+GOIANIA_ARCGIS_LAYER = (
+    "https://portalmapa.goiania.go.gov.br/servicogyn/rest/services/"
+    "MapaServer/Feature_Base/FeatureServer/3"
+)
 CADASTRAL_TERMS = (
     "lote", "lotes", "parcela", "parcelas", "quadra", "imobiliario",
     "imobiliário", "iptu", "inscricao_imobiliaria", "inscrição imobiliária",
@@ -173,8 +177,9 @@ def _lat_lon(geometry: dict[str, Any]) -> tuple[float | None, float | None]:
 class OfficialMunicipalServicesAdapter(SourceAdapter):
     """Direct integrations for documented municipal parcel services.
 
-    Current direct integrations: Praia Grande/SP, Santos/SP, Bertioga/SP and
-    Belo Horizonte/MG (WFS), Rio de Janeiro/RJ and Distrito Federal (ArcGIS REST).
+    Current direct integrations: Praia Grande/SP, Santos/SP and Bertioga/SP,
+    Belo Horizonte/MG (WFS), Rio de Janeiro/RJ and Distrito Federal (ArcGIS REST),
+    and Goiânia/GO (ArcGIS REST cadastral layer).
     São Paulo capital remains covered by GeoSampaAdapter. This is not nationwide coverage.
     """
 
@@ -204,7 +209,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
     def status(self) -> SourceStatus:
         detail = (
             "Integrações diretas configuradas para Praia Grande/SP, Belo Horizonte/MG, "
-            "Rio de Janeiro/RJ e Distrito Federal; São Paulo capital usa GeoSampa. "
+            "Rio de Janeiro/RJ, Distrito Federal e Goiânia/GO; São Paulo capital usa GeoSampa. "
             "Cobertura, atributos e disponibilidade dependem da camada oficial."
         )
         if self.last_errors:
@@ -460,20 +465,38 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 properties, "inscricao_imobiliaria", "inscricao_cadastral", "cadastral",
                 "iptu_imovel",
             )
+            is_goiania = layer_url == GOIANIA_ARCGIS_LAYER
             cib = _first(properties, "cib", "cd_cib", "codigo_cib")
-            block = _first(properties, "quadra", "cod_quadra", "lt_quadra")
-            lot = _first(properties, "lote", "np", "chavegeo", "ch_lote", "lt_lote")
+            block = _first(
+                properties, "nrquadra", "quadra", "cod_quadra", "lt_quadra"
+            )
+            lot = _first(
+                properties, "nrlote", "lote", "np", "chavegeo", "ch_lote", "lt_lote"
+            )
             area = _area(_first(
-                properties, "area_m2", "area_descrita", "shape_area", "shape__area",
-                "iptu_area_terr",
+                properties, "areaterr", "area_m2", "area_descrita", "shape_area",
+                "shape__area", "iptu_area_terr",
             ))
             built_area = _area(_first(
-                properties, "ac_area_ct", "area_construida", "area_construcao",
+                properties, "areaedif", "ac_area_ct", "area_construida", "area_construcao",
             ))
-            address = _first(
-                properties, "endereco", "logradouro", "endereco_completo",
+            street = _first(
+                properties, "nmlogradou", "endereco", "logradouro", "endereco_completo",
                 "iptu_endereco", "lt_endereco",
             )
+            street_number = _first(properties, "nrimovel", "numero", "numero_imovel")
+            address = (
+                f"{street}, {street_number}"
+                if street not in (None, "") and street_number not in (None, "")
+                else street or request.address or ""
+            )
+            municipal_registration = _first(
+                properties, "nrinscr", "inscricao_municipal", "inscricao_cadastral"
+            ) if is_goiania else None
+            if is_goiania:
+                # nrinscr is retained as the source's registration field; do not
+                # mislabel it as SQL/IPTU without an authoritative field definition.
+                sql = _first(properties, "sql", "inscricao_sql", "codigo_sql")
             ciu = _first(properties, "iptu_ciu")
             registry_number = _first(properties, "matricula", "rgi")
             records.append(PropertyRecord(
@@ -488,7 +511,9 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 attributes={
                     "source": self.source_id,
                     "official_source": (
-                        "IDE-DF — Lotes com Inscrição do IPTU"
+                        "Prefeitura de Goiânia — Cadastro Imobiliário"
+                        if is_goiania
+                        else "IDE-DF — Lotes com Inscrição do IPTU"
                         if layer_url == DF_ARCGIS_LAYER
                         else "Prefeitura da Cidade do Rio de Janeiro — GeoPAL/IMOVEIS_TERRITORIAIS"
                     ),
@@ -498,6 +523,10 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                     "source_properties": properties,
                     "built_area_m2": built_area,
                     "iptu_ciu": str(ciu) if ciu not in (None, "") else None,
+                    "municipal_registration_number": (
+                        str(municipal_registration)
+                        if municipal_registration not in (None, "") else None
+                    ),
                     "sql": str(sql) if sql not in (None, "") else None,
                     "iptu_registration_number": str(sql) if sql not in (None, "") else None,
                     "sql_status": "provided_by_layer" if sql not in (None, "") else "not_provided_by_layer",
@@ -591,6 +620,9 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         elif city_key in {"brasilia", "distrito federal", "df"} and state_key in {"df", "distrito federal", "brasilia"}:
             city, state, service_key = "Brasília", "DF", "df"
             configured = None
+        elif city_key in {"goiania", "goiânia", "goiania (go)"} and state_key in {"go", "goias", "goiás"}:
+            city, state, service_key = "Goiânia", "GO", "goiania"
+            configured = None
         else:
             service_key = (city_key, state_key)
             configured = MUNICIPAL_WFS.get(service_key)
@@ -616,6 +648,10 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             elif service_key == "df":
                 records = self._arcgis_records(
                     city, state, latitude, longitude, request, layer_url=DF_ARCGIS_LAYER
+                )
+            elif service_key == "goiania":
+                records = self._arcgis_records(
+                    city, state, latitude, longitude, request, layer_url=GOIANIA_ARCGIS_LAYER
                 )
             else:
                 records = self._wfs_records(
