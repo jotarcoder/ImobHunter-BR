@@ -47,6 +47,8 @@ def _wfs_endpoint(url: str | None) -> bool:
     parsed = urlparse(url or "")
     path = parsed.path.casefold()
     query = parsed.query.casefold().replace("%3d", "=")
+    if any(token in path for token in ("/wms", "wmts")):
+        return False
     return any(token in path for token in ("/wfs", "/ows", "geoserver")) or "service=wfs" in query
 
 
@@ -306,7 +308,7 @@ class NationalMunicipalCadastreAdapter(SourceAdapter):
                             properties, "id", "gid", "objectid", "codigo", "cod_lote", "id_lote"
                         )
                         block = _attribute(properties, "quadra", "numero_quadra", "cd_quadra", "quadra_fiscal")
-                        lot = _attribute(properties, "lote", "numero_lote", "cd_lote", "inscricao_imobiliaria")
+                        lot = _attribute(properties, "lote", "numero_lote", "cd_lote")
                         area = _float(_attribute(properties, "area_m2", "area_terreno", "area_lote"))
                         safe_properties = {
                             str(key): value for key, value in properties.items()
