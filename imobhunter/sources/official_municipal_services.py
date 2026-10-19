@@ -20,7 +20,7 @@ MUNICIPAL_WFS = {
     ("praia grande", "sp"): {
         "city": "Praia Grande",
         "state": "SP",
-        "url": "https://geoserver.praiagrande.sp.gov.br/PraiaGrandePlantaCadastral/wfs",
+        "url": "https://geoserver.praiagrande.sp.gov.br/ows",
     },
     ("belo horizonte", "mg"): {
         "city": "Belo Horizonte",
@@ -31,6 +31,10 @@ MUNICIPAL_WFS = {
 RIO_ARCGIS_LAYER = (
     "https://pgeo3.rio.rj.gov.br/arcgis/rest/services/"
     "CadParcel/IMOVEIS_TERRITORIAIS/FeatureServer/0"
+)
+RIO_GEOPAL_LAYER = (
+    "https://pgeo3.rio.rj.gov.br/arcgis/rest/services/"
+    "CadParcel/GeoPAL/FeatureServer/0"
 )
 DF_ARCGIS_LAYER = (
     "https://www.geoservicos.ide.df.gov.br/arcgis/rest/services/"
@@ -90,13 +94,12 @@ def _cadastral_layers(xml_text: str) -> list[dict[str, str]]:
 
     def priority(layer: dict[str, str]) -> int:
         name = _fold(layer["name"]).replace(" ", "").replace("_", "")
-        if name.endswith(":lotestotal"):
+        # Prefer feature layers with individual parcel geometry over summary layers.
+        if name.endswith(":lotes"):
             return 0
-        if any(term in name for term in (
-            "cadastroimobiliario", "imoveisterritoriais",
-        )) or name.endswith(":lotes"):
+        if any(term in name for term in ("lotesfiscais", "cadastroimobiliario", "imoveisterritoriais", "lotectm")):
             return 1
-        if any(term in name for term in ("lotesfiscais", "lotectm")):
+        if name.endswith(":lotestotal"):
             return 2
         if "loteamentoaprovado" in name:
             return 3
@@ -307,7 +310,8 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 top_id = _first(properties, "top_id", "topid", "id_lote")
                 built_area = _area(_first(
                     properties, "area_construida", "area_construcao",
-                    "vwSomaAreas_IPTU2026_total_const",
+                    "vwSomaAreas_IPTU2026_total_const", "area_edificada",
+                    "area_construida_total",
                 ))
                 block = _first(
                     properties, "quadra", "cd_quadra", "cd_quadra_fiscal",
@@ -320,7 +324,8 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 area = _area(_first(
                     properties, "area_m2", "area_terreno", "area_lote",
                     "qt_area_terreno", "area_total_terreno", "area_lote_m2",
-                    "area_terreno_m2", "area_total_do_terreno",
+                    "area_terreno_m2", "area_total_do_terreno", "area_terreno",
+                    "area_do_terreno", "area_total", "areaterreno", "area_ter",
                 ))
                 street = _first(
                     properties, "endereco", "logradouro", "nm_logradouro",
@@ -473,6 +478,76 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             ))
         return records
 
+    def _rio_geopal_records(
+        self, latitude: float, longitude: float, request: SearchRequest,
+    ) -> list[PropertyRecord]:
+        """Secondary official Rio parcel source; provides parcel IDs, not IPTU SQL."""
+        response = self._get(RIO_GEOPAL_LAYER + "/query", {
+            "where": "1=1",
+            "geometry": json.dumps({"x": longitude, "y": latitude}),
+            "geometryType": "esriGeometryPoint",
+            "inSR": 4326,
+            "spatialRel": "esriSpatialRelIntersects",
+            "distance": 800,
+            "units": "esriSRUnit_Meter",
+            "outFields": "*",
+            "returnGeometry": "true",
+            "outSR": 4326,
+            "f": "json",
+            "resultRecordCount": MAX_FEATURES,
+        })
+        payload = response.json()
+        if not isinstance(payload, dict) or not isinstance(payload.get("features"), list):
+            raise TypeError("ArcGIS GeoPAL retornou JSON sem a lista features.")
+        self.last_diagnostics["Rio de Janeiro — GeoPAL"] = {
+            "endpoint": RIO_GEOPAL_LAYER,
+            "feature_count": len(payload["features"]),
+            "fields": sorted({
+                str(key) for feature in payload["features"][:1]
+                for key in (feature.get("attributes") or {})
+            }),
+            "purpose": "parcel identifiers only; not an IPTU SQL source",
+        }
+        records: list[PropertyRecord] = []
+        for feature in payload["features"]:
+            props = feature.get("attributes") or {}
+            raw = feature.get("geometry") or {}
+            if not props or not isinstance(raw, dict) or not {"x", "y"} <= raw.keys():
+                continue
+            geometry = {"type": "Point", "coordinates": [raw["x"], raw["y"]]}
+            lat, lon = _lat_lon(geometry)
+            block = _first(props, "quadra", "cod_quadra")
+            lot = _first(props, "lote", "np", "chavegeo", "ch_lote")
+            parcel_id = _first(props, "chavegeo", "cod_np", "objectid")
+            records.append(PropertyRecord(
+                property_id=str(parcel_id) if parcel_id not in (None, "") else None,
+                address=request.address or "",
+                city="Rio de Janeiro", state="RJ",
+                block=str(block) if block not in (None, "") else None,
+                lot=str(lot) if lot not in (None, "") else None,
+                latitude=lat, longitude=lon,
+                attributes={
+                    "source": self.source_id,
+                    "official_source": "Prefeitura do Rio — GeoPAL (parcelamento)",
+                    "service_url": RIO_GEOPAL_LAYER,
+                    "service_type": "ArcGIS REST",
+                    "geometry_geojson": json.dumps(geometry, ensure_ascii=False),
+                    "source_properties": props,
+                    "parcel_identifier": str(parcel_id) if parcel_id not in (None, "") else None,
+                    "sql": None,
+                    "iptu_registration_number": None,
+                    "sql_status": "not_provided_by_layer",
+                    "iptu_status": "not_provided_by_layer",
+                    "cadastre_match": "spatial_candidate_only",
+                    "owner_status": "not_provided_by_layer",
+                },
+                provenance=(Provenance(
+                    source_id=self.source_id, confidence=0.6,
+                    reference=str(parcel_id or feature.get("id") or ""),
+                ),),
+            ))
+        return records
+
     def search(self, request: SearchRequest) -> list[PropertyRecord]:
         if not request.city or not request.state:
             return []
@@ -501,6 +576,10 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 return []
             if service_key == "rio":
                 records = self._arcgis_records(city, state, latitude, longitude, request)
+                # Only fall back to GeoPAL when the individual territorial layer yields no features.
+                # GeoPAL IDs/quadra/lote are not represented as IPTU SQL.
+                if not records:
+                    records = self._rio_geopal_records(latitude, longitude, request)
             elif service_key == "df":
                 records = self._arcgis_records(
                     city, state, latitude, longitude, request, layer_url=DF_ARCGIS_LAYER
