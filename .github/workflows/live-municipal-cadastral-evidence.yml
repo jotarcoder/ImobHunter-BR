@@ -1,0 +1,42 @@
+name: Live municipal cadastral evidence
+
+on:
+  pull_request:
+    paths:
+      - "scripts/live_municipal_cadastral_evidence.py"
+      - "imobhunter/sources/official_municipal_services.py"
+      - "imobhunter/sources/geosampa.py"
+      - ".github/workflows/live-municipal-cadastral-evidence.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: municipal-cadastral-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install application dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Query real municipal cadastral sources
+        run: python scripts/live_municipal_cadastral_evidence.py
+      - name: Upload municipal evidence report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-municipal-cadastral-evidence
+          path: municipal-cadastral-evidence.json
+          if-no-files-found: warn
+          retention-days: 14
