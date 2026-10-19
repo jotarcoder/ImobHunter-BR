@@ -54,9 +54,9 @@
       "category": "municipal",
       "tier": "mixed",
       "status": "implemented",
-      "validation": "official_endpoints_and_unit_tests; Goiânia and Blumenau adapters implemented in PR #139, pending live evidence",
-      "scope": "São Paulo capital (GeoSampa); Praia Grande/SP; Belo Horizonte/MG; Rio de Janeiro/RJ; Distrito Federal; Santos/SP; Bertioga/SP; Goiânia/GO; Blumenau/SC (camadas cadastrais ArcGIS; teste ao vivo por endereço pendente)",
-      "limitations": "Cobertura limitada às cidades e camadas listadas; integração não garante que cada endereço retorne SQL/IPTU. Em Goiânia, nrinscr é inscrição municipal; em Blumenau, IQ é identificador cadastral de lote. Nenhum dos dois é rotulado como SQL sem definição fiscal oficial."
+      "validation": "official_endpoints_and_unit_tests; Recife CKAN IPTU API adapter added; live API evidence pending",
+      "scope": "São Paulo capital (GeoSampa); Praia Grande/SP; Belo Horizonte/MG; Rio de Janeiro/RJ; Distrito Federal; Santos/SP; Bertioga/SP; Goiânia/GO; Blumenau/SC (camadas cadastrais ArcGIS; teste ao vivo por endereço pendente); Recife/PE (portal oficial de IPTU via CKAN Data API, sem geometria confirmada)",
+      "limitations": "Cobertura limitada às cidades e camadas listadas; integração não garante que cada endereço retorne SQL/IPTU. Em Goiânia, nrinscr é inscrição municipal; em Blumenau, IQ é identificador cadastral de lote. Nenhum dos dois é rotulado como SQL sem definição fiscal oficial. Recife: consulta por endereço depende de recurso com datastore ativo e campos compatíveis; sem geometria confirmada e sem inferência de titularidade."
     },
     {
       "id": "national_municipal_cadastre",
@@ -167,6 +167,16 @@
       "validation": "adapter_present",
       "scope": "ruas_e_referencias_mapeadas",
       "limitations": "Cobertura variável; não é fonte fiscal oficial nem garante limites cadastrais."
+    },
+    {
+      "id": "recife_iptu_open_data",
+      "name": "Prefeitura do Recife / Cadastro fiscal IPTU",
+      "category": "municipal",
+      "tier": "public",
+      "status": "implemented",
+      "validation": "ckan_dataset_api_adapter_and_unit_tests; live_endpoint_evidence_pending",
+      "scope": "consulta textual de recursos IPTU do Portal de Dados Abertos, quando datastore ativo",
+      "limitations": "Dataset anual não equivale a camada parcelária; sem geometria, não desenhar lote. SQL, inscrição IPTU e área só são expostos se os respectivos campos estiverem presentes."
     }
   ]
 }
