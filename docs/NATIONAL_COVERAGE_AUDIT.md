@@ -69,3 +69,27 @@ O smoke test `scripts/live_municipal_smoke.py` agora produz um relatório JSON p
 ## Próxima entrega técnica
 
 Expandir o relatório para descoberta controlada de municípios e serviços oficiais a partir de catálogos, com limites de taxa, cache, allowlist de domínios oficiais e estados explícitos `not_tested`, `connection_ok`, `address_found`, `parcel_found` e `field_available`. A expansão precisa registrar quais municípios foram realmente testados e não converter ausência de resposta em suporte presumido.
+
+
+# Descoberta nacional de serviços cadastrais municipais
+
+## O que foi adicionado
+
+O script `scripts/discover_national_municipal_services.py` consulta o catálogo oficial de metadados da INDE usando termos relacionados a cadastro imobiliário, lotes, quadras e cadastro territorial. Ele deduplica os registros e faz uma verificação inicial dos endpoints WFS ou ArcGIS REST reconhecidos.
+
+O workflow **National municipal service discovery** é manual (`workflow_dispatch`) para que uma indisponibilidade temporária do catálogo ou de uma prefeitura não deixe a validação de código vermelha. O relatório JSON é publicado como artefato por 14 dias.
+
+## Regras de segurança e evidência
+
+- Só consulta automaticamente endpoints HTTPS em domínios `gov.br`; outros hosts são registrados como não verificados e não recebem requisições.
+- WFS: solicita `GetCapabilities` e lista camadas com termos cadastrais.
+- ArcGIS REST: consulta metadados e procura camadas com nomes cadastrais.
+- Erros HTTP, respostas inválidas e camadas ausentes são registrados, não convertidos em cobertura presumida.
+- A descoberta do catálogo não significa que a camada contém lotes, que aceita busca por endereço ou que fornece SQL/IPTU, CIB, área, titularidade ou matrícula.
+- O relatório não armazena credenciais e não publica dados pessoais.
+
+## Limitações atuais
+
+Esta é a primeira etapa automatizada de descoberta e teste de conectividade. A resposta do catálogo pode não informar cidade/UF ou camada de forma estruturada; esses campos permanecem vazios quando não são fornecidos. Serviços fora de `gov.br`, serviços sem WFS/ArcGIS reconhecido e portais que exigem autenticação precisam de validação manual antes de serem autorizados.
+
+**Não declara cobertura cadastral nacional.** Cada candidato encontrado precisa de validação por município, camada, CRS, consulta útil por endereço conhecido e campos efetivamente retornados antes de ser incorporado ao adaptador de busca do aplicativo. Os conectores existentes de GeoSampa, Praia Grande, Belo Horizonte e Rio de Janeiro não são alterados por esta etapa.
