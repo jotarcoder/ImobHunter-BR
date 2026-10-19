@@ -238,8 +238,8 @@ def test_praia_grande_prioritizes_individual_parcel_layers():
     </wfs:WFS_Capabilities>
     """
     layers = _cadastral_layers(capabilities)
-    assert layers[0]["name"] == "PraiaGrandePlantaCadastral:lotes"
-    assert layers[1]["name"] == "PraiaGrandePlantaCadastral:Lotes_Fiscais"
+    assert layers[0]["name"] == "PraiaGrandePlantaCadastral:Lotes_Fiscais"
+    assert layers[1]["name"] == "PraiaGrandePlantaCadastral:lotes"
 
 
 def test_rio_uses_geopal_as_secondary_parcel_source_when_territorial_layer_is_empty(tmp_path):
