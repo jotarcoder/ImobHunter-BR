@@ -1,7 +1,7 @@
 import httpx
 
 from imobhunter.sources.inde import GeospatialService
-from scripts.discover_national_municipal_services import (
+from imobhunter.sources.national_service_discovery import (
     is_official_https,
     probe_service,
 )
