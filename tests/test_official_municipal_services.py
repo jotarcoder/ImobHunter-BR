@@ -6,6 +6,7 @@ from imobhunter.domain.models import SearchRequest
 from imobhunter.sources.official_municipal_services import (
     MUNICIPAL_WFS,
     RIO_ARCGIS_LAYER,
+    DF_ARCGIS_LAYER,
     OfficialMunicipalServicesAdapter,
     _official_url,
 )
@@ -160,3 +161,65 @@ def test_service_failure_is_exposed_in_status(tmp_path):
     client.close()
     assert "Belo Horizonte" in (adapter.status().message or "")
     assert "HTTPStatusError" in (adapter.status().message or "")
+
+
+
+def test_distrito_federal_arcgis_maps_public_iptu_lot_fields(tmp_path):
+    class BrasiliaGeocoder:
+        def geocode(self, _query):
+            return {"latitude": -15.7939, "longitude": -47.8828}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        expected_path = DF_ARCGIS_LAYER.removeprefix("https://www.geoservicos.ide.df.gov.br")
+        assert request.url.path == expected_path + "/query"
+        params = dict(request.url.params)
+        assert params["geometryType"] == "esriGeometryPoint"
+        assert params["inSR"] == "4326"
+        assert params["outSR"] == "4326"
+        return httpx.Response(200, json={
+            "features": [{
+                "attributes": {
+                    "objectid": 901,
+                    "iptu_imovel": "12345678",
+                    "iptu_ciu": "CIU-998877",
+                    "iptu_endereco": "SQN 100 BLOCO A",
+                    "lt_endereco": "SQN 100",
+                    "lt_quadra": "SQN 100",
+                    "lt_lote": "Lote 12",
+                    "iptu_area_terr": 840.0,
+                    "ac_area_ct": 220.5,
+                },
+                "geometry": {
+                    "rings": [[
+                        [-47.8830, -15.7940], [-47.8820, -15.7940],
+                        [-47.8820, -15.7930], [-47.8830, -15.7940],
+                    ]],
+                },
+            }],
+        })
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = OfficialMunicipalServicesAdapter(
+        cache_dir=tmp_path / "cache", client=client, geocoder=BrasiliaGeocoder()
+    )
+    records = adapter.search(SearchRequest(
+        address="SQN 100", number="12", city="Brasília", state="DF"
+    ))
+    client.close()
+
+    assert len(records) == 1
+    record = records[0]
+    assert record.city == "Brasília"
+    assert record.state == "DF"
+    assert record.block == "SQN 100"
+    assert record.lot == "Lote 12"
+    assert record.area_m2 == 840.0
+    assert record.attributes["sql"] == "12345678"
+    assert record.attributes["iptu_registration_number"] == "12345678"
+    assert record.attributes["iptu_ciu"] == "CIU-998877"
+    assert record.attributes["built_area_m2"] == 220.5
+    assert record.attributes["sql_status"] == "provided_by_layer"
+    assert record.attributes["service_url"] == DF_ARCGIS_LAYER
+    assert record.attributes["official_source"] == "IDE-DF — Lotes com Inscrição do IPTU"
+    assert record.attributes["cadastre_match"] == "spatial_candidate_only"
+    assert json.loads(record.attributes["geometry_geojson"])["type"] == "Polygon"
