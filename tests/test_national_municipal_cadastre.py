@@ -131,3 +131,51 @@ def test_missing_address_context_skips_network(tmp_path):
         cache_dir=tmp_path / "cache", geocoder=FakeGeocoder()
     )
     assert adapter.search(SearchRequest(address="Rua Exemplo")) == []
+
+
+
+def test_direct_quadra_lote_query_uses_official_wfs_identifier_filter(tmp_path):
+    requested_filters = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            return httpx.Response(200, text=CSW)
+        params = dict(request.url.params)
+        if params.get("request") == "GetCapabilities":
+            return httpx.Response(200, text=CAPABILITIES)
+        requested_filters.append(params.get("CQL_FILTER", ""))
+        if params.get("CQL_FILTER") == "quadra = '07' AND lote = '42'":
+            return httpx.Response(200, json={
+                "type": "FeatureCollection",
+                "features": [{
+                    "type": "Feature",
+                    "id": "lote.42",
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[[-46.661, -23.561], [-46.659, -23.561],
+                                         [-46.659, -23.559], [-46.661, -23.561]]],
+                    },
+                    "properties": {
+                        "id_lote": "42", "quadra": "07", "lote": "42",
+                        "nr_contribuinte": "123.456.789",
+                    },
+                }],
+            })
+        return httpx.Response(400, text="unsupported property")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = NationalMunicipalCadastreAdapter(
+        cache_dir=tmp_path / "cache", client=client, geocoder=FakeGeocoder()
+    )
+    records = adapter.search(SearchRequest(
+        block="07", lot="42", city="Município de Teste", state="SP"
+    ))
+
+    assert len(records) == 1
+    assert records[0].block == "07"
+    assert records[0].lot == "42"
+    assert records[0].attributes["sql"] == "123.456.789"
+    assert records[0].attributes["cadastre_match"] == "identifier_query_candidate"
+    assert requested_filters
+    assert requested_filters[0] == "(quadra = '07' AND lote = '42')"
+    client.close()
