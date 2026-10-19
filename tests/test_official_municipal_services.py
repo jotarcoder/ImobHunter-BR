@@ -6,8 +6,10 @@ from imobhunter.domain.models import SearchRequest
 from imobhunter.sources.official_municipal_services import (
     MUNICIPAL_WFS,
     RIO_ARCGIS_LAYER,
+    RIO_GEOPAL_LAYER,
     DF_ARCGIS_LAYER,
     OfficialMunicipalServicesAdapter,
+    _cadastral_layers,
     _official_url,
 )
 
@@ -41,7 +43,7 @@ def test_official_endpoints_are_https_government_domains():
 
 
 def test_known_wfs_municipal_services_are_configured():
-    assert MUNICIPAL_WFS[("praia grande", "sp")]["url"].endswith("/wfs")
+    assert MUNICIPAL_WFS[("praia grande", "sp")]["url"] == "https://geoserver.praiagrande.sp.gov.br/ows"
     assert MUNICIPAL_WFS[("belo horizonte", "mg")]["url"] == (
         "https://bhmap.pbh.gov.br/v2/api/idebhgeo/wfs"
     )
@@ -223,3 +225,51 @@ def test_distrito_federal_arcgis_maps_public_iptu_lot_fields(tmp_path):
     assert record.attributes["official_source"] == "IDE-DF — Lotes com Inscrição do IPTU"
     assert record.attributes["cadastre_match"] == "spatial_candidate_only"
     assert json.loads(record.attributes["geometry_geojson"])["type"] == "Polygon"
+
+
+def test_praia_grande_prioritizes_individual_parcel_layers():
+    capabilities = """<?xml version="1.0"?>
+    <wfs:WFS_Capabilities xmlns:wfs="http://www.opengis.net/wfs/2.0">
+      <wfs:FeatureTypeList>
+        <wfs:FeatureType><wfs:Name>PraiaGrandePlantaCadastral:lotes_total</wfs:Name><wfs:Title>Lotes total</wfs:Title></wfs:FeatureType>
+        <wfs:FeatureType><wfs:Name>PraiaGrandePlantaCadastral:Lotes_Fiscais</wfs:Name><wfs:Title>Lotes Fiscais</wfs:Title></wfs:FeatureType>
+        <wfs:FeatureType><wfs:Name>PraiaGrandePlantaCadastral:lotes</wfs:Name><wfs:Title>Lotes</wfs:Title></wfs:FeatureType>
+      </wfs:FeatureTypeList>
+    </wfs:WFS_Capabilities>
+    """
+    layers = _cadastral_layers(capabilities)
+    assert layers[0]["name"] == "PraiaGrandePlantaCadastral:Lotes_Fiscais"
+    assert layers[1]["name"] == "PraiaGrandePlantaCadastral:lotes"
+
+
+def test_rio_uses_geopal_as_secondary_parcel_source_when_territorial_layer_is_empty(tmp_path):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == RIO_ARCGIS_LAYER.removeprefix("https://pgeo3.rio.rj.gov.br") + "/query":
+            return httpx.Response(200, json={"features": []})
+        assert request.url.path == RIO_GEOPAL_LAYER.removeprefix("https://pgeo3.rio.rj.gov.br") + "/query"
+        return httpx.Response(200, json={
+            "features": [{
+                "attributes": {
+                    "objectid": 21, "chavegeo": "AB123456", "quadra": "Q-10", "lote": "L-7",
+                },
+                "geometry": {"x": -43.2, "y": -22.9},
+            }],
+        })
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = OfficialMunicipalServicesAdapter(
+        cache_dir=tmp_path / "cache", client=client, geocoder=FakeGeocoder()
+    )
+    records = adapter.search(SearchRequest(
+        address="Avenida Rio Branco", number="1", city="Rio de Janeiro", state="RJ"
+    ))
+    client.close()
+
+    assert len(records) == 1
+    record = records[0]
+    assert record.block == "Q-10"
+    assert record.lot == "L-7"
+    assert record.attributes["parcel_identifier"] == "AB123456"
+    assert record.attributes["sql"] is None
+    assert record.attributes["sql_status"] == "not_provided_by_layer"
+    assert record.attributes["service_url"] == RIO_GEOPAL_LAYER
