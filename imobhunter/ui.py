@@ -174,7 +174,7 @@ class CadastralMapDialog(QDialog):
 
     def __init__(self, records, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Mapa do imóvel — GeoSampa")
+        self.setWindowTitle("Mapa do imóvel — ruas e cadastro")
         self.resize(1080, 760)
         self.setMinimumSize(760, 560)
         self._records = list(records)
@@ -225,6 +225,11 @@ class CadastralMapDialog(QDialog):
                 QUrl("https://novogeosampa.prefeitura.sp.gov.br/")
             )
         )
+        official_button.setVisible(any(
+            provenance.source_id == "geosampa"
+            for record in self._records
+            for provenance in record.provenance
+        ))
         toolbar.addWidget(official_button)
         layout.addLayout(toolbar)
 
