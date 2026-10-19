@@ -106,11 +106,12 @@ def _cadastral_layers(xml_text: str) -> list[dict[str, str]]:
     def priority(layer: dict[str, str]) -> int:
         name = _fold(layer["name"]).replace(" ", "").replace("_", "")
         # Fiscal parcels carry IPTU/launch attributes; query them before geometry-only layers.
-        if "lotesfiscais" in name:
+        label = _fold(f"{layer['name']} {layer['title']}").replace(" ", "").replace("_", "")
+        if any(term in label for term in ("sql", "inscricaoimobiliaria", "lotesfiscais", "geoimobiliario")):
             return 0
         if any(term in name for term in ("cadastroimobiliario", "imoveisterritoriais", "lotectm")):
             return 1
-        if name.endswith(":lotes"):
+        if "lotes" in name or "lote" in name:
             return 2
         if name.endswith(":lotestotal"):
             return 3
@@ -292,6 +293,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         self.last_diagnostics[city] = diagnostic
         records: list[PropertyRecord] = []
         for layer in layers:
+            layer_records: list[PropertyRecord] = []
             response = self._get(endpoint, {
                 "service": "WFS", "version": "2.0.0", "request": "GetFeature",
                 "typeNames": layer["name"], "outputFormat": "application/json",
@@ -354,7 +356,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 address = str(street or request.address or "")
                 if number not in (None, "") and str(number) not in address:
                     address = f"{address}, {number}" if address else str(number)
-                records.append(PropertyRecord(
+                layer_records.append(PropertyRecord(
                     property_id=str(feature.get("id") or top_id or sql or "") or None,
                     cib=str(cib) if cib not in (None, "") else None,
                     address=address,
@@ -390,9 +392,21 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                         source_id=self.source_id, confidence=0.8, reference=str(sql or feature.get("id") or ""),
                     ),),
                 ))
-                if len(records) >= MAX_FEATURES:
+                if len(layer_records) >= MAX_FEATURES:
                     diagnostic["records_capped"] = MAX_FEATURES
-                    return records[:MAX_FEATURES]
+                    break
+            if layer_records:
+                # Prefer an official layer that actually returns an SQL/registration
+                # value over nearby geometry-only layers that happen to be listed first.
+                sql_records = [
+                    record for record in layer_records
+                    if (record.attributes or {}).get("sql")
+                    or (record.attributes or {}).get("iptu_registration_number")
+                ]
+                if sql_records:
+                    return sql_records[:MAX_FEATURES]
+                if not records:
+                    records.extend(layer_records[:MAX_FEATURES])
         return records
 
     def _arcgis_records(
