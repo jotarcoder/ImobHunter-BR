@@ -97,8 +97,8 @@ def test_belo_horizonte_wfs_returns_geometry_quadra_lote_and_sql(tmp_path):
 
 def test_rio_arcgis_rest_maps_lot_geometry_and_fields(tmp_path):
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == RIO_ARCGIS_LAYER.removeprefix("https://pgeo3.rio.rj.gov.br")
-        assert request.url.path.endswith("/FeatureServer/0/query")
+        expected_path = RIO_ARCGIS_LAYER.removeprefix("https://pgeo3.rio.rj.gov.br")
+        assert request.url.path == expected_path + "/query"
         params = dict(request.url.params)
         assert params["geometryType"] == "esriGeometryPoint"
         assert params["outSR"] == "4326"
