@@ -47,8 +47,8 @@ CASES = [
     },
     {
         "municipality": "Santos/SP",
-        "address": "Avenida Ana Costa",
-        "number": "100",
+        "address": "Praça Visconde de Mauá",
+        "number": "",
         "city": "Santos",
         "state": "SP",
         "adapter": "official_municipal",
