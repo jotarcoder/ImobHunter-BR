@@ -4,6 +4,7 @@ from html import escape
 from pathlib import Path
 import sys
 import uuid
+from urllib.parse import quote
 
 from PySide6.QtCore import QThreadPool, QObject, QRunnable, QUrl, Qt, Signal, Slot, QPointF, QTimer
 from PySide6.QtGui import QBrush, QColor, QCursor, QDesktopServices, QFont, QIcon, QPainter, QPen, QPixmap, QPolygonF
@@ -146,6 +147,24 @@ class MetricCard(QFrame):
 
 
 
+class InteractiveMapView(QGraphicsView):
+    """Graphics map with mouse-wheel zoom and hand-drag panning."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
+
+    def wheelEvent(self, event):
+        delta = event.angleDelta().y()
+        if not delta:
+            event.ignore()
+            return
+        self.scale(1.2 if delta > 0 else 1 / 1.2, 1.2 if delta > 0 else 1 / 1.2)
+        event.accept()
+
+
 class CadastralMapDialog(QDialog):
     """Interactive cadastral map with a clear highlight for the exact matched parcel."""
 
@@ -154,6 +173,7 @@ class CadastralMapDialog(QDialog):
         self.setWindowTitle("Mapa do imóvel — GeoSampa")
         self.resize(1080, 760)
         self.setMinimumSize(760, 560)
+        self._records = list(records)
         self.setStyleSheet(
             "QDialog { background:#07111b; color:#eaf2f7; } "
             "QLabel { color:#dce8ef; } "
@@ -191,6 +211,10 @@ class CadastralMapDialog(QDialog):
         self.fit_button.clicked.connect(self._fit_map)
         toolbar.addWidget(self.fit_button)
         toolbar.addStretch(1)
+        street_button = QPushButton("Ver ruas no OpenStreetMap ↗")
+        street_button.setToolTip("Abre a busca de endereço no mapa de ruas; não altera os dados cadastrais.")
+        street_button.clicked.connect(self._open_street_map)
+        toolbar.addWidget(street_button)
         official_button = QPushButton("Abrir novo GeoSampa ↗")
         official_button.clicked.connect(
             lambda: QDesktopServices.openUrl(
@@ -200,7 +224,7 @@ class CadastralMapDialog(QDialog):
         toolbar.addWidget(official_button)
         layout.addLayout(toolbar)
 
-        self.view = QGraphicsView()
+        self.view = InteractiveMapView()
         self.view.setObjectName("cadastralMapView")
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.view.setBackgroundBrush(QBrush(QColor("#091722")))
@@ -369,6 +393,15 @@ class CadastralMapDialog(QDialog):
                 if isinstance(item, QGraphicsPolygonItem):
                     item.setSelected(True)
                     break
+
+    def _open_street_map(self):
+        records = getattr(self, "_records", [])
+        target = next((r for r in records if r.attributes.get("house_number_match") == "exact"), records[0] if records else None)
+        if target is None:
+            QDesktopServices.openUrl(QUrl("https://www.openstreetmap.org/"))
+            return
+        address = ", ".join(str(v) for v in (target.address, target.city, target.state, "Brasil") if v)
+        QDesktopServices.openUrl(QUrl("https://www.openstreetmap.org/search?query=" + quote(address, safe="")))
 
     def _fit_map(self):
         self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
