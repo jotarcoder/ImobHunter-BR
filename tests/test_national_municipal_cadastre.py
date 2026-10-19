@@ -144,7 +144,7 @@ def test_direct_quadra_lote_query_uses_official_wfs_identifier_filter(tmp_path):
         if params.get("request") == "GetCapabilities":
             return httpx.Response(200, text=CAPABILITIES)
         requested_filters.append(params.get("CQL_FILTER", ""))
-        if params.get("CQL_FILTER") == "quadra = '07' AND lote = '42'":
+        if params.get("CQL_FILTER") == "(quadra = '07' AND lote = '42')":
             return httpx.Response(200, json={
                 "type": "FeatureCollection",
                 "features": [{
