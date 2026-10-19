@@ -111,10 +111,11 @@ def _cadastral_layers(xml_text: str) -> list[dict[str, str]]:
             return 0
         if any(term in name for term in ("cadastroimobiliario", "imoveisterritoriais", "lotectm")):
             return 1
-        if "lotes" in name or "lote" in name:
-            return 2
+        # Aggregate lot layers must come after individual parcel layers.
         if name.endswith(":lotestotal"):
             return 3
+        if "lotes" in name or "lote" in name:
+            return 2
         if "loteamentoaprovado" in name:
             return 3
         if "quadra" in name:
