@@ -17,14 +17,15 @@ from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest, 
 from imobhunter.sources.base import SourceAdapter
 from imobhunter.sources.inde import DEFAULT_INDE_CSW_ENDPOINT, INDECatalog, GeospatialService
 
-USER_AGENT = "ImobHunter-BR/0.1.18 (national municipal cadastral discovery)"
+USER_AGENT = "ImobHunter-BR/0.1.19 (national municipal cadastral discovery)"
 CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
 MAX_FEATURES_PER_LAYER = 40
 SEARCH_RADIUS_KM = 0.8
 CADASTRAL_TERMS = (
-    "lote", "lotes", "parcela", "parcelas", "quadra", "cadastro imobiliario",
-    "cadastro imobiliário", "imobiliario", "imobiliário", "inscricao imobiliaria",
-    "inscrição imobiliária", "iptu", "parcelamento do solo",
+    "lote", "lotes", "parcela", "parcelas", "quadra", "sql", "contribuinte",
+    "cadastro imobiliario", "cadastro imobiliário", "imobiliario", "imobiliário",
+    "inscricao imobiliaria", "inscrição imobiliária", "indice cadastral",
+    "índice cadastral", "iptu", "parcelamento do solo",
 )
 
 
@@ -310,9 +311,34 @@ class NationalMunicipalCadastreAdapter(SourceAdapter):
                         raw_id = feature.get("id") or _attribute(
                             properties, "id", "gid", "objectid", "codigo", "cod_lote", "id_lote"
                         )
-                        block = _attribute(properties, "quadra", "numero_quadra", "cd_quadra", "quadra_fiscal")
-                        lot = _attribute(properties, "lote", "numero_lote", "cd_lote")
-                        area = _float(_attribute(properties, "area_m2", "area_terreno", "area_lote"))
+                        block = _attribute(
+                            properties, "quadra", "numero_quadra", "cd_quadra",
+                            "quadra_fiscal", "setor_quadra", "sq",
+                        )
+                        lot = _attribute(
+                            properties, "lote", "numero_lote", "cd_lote", "lote_fiscal",
+                            "numero_predial_lote",
+                        )
+                        area = _float(_attribute(
+                            properties, "area_m2", "area_terreno", "area_lote",
+                            "qt_area_terreno", "area_do_terreno", "area_terreno_m2",
+                        ))
+                        sql = _attribute(
+                            properties, "sql", "numero_sql", "nr_contribuinte",
+                            "numero_contribuinte", "codigo_contribuinte",
+                            "inscricao_imobiliaria", "inscrição_imobiliária",
+                            "inscricao_cadastral", "inscricao_iptu", "indice_cadastral",
+                            "índice cadastral", "cadastro_imobiliario",
+                        )
+                        taxpayer = _attribute(
+                            properties, "nome_contribuinte", "nm_contribuinte",
+                            "contribuinte", "taxpayer_name", "nome_contribuinte_iptu",
+                            "nome_responsavel_tributario",
+                        )
+                        reference_year = _attribute(
+                            properties, "ano_referencia", "exercicio_iptu",
+                            "ano_iptu", "iptu_reference_year",
+                        )
                         safe_properties = {
                             str(key): value for key, value in properties.items()
                             if value is not None and len(str(value)) <= 500
@@ -336,8 +362,13 @@ class NationalMunicipalCadastreAdapter(SourceAdapter):
                                 "wfs_layer": layer["name"],
                                 "source_properties": safe_properties,
                                 "parcel_status": "returned_by_official_layer",
-                                "sql_status": "not_provided_by_layer",
-                                "iptu_status": "not_provided_by_layer",
+                                "sql": str(sql) if sql not in (None, "") else None,
+                                "iptu_registration_number": str(sql) if sql not in (None, "") else None,
+                                "sql_status": "provided_by_layer" if sql not in (None, "") else "not_provided_by_layer",
+                                "iptu_status": "provided_by_layer" if sql not in (None, "") else "not_provided_by_layer",
+                                "taxpayer_name": str(taxpayer) if taxpayer not in (None, "") else None,
+                                "taxpayer_name_status": "provided_by_source" if taxpayer not in (None, "") else "not_provided_by_layer",
+                                "iptu_reference_year": str(reference_year) if reference_year not in (None, "") else None,
                                 "owner_status": "not_provided_by_layer",
                             },
                             provenance=(Provenance(
