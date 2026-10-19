@@ -17,15 +17,15 @@ A presença de um conector não garante que cada endereço retorne SQL/IPTU. O a
 
 | UF | Município | Fonte pública | Formato / campos documentados | Situação e próximo passo |
 |---|---|---|---|---|
-| GO | Goiânia | [ArcGIS REST — Cadastro Imobiliário, camada 3](https://portalmapa.goiania.go.gov.br/servicogyn/rest/services/MapaServer/Feature_Base/FeatureServer/3) | FeatureServer com consulta JSON/GeoJSON; campos documentados incluem `nrinscr`, `nmlogradou`, `nrimovel`, `nrquadra`, `nrlote`, `areaterr` e `areaedif`. | **API cadastral pública confirmada por metadados.** Implementar adaptador ArcGIS municipal e validar consulta real por endereço; confirmar o significado fiscal de `nrinscr` antes de rotular como SQL/IPTU. |
+| GO | Goiânia | [ArcGIS REST — Cadastro Imobiliário, camada 3](https://portalmapa.goiania.go.gov.br/servicogyn/rest/services/MapaServer/Feature_Base/FeatureServer/3) | FeatureServer com consulta JSON/GeoJSON; campos documentados incluem `nrinscr`, `nmlogradou`, `nrimovel`, `nrquadra`, `nrlote`, `areaterr` e `areaedif`. | **Adaptador implementado no PR #139 e teste unitário adicionado.** Ainda precisa CI verde e teste ao vivo por endereço. `nrinscr` é exposto como inscrição municipal, não SQL/IPTU, até confirmar a definição fiscal. |
 | SC | Blumenau | [WFS oficial — metadados das camadas](https://geo.blumenau.sc.gov.br/wfs/wfs.html) | WFS/OGC; `GEO.WFS_QUADRAS`, `GEO.WFS_LOTES`, `GEO.WFS_EDIFICACOES` e `GEO.WFS_CONDOMINIOS`; campos publicados incluem `Quadra` e `IQ`. Endpoint: `https://geo.blumenau.sc.gov.br/server/services/publicacao/Publicacao_WFS/MapServer/WFSServer`. | **WFS público confirmado por metadados.** Testar GetCapabilities/GetFeature, CRS, geometria e significado de `IQ`; não assumir que é SQL/IPTU sem validar o dicionário. |
 | PE | Recife | [Portal de Dados Abertos — IPTU](https://dados.recife.pe.gov.br/dataset/imposto-predial-e-territorial-urbano-iptu) | Conjunto de dados do cadastro fiscal imobiliário por contribuinte e ano; disponibiliza recursos CSV e dicionário JSON. | **Dados públicos confirmados; API de consulta individual por endereço não confirmada.** Inspecionar o dicionário e recursos, verificar campos e licença, e só então planejar importação/cache local ou endpoint de consulta. Não chamar o download de CSV de API online por endereço. |
 | RS | Porto Alegre | [Portal municipal de dados geoespaciais](https://gis-smamus.portoalegre.rs.gov.br/smamus/+dados/) | Portal público cita dados geoespaciais/cadastrais, mas o endpoint de consulta individual e os campos fiscais ainda precisam ser identificados e validados. | **Candidato para investigação, não integração confirmada.** Identificar serviço/URL oficial estável, camada parcelária, termos de uso, CRS e campos; não declarar SQL/IPTU disponível antes do teste. |
 
 ## Ordem técnica sugerida
 
-1. **Goiânia/GO:** API ArcGIS com camada cadastral e campos de inscrição/endereço/lote/quadra/área explícitos.
-2. **Blumenau/SC:** WFS de lotes e quadras, após validar os campos e CRS.
+1. **Goiânia/GO:** código do adaptador já adicionado no PR #139; executar CI e validar a consulta real antes de concluir.
+2. **Blumenau/SC:** próxima integração de API, WFS de lotes e quadras, após validar os campos e CRS.
 3. **Recife/PE:** auditar o dicionário e recursos de IPTU; determinar se é possível pesquisa por endereço sem uma API individual.
 4. **Porto Alegre/RS:** concluir descoberta do endpoint/camada antes de codificar.
 
