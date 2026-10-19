@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 from html import escape
+from concurrent.futures import ThreadPoolExecutor
+import math
+import httpx
 from pathlib import Path
 import sys
 import uuid
 from urllib.parse import quote
 
 from PySide6.QtCore import QThreadPool, QObject, QRunnable, QUrl, Qt, Signal, Slot, QPointF, QTimer
-from PySide6.QtGui import QBrush, QColor, QCursor, QDesktopServices, QFont, QIcon, QPainter, QPen, QPixmap, QPolygonF
+from PySide6.QtGui import QBrush, QColor, QCursor, QDesktopServices, QFont, QIcon, QImage, QPainter, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
     QGraphicsScene,
+    QGraphicsPixmapItem,
     QGraphicsView,
     QGraphicsPolygonItem,
     QGraphicsEllipseItem,
@@ -242,6 +246,7 @@ class CadastralMapDialog(QDialog):
         ring.setStyleSheet("color:#ff5d67; font-size:18px;")
         legend.addWidget(ring)
         legend.addWidget(QLabel("Imóvel do endereço pesquisado"))
+        legend.addWidget(QLabel("Ruas e mapa base: © OpenStreetMap contributors"))
         legend.addStretch(1)
         layout.addLayout(legend)
 
@@ -250,6 +255,8 @@ class CadastralMapDialog(QDialog):
         layout.addWidget(self.details)
 
         geometries = []
+        point_records = []
+        all_lon_lat = []
         for record in records:
             try:
                 geometry = json.loads(record.attributes.get("geometry_geojson") or "null")
@@ -257,99 +264,111 @@ class CadastralMapDialog(QDialog):
                 geometry = None
             if geometry and geometry.get("type") in {"Polygon", "MultiPolygon"}:
                 geometries.append((record, geometry))
+                polygons = [geometry["coordinates"]] if geometry["type"] == "Polygon" else geometry["coordinates"]
+                for polygon in polygons:
+                    for ring in polygon:
+                        all_lon_lat.extend(
+                            (float(point[0]), float(point[1]))
+                            for point in ring if isinstance(point, list) and len(point) >= 2
+                        )
+            elif record.latitude is not None and record.longitude is not None:
+                point_records.append(record)
+                all_lon_lat.append((float(record.longitude), float(record.latitude)))
 
-        if not geometries:
-            self.hint.setText(
-                "A consulta não retornou polígonos cadastrais. Não há geometria para desenhar."
-            )
+        if not all_lon_lat:
+            self.hint.setText("A fonte não retornou coordenadas nem geometria para mapear.")
             self.details.setPlainText(
-                "Os dados cadastrais retornados pela fonte continuam disponíveis no dossiê. "
-                "O mapa só pode desenhar parcelas quando a fonte fornece geometria."
+                "O dossiê continua disponível, mas nenhuma fonte forneceu coordenadas utilizáveis."
             )
-            for button in (
-                self.zoom_out_button, self.zoom_in_button, self.fit_button
-            ):
+            for button in (self.zoom_out_button, self.zoom_in_button, self.fit_button):
                 button.setEnabled(False)
             return
 
         target = next(
-            (
-                record for record, _geometry in geometries
-                if record.attributes.get("house_number_match") == "exact"
-            ),
+            (record for record, _geometry in geometries
+             if record.attributes.get("house_number_match") == "exact"),
             None,
         )
-        if target is not None:
-            self.hint.setText(
-                "Número predial confirmado: parcela destacada em verde e circulada em vermelho."
+        if target is None:
+            target = next(
+                (record for record in point_records
+                 if record.attributes.get("record_kind") == "geocoded_address_only"),
+                None,
             )
+        if geometries:
+            if target is not None:
+                self.hint.setText("Lotes oficiais recebidos da fonte. O endereço exato está destacado quando confirmado.")
+            else:
+                self.hint.setText("Lotes candidatos retornados pela fonte. Confira os dados de cada polígono.")
         else:
             self.hint.setText(
-                "Parcelas candidatas da rua. A fonte não confirmou um número predial exato."
+                "Localização geocodificada. A fonte não forneceu lote oficial, SQL/IPTU ou área cadastral."
             )
 
-        all_points = []
-        for _record, geometry in geometries:
-            polygons = (
-                [geometry["coordinates"]]
-                if geometry["type"] == "Polygon"
-                else geometry["coordinates"]
-            )
-            for polygon in polygons:
-                if not polygon or not polygon[0]:
-                    continue
-                all_points.extend(
-                    (float(point[0]), -float(point[1]))
-                    for point in polygon[0]
-                    if len(point) >= 2
-                )
-        if not all_points:
-            self.hint.setText("A geometria recebida não contém coordenadas válidas.")
-            return
+        center_lon = (min(point[0] for point in all_lon_lat) + max(point[0] for point in all_lon_lat)) / 2
+        center_lat = (min(point[1] for point in all_lon_lat) + max(point[1] for point in all_lon_lat)) / 2
+        zoom = 17
+        tile_x, tile_y = self._mercator_tile(center_lon, center_lat, zoom)
+        tile_x0, tile_y0 = math.floor(tile_x) - 1, math.floor(tile_y) - 1
+        self._tile_zoom = zoom
+        self._tile_origin = (tile_x0, tile_y0)
 
-        min_x = min(point[0] for point in all_points)
-        max_x = max(point[0] for point in all_points)
-        min_y = min(point[1] for point in all_points)
-        max_y = max(point[1] for point in all_points)
-        scale = min(
-            820 / max(max_x - min_x, 1e-7),
-            480 / max(max_y - min_y, 1e-7),
-        )
-        margin = 28
-        target_center = None
+        # Load a small, cached 3x3 street-tile viewport only when the user opens
+        # the map. This is not a bulk download; local cache avoids repeat traffic.
+        tile_cache = Path.home() / ".imobhunter" / "map-tiles"
+        tile_cache.mkdir(parents=True, exist_ok=True)
+        tile_specs = [
+            (x, y, tile_cache / f"{zoom}_{x}_{y}.png")
+            for x in range(tile_x0, tile_x0 + 3)
+            for y in range(tile_y0, tile_y0 + 3)
+        ]
+
+        def load_tile(spec):
+            x, y, path = spec
+            if not path.exists():
+                try:
+                    response = httpx.get(
+                        f"https://tile.openstreetmap.org/{zoom}/{x}/{y}.png",
+                        headers={"User-Agent": "ImobHunter-BR/0.1 (desktop map view)"},
+                        timeout=2.5,
+                    )
+                    response.raise_for_status()
+                    if response.headers.get("content-type", "").startswith("image/"):
+                        path.write_bytes(response.content)
+                except (httpx.HTTPError, OSError):
+                    return x, y, None
+            image = QImage(str(path))
+            return x, y, image if not image.isNull() else None
+
+        basemap = QImage(768, 768, QImage.Format.Format_ARGB32)
+        basemap.fill(QColor("#091722"))
+        painter = QPainter(basemap)
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            for x, y, image in executor.map(load_tile, tile_specs):
+                if image is not None:
+                    painter.drawImage((x - tile_x0) * 256, (y - tile_y0) * 256, image)
+        painter.end()
+        basemap_item = QGraphicsPixmapItem(QPixmap.fromImage(basemap))
+        basemap_item.setZValue(-10)
+        basemap_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self.scene.addItem(basemap_item)
+
+        def to_scene(lon, lat):
+            x, y = self._mercator_tile(float(lon), float(lat), zoom)
+            return ((x - tile_x0) * 256, (y - tile_y0) * 256)
 
         for record, geometry in geometries:
             is_target = record is target
-            polygons = (
-                [geometry["coordinates"]]
-                if geometry["type"] == "Polygon"
-                else geometry["coordinates"]
-            )
+            polygons = [geometry["coordinates"]] if geometry["type"] == "Polygon" else geometry["coordinates"]
             for polygon in polygons:
                 if not polygon or not polygon[0]:
                     continue
-                points = [
-                    (
-                        margin + (float(point[0]) - min_x) * scale,
-                        margin + (-float(point[1]) - min_y) * scale,
-                    )
-                    for point in polygon[0]
-                    if len(point) >= 2
-                ]
+                points = [to_scene(point[0], point[1]) for point in polygon[0] if len(point) >= 2]
                 if len(points) < 3:
                     continue
-                item = QGraphicsPolygonItem(
-                    QPolygonF([QPointF(x, y) for x, y in points])
-                )
-                item.setBrush(
-                    QBrush(QColor("#35ff77" if is_target else "#174456"))
-                )
-                item.setPen(
-                    QPen(
-                        QColor("#ff5d67" if is_target else "#64869a"),
-                        3.5 if is_target else 1.2,
-                    )
-                )
+                item = QGraphicsPolygonItem(QPolygonF([QPointF(x, y) for x, y in points]))
+                item.setBrush(QBrush(QColor("#35ff77" if is_target else "#174456")))
+                item.setPen(QPen(QColor("#ff5d67" if is_target else "#64869a"), 3.5 if is_target else 1.2))
                 item.setFlag(item.GraphicsItemFlag.ItemIsSelectable, True)
                 item.setData(0, record)
                 item.setData(1, is_target)
@@ -359,33 +378,25 @@ class CadastralMapDialog(QDialog):
                     + (" · ENDEREÇO EXATO" if is_target else "")
                 )
                 self.scene.addItem(item)
-                if is_target:
-                    # A red ring around the parcel makes the requested property
-                    # unmistakable without altering the GeoSampa geometry.
-                    center_x = sum(point[0] for point in points) / len(points)
-                    center_y = sum(point[1] for point in points) / len(points)
-                    target_center = (center_x, center_y)
 
-        if target_center:
-            center_x, center_y = target_center
-            radius = 20
-            circle = QGraphicsEllipseItem(
-                center_x - radius, center_y - radius, radius * 2, radius * 2
-            )
-            circle.setBrush(QBrush(Qt.BrushStyle.NoBrush))
-            circle.setPen(QPen(QColor("#ff5d67"), 3.5))
-            circle.setZValue(10)
-            circle.setFlag(circle.GraphicsItemFlag.ItemIsSelectable, False)
-            circle.setToolTip("Imóvel correspondente ao número predial pesquisado")
-            self.scene.addItem(circle)
+        for record in point_records:
+            x, y = to_scene(record.longitude, record.latitude)
+            marker = QGraphicsEllipseItem(x - 7, y - 7, 14, 14)
+            marker.setBrush(QBrush(QColor("#35ff77")))
+            marker.setPen(QPen(QColor("#ff5d67"), 3))
+            marker.setFlag(marker.GraphicsItemFlag.ItemIsSelectable, True)
+            marker.setData(0, record)
+            marker.setData(1, True)
+            marker.setZValue(5)
+            marker.setToolTip("Localização geocodificada — não representa limite cadastral")
+            self.scene.addItem(marker)
 
-        self.scene.setSceneRect(self.scene.itemsBoundingRect().adjusted(-32, -32, 32, 32))
+        self.scene.setSceneRect(0, 0, 768, 768)
         self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
         self.scene.selectionChanged.connect(self._show_selection)
-
         if target is not None:
             for item in self.scene.items():
-                if isinstance(item, QGraphicsPolygonItem) and item.data(1):
+                if item.data(0) is target and item.flags() & item.GraphicsItemFlag.ItemIsSelectable:
                     item.setSelected(True)
                     break
         else:
@@ -393,6 +404,15 @@ class CadastralMapDialog(QDialog):
                 if isinstance(item, QGraphicsPolygonItem):
                     item.setSelected(True)
                     break
+
+    @staticmethod
+    def _mercator_tile(longitude, latitude, zoom):
+        latitude = max(-85.05112878, min(85.05112878, float(latitude)))
+        n = 2 ** zoom
+        x = (float(longitude) + 180.0) / 360.0 * n
+        lat_rad = math.radians(latitude)
+        y = (1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n
+        return x, y
 
     def _open_street_map(self):
         records = getattr(self, "_records", [])
@@ -410,6 +430,7 @@ class CadastralMapDialog(QDialog):
         selected = [
             item for item in self.scene.selectedItems()
             if isinstance(item, QGraphicsPolygonItem)
+            or (isinstance(item, QGraphicsEllipseItem) and item.data(0) is not None)
         ]
         if not selected:
             return
