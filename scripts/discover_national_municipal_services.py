@@ -6,6 +6,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+import xml.etree.ElementTree as ET
 from urllib.parse import urlparse
 
 import httpx
@@ -41,8 +42,6 @@ def _candidate(service: GeospatialService) -> bool:
 
 
 def _wfs_layers(xml: str) -> list[dict[str, str]]:
-    import xml.etree.ElementTree as ET
-
     root = ET.fromstring(xml)
     layers: list[dict[str, str]] = []
     for node in root.iter():
@@ -92,13 +91,13 @@ def probe_service(
         if "WFS" in service_type or url.lower().endswith("/wfs"):
             response = client.get(url, params={
                 "service": "WFS", "version": "2.0.0", "request": "GetCapabilities"
-            })
+            }, follow_redirects=False)
             response.raise_for_status()
             layers = _wfs_layers(response.text)
             result["layers"] = layers
             result["status"] = "cadastral_layer_found" if layers else "connected_no_cadastral_layer"
         elif "ARCGIS" in service_type or "FEATURESERVER" in url.upper() or "MAPSERVER" in url.upper():
-            response = client.get(url, params={"f": "json"})
+            response = client.get(url, params={"f": "json"}, follow_redirects=False)
             response.raise_for_status()
             payload = response.json()
             if not isinstance(payload, dict) or payload.get("error"):
@@ -113,7 +112,7 @@ def probe_service(
         else:
             result["status"] = "connected_unclassified_service"
             result["diagnostic"] = "Endpoint oficial encontrado, mas o protocolo não é validado automaticamente."
-    except (httpx.HTTPError, ValueError, json.JSONDecodeError) as exc:
+    except (httpx.HTTPError, ValueError, json.JSONDecodeError, ET.ParseError) as exc:
         result["status"] = "connection_failed"
         result["diagnostic"] = f"{type(exc).__name__}: {str(exc)[:240]}"
     return result
