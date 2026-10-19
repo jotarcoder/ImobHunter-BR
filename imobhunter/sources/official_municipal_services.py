@@ -88,9 +88,9 @@ def _cadastral_layers(xml_text: str) -> list[dict[str, str]]:
         name = _fold(layer["name"]).replace(" ", "").replace("_", "")
         if any(term in name for term in (
             "cadastroimobiliario", "imoveisterritoriais",
-        )) or name.endswith(":lotes"):
+        )) or name.endswith(":lotes") or name.endswith(":lotestotal"):
             return 0
-        if any(term in name for term in ("lotesfiscais", "lotestotal", "lotectm")):
+        if any(term in name for term in ("lotesfiscais", "lotectm")):
             return 1
         if "loteamentoaprovado" in name:
             return 2
