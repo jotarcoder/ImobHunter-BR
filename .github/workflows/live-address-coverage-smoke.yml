@@ -1,0 +1,33 @@
+name: Live address coverage smoke test
+
+on:
+  pull_request:
+    paths:
+      - "scripts/live_address_coverage_smoke.py"
+      - "imobhunter/application/address_geocoding.py"
+      - "imobhunter/sources/geosampa.py"
+      - ".github/workflows/live-address-coverage-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-address-coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install application dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run internal live address and cadastral smoke checks
+        run: python scripts/live_address_coverage_smoke.py
