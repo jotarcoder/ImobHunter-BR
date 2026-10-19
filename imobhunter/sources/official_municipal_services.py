@@ -33,9 +33,9 @@ RIO_ARCGIS_LAYER = (
     "CadParcel/IMOVEIS_TERRITORIAIS/FeatureServer/0"
 )
 CADASTRAL_TERMS = (
-    "lote", "lotes", "parcela", "parcelas", "quadra", "cadastro",
-    "imobiliario", "imobiliário", "iptu", "inscricao", "inscrição",
-    "territorial", "parcelamento",
+    "lote", "lotes", "parcela", "parcelas", "quadra", "imobiliario",
+    "imobiliário", "iptu", "inscricao_imobiliaria", "inscrição imobiliária",
+    "territorial", "parcelamento", "imoveis_territoriais", "imóveis territoriais",
 )
 CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
 MAX_FEATURES = 40
@@ -151,6 +151,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         self._geocoder = geocoder
         self.timeout = timeout
         self.last_errors: dict[str, str] = {}
+        self.last_diagnostics: dict[str, dict[str, Any]] = {}
 
     def status(self) -> SourceStatus:
         detail = (
@@ -162,6 +163,10 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             detail += " Últimas falhas: " + "; ".join(
                 f"{city}: {error}" for city, error in self.last_errors.items()
             )
+        if self.last_diagnostics:
+            detail += " Diagnóstico recente: " + json.dumps(
+                self.last_diagnostics, ensure_ascii=False
+            )[:700]
         return SourceStatus(self.source_id, self.name, "available", detail)
 
     def _http(self) -> tuple[httpx.Client, bool]:
@@ -217,6 +222,12 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             "service": "WFS", "version": "2.0.0", "request": "GetCapabilities",
         })
         layers = _cadastral_layers(capabilities.text)
+        diagnostic: dict[str, Any] = {
+            "endpoint": endpoint,
+            "layers_found": [layer["name"] for layer in layers],
+            "queries": [],
+        }
+        self.last_diagnostics[city] = diagnostic
         records: list[PropertyRecord] = []
         for layer in layers:
             response = self._get(endpoint, {
@@ -227,7 +238,17 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             })
             payload = response.json()
             if not isinstance(payload, dict) or not isinstance(payload.get("features"), list):
+                diagnostic["queries"].append({"layer": layer["name"], "error": "invalid_feature_collection"})
                 continue
+            diagnostic["queries"].append({
+                "layer": layer["name"],
+                "feature_count": len(payload["features"]),
+                "fields": sorted({
+                    str(key)
+                    for feature in payload["features"][:1]
+                    for key in (feature.get("properties") or {})
+                }),
+            })
             for feature in payload["features"]:
                 properties = feature.get("properties") or {}
                 geometry = feature.get("geometry")
@@ -273,6 +294,9 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                         source_id=self.source_id, confidence=0.8, reference=str(sql or feature.get("id") or ""),
                     ),),
                 ))
+                if len(records) >= MAX_FEATURES:
+                    diagnostic["records_capped"] = MAX_FEATURES
+                    return records[:MAX_FEATURES]
         return records
 
     def _arcgis_records(
@@ -297,6 +321,15 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         payload = response.json()
         if not isinstance(payload, dict) or not isinstance(payload.get("features"), list):
             raise TypeError("ArcGIS REST municipal retornou JSON sem a lista features.")
+        self.last_diagnostics[city] = {
+            "endpoint": RIO_ARCGIS_LAYER,
+            "feature_count": len(payload["features"]),
+            "fields": sorted({
+                str(key)
+                for feature in payload["features"][:1]
+                for key in (feature.get("attributes") or {})
+            }),
+        }
         records: list[PropertyRecord] = []
         for feature in payload["features"]:
             properties = feature.get("attributes") or {}
