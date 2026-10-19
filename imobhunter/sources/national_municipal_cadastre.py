@@ -285,16 +285,61 @@ class NationalMunicipalCadastreAdapter(SourceAdapter):
             raise TypeError("WFS cadastral oficial retornou uma resposta GeoJSON inválida.")
         return [feature for feature in payload["features"] if isinstance(feature, dict)]
 
+    def _features_by_identifiers(
+        self, endpoint: str, layer: str, request: SearchRequest
+    ) -> list[dict[str, Any]]:
+        # GeoServer's CQL_FILTER is a direct-query fallback for official WFS
+        # layers. Try documented/common cadastral field aliases; unsupported
+        # filters fail closed and the caller continues to other services.
+        predicates: list[str] = []
+        if request.cib:
+            value = request.cib.replace("'", "''")
+            for field in ("cd_cib", "cib", "codigo_cib", "numero_cib"):
+                predicates.append(f"{field} = '{value}'")
+        elif request.block and request.lot:
+            block = request.block.replace("'", "''")
+            lot = request.lot.replace("'", "''")
+            for block_field in ("quadra", "cd_quadra", "cd_quadra_fiscal", "quadra_fiscal", "qd_quadra"):
+                for lot_field in ("lote", "cd_lote", "lote_fiscal", "qd_lote"):
+                    predicates.append(f"({block_field} = '{block}' AND {lot_field} = '{lot}')")
+        else:
+            return []
+        features: dict[str, dict[str, Any]] = {}
+        for predicate in predicates:
+            response = self._get(endpoint, {
+                "service": "WFS", "version": "2.0.0", "request": "GetFeature",
+                "typeNames": layer, "outputFormat": "application/json",
+                "srsName": "EPSG:4326", "CQL_FILTER": predicate,
+                "count": MAX_FEATURES_PER_LAYER, "startIndex": 0,
+            })
+            try:
+                payload = response.json()
+            except ValueError:
+                continue
+            if not isinstance(payload, dict) or not isinstance(payload.get("features"), list):
+                continue
+            for feature in payload["features"]:
+                if isinstance(feature, dict):
+                    identity = str(feature.get("id") or json.dumps(feature.get("properties", {}), sort_keys=True))
+                    features[identity] = feature
+            if features:
+                break
+        return list(features.values())
+
     def search(self, request: SearchRequest) -> list[PropertyRecord]:
-        if not request.address or not request.city or not request.state:
+        if not request.city or not request.state:
             return []
-        point = self._geocode(request)
-        if point is None:
+        bbox = None
+        if request.address:
+            point = self._geocode(request)
+            if point is None:
+                return []
+            latitude, longitude = point
+            lat_delta = SEARCH_RADIUS_KM / 111.0
+            lon_delta = SEARCH_RADIUS_KM / max(20.0, 111.0 * abs(math.cos(math.radians(latitude))))
+            bbox = (longitude - lon_delta, latitude - lat_delta, longitude + lon_delta, latitude + lat_delta)
+        elif not (request.block and request.lot) and not request.cib:
             return []
-        latitude, longitude = point
-        lat_delta = SEARCH_RADIUS_KM / 111.0
-        lon_delta = SEARCH_RADIUS_KM / max(20.0, 111.0 * abs(math.cos(math.radians(latitude))))
-        bbox = (longitude - lon_delta, latitude - lat_delta, longitude + lon_delta, latitude + lat_delta)
 
         records: list[PropertyRecord] = []
         for service in self._discover(request):
@@ -302,7 +347,12 @@ class NationalMunicipalCadastreAdapter(SourceAdapter):
             try:
                 layers = self._layers(endpoint)
                 for layer in layers:
-                    for feature in self._features(endpoint, layer["name"], bbox):
+                    features = (
+                        self._features(endpoint, layer["name"], bbox)
+                        if bbox is not None
+                        else self._features_by_identifiers(endpoint, layer["name"], request)
+                    )
+                    for feature in features:
                         properties = feature.get("properties") or {}
                         geometry = feature.get("geometry")
                         if not isinstance(properties, dict) or not isinstance(geometry, dict):
@@ -355,7 +405,7 @@ class NationalMunicipalCadastreAdapter(SourceAdapter):
                             longitude=lon,
                             attributes={
                                 "geometry_geojson": json.dumps(geometry, ensure_ascii=False),
-                                "cadastre_match": "spatial_candidate_only",
+                                "cadastre_match": "spatial_candidate_only" if bbox is not None else "identifier_query_candidate",
                                 "official_source": service.provider or service.title,
                                 "service_title": service.title,
                                 "service_url": endpoint,
