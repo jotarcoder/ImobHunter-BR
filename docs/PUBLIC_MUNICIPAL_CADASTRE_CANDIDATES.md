@@ -19,13 +19,13 @@ A presença de um conector não garante que cada endereço retorne SQL/IPTU. O a
 |---|---|---|---|---|
 | GO | Goiânia | [ArcGIS REST — Cadastro Imobiliário, camada 3](https://portalmapa.goiania.go.gov.br/servicogyn/rest/services/MapaServer/Feature_Base/FeatureServer/3) | FeatureServer com consulta JSON/GeoJSON; campos documentados incluem `nrinscr`, `nmlogradou`, `nrimovel`, `nrquadra`, `nrlote`, `areaterr` e `areaedif`. | **Adaptador ArcGIS e teste unitário adicionados no PR #139.** CI unitária passou; o smoke test real de endereço precisa ser confirmado. `nrinscr` é exposto como inscrição municipal, não SQL/IPTU, até confirmar a definição fiscal. |
 | SC | Blumenau | [WFS oficial — metadados das camadas](https://geo.blumenau.sc.gov.br/wfs/wfs.html) | WFS/OGC; `GEO.WFS_QUADRAS`, `GEO.WFS_LOTES`, `GEO.WFS_EDIFICACOES` e `GEO.WFS_CONDOMINIOS`; campos publicados incluem `Quadra` e `IQ`. Endpoint: `https://geo.blumenau.sc.gov.br/server/services/publicacao/Publicacao_WFS/MapServer/WFSServer`. | **Adaptador ArcGIS e teste unitário adicionados no PR #139.** A camada de lotes retorna geometria, `IQ`, `NUMLOTE`, bairro e área cartográfica; o teste real por endereço ainda precisa confirmar o retorno. `IQ` fica como identificador cadastral, não SQL/IPTU. |
-| PE | Recife | [Portal de Dados Abertos — IPTU](https://dados.recife.pe.gov.br/dataset/imposto-predial-e-territorial-urbano-iptu) | Conjunto de dados do cadastro fiscal imobiliário por contribuinte e ano; disponibiliza recursos CSV e dicionário JSON. | **Dados públicos confirmados; API de consulta individual por endereço não confirmada.** Inspecionar o dicionário e recursos, verificar campos e licença, e só então planejar importação/cache local ou endpoint de consulta. Não chamar o download de CSV de API online por endereço. |
+| PE | Recife | [Portal de Dados Abertos — IPTU](https://dados.recife.pe.gov.br/dataset/imposto-predial-e-territorial-urbano-iptu) e [API CKAN](https://dados.recife.pe.gov.br/api/3/action/package_show?id=imposto-predial-e-territorial-urbano-iptu) | Dataset anual do cadastro fiscal imobiliário por contribuinte; recursos CSV/JSON e dicionário de dados. | **Adaptador CKAN e testes simulados adicionados.** A consulta ao vivo precisa confirmar quais recursos têm datastore ativo e aceitam busca textual. Sem recurso consultável, o sistema registra diagnóstico e retorna sem resultados; não inventa SQL nem geometria. |
 | RS | Porto Alegre | [Portal municipal de dados geoespaciais](https://gis-smamus.portoalegre.rs.gov.br/smamus/+dados/) | Portal público cita dados geoespaciais/cadastrais, mas o endpoint de consulta individual e os campos fiscais ainda precisam ser identificados e validados. | **Candidato para investigação, não integração confirmada.** Identificar serviço/URL oficial estável, camada parcelária, termos de uso, CRS e campos; não declarar SQL/IPTU disponível antes do teste. |
 
 ## Ordem técnica sugerida
 
 1. **Goiânia/GO e Blumenau/SC:** adaptadores ArcGIS adicionados ao PR #139; confirmar CI e smoke test real por endereço antes de concluir.
-2. **Recife/PE:** auditar o dicionário e recursos de IPTU; determinar se é possível pesquisa por endereço sem uma API individual.
+2. **Recife/PE:** adaptador CKAN de IPTU adicionado; validar API ao vivo e confirmar campos/recursos consultáveis antes de considerar a integração concluída.
 3. **Porto Alegre/RS:** concluir descoberta do endpoint/camada antes de codificar.
 
 ## Critérios obrigatórios para cada integração
@@ -43,5 +43,5 @@ A presença de um conector não garante que cada endereço retorne SQL/IPTU. O a
 
 - Goiânia: metadados oficiais do [FeatureServer de Cadastro Imobiliário](https://portalmapa.goiania.go.gov.br/servicogyn/rest/services/MapaServer/Feature_Base/FeatureServer/3).
 - Blumenau: [metadados oficiais WFS](https://geo.blumenau.sc.gov.br/wfs/wfs.html).
-- Recife: [dataset municipal de IPTU](https://dados.recife.pe.gov.br/dataset/imposto-predial-e-territorial-urbano-iptu).
+- Recife: [dataset municipal de IPTU](https://dados.recife.pe.gov.br/dataset/imposto-predial-e-territorial-urbano-iptu) e [API CKAN](https://dados.recife.pe.gov.br/api/3/action/package_show?id=imposto-predial-e-territorial-urbano-iptu).
 - Porto Alegre: [portal municipal de dados geoespaciais](https://gis-smamus.portoalegre.rs.gov.br/smamus/+dados/).
