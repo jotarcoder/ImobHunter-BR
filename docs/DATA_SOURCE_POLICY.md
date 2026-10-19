@@ -28,6 +28,12 @@ Toda fonte deve obedecer simultaneamente a estes princípios:
 ### GeoSampa
 Camada municipal geoespacial de São Paulo. Pode fornecer lote, quadra, CIB/SQL, endereço, área e geometria quando disponíveis. É usada para resolução territorial e enriquecimento cadastral. Não é apresentada como prova definitiva de propriedade.
 
+### Cadastros municipais oficiais — descoberta nacional pela INDE
+
+O adaptador de descoberta consulta o catálogo oficial de metadados INDE usando município/UF e termos cadastrais, filtra endpoints HTTPS em domínios governamentais e consulta camadas WFS que declaram lotes, parcelas, quadras ou cadastro imobiliário. A resposta preserva a geometria GeoJSON e os atributos efetivamente publicados, com cache local de descoberta. A pesquisa espacial é marcada como candidata próxima, não como confirmação exata do endereço. SQL/inscrição de IPTU, área e proprietário só são preenchidos se a camada oficial efetivamente fornecer o campo correspondente; o adaptador não transforma a cobertura de endereços em cadastro parcelário.
+
+A INDE é um catálogo de descoberta, não uma base cadastral universal. Municípios sem serviços publicados, metadados suficientes, endpoint compatível ou acesso público continuarão sem polígono cadastral oficial até existir uma fonte documentada e acessível. A falha de um endpoint é isolada e não deve impedir as demais fontes da busca.
+
 ### IBGE / CNEFE
 Base de endereços e características do entorno/endereço. Ajuda a normalizar e conferir endereço, CEP, bloco, coordenadas e elementos censitários. Não é tratada como fonte de titularidade.
 

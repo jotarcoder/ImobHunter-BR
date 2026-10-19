@@ -20,6 +20,7 @@ def test_default_registry_contains_core_sources() -> None:
         "osm",
         "municipal_iptu",
         "official_geo_overlays",
+        "national_municipal_cadastre",
     } <= ids
 
 
