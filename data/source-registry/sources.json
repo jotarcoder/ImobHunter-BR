@@ -4,6 +4,7 @@
     {"id":"ibge_cnefe","name":"IBGE / CNEFE","category":"address","tier":"public","status":"planned"},
     {"id":"sinter_cib","name":"SINTER / CIB","category":"national_cadastre","tier":"conditional","status":"planned"},
     {"id":"municipal","name":"Municipal geoservices","category":"municipal","tier":"mixed","status":"framework"},
+    {"id":"national_municipal_cadastre","name":"INDE + cadastros municipais oficiais (WFS)","category":"municipal","tier":"public","status":"active_discovery"},
     {"id":"geosampa","name":"GeoSampa","category":"municipal","tier":"public","status":"next"},
     {"id":"cnpj","name":"Receita Federal / CNPJ","category":"company","tier":"mixed","status":"planned"},
     {"id":"sncr","name":"INCRA / SNCR","category":"rural","tier":"conditional","status":"planned"},
