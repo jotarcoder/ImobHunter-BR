@@ -55,6 +55,10 @@ GOIANIA_ARCGIS_LAYER = (
     "https://portalmapa.goiania.go.gov.br/servicogyn/rest/services/"
     "MapaServer/Feature_Base/FeatureServer/3"
 )
+BLUMENAU_ARCGIS_LAYER = (
+    "https://geo.blumenau.sc.gov.br/server/rest/services/"
+    "Cadastro_Imobiliario/Lotes_Blumenau/FeatureServer/0"
+)
 CADASTRAL_TERMS = (
     "lote", "lotes", "parcela", "parcelas", "quadra", "imobiliario",
     "imobiliário", "iptu", "inscricao_imobiliaria", "inscrição imobiliária",
@@ -179,7 +183,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
 
     Current direct integrations: Praia Grande/SP, Santos/SP and Bertioga/SP,
     Belo Horizonte/MG (WFS), Rio de Janeiro/RJ and Distrito Federal (ArcGIS REST),
-    and Goiânia/GO (ArcGIS REST cadastral layer).
+    Goiânia/GO and Blumenau/SC (ArcGIS REST cadastral layers).
     São Paulo capital remains covered by GeoSampaAdapter. This is not nationwide coverage.
     """
 
@@ -209,7 +213,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
     def status(self) -> SourceStatus:
         detail = (
             "Integrações diretas configuradas para Praia Grande/SP, Belo Horizonte/MG, "
-            "Rio de Janeiro/RJ, Distrito Federal e Goiânia/GO; São Paulo capital usa GeoSampa. "
+            "Rio de Janeiro/RJ, Distrito Federal, Goiânia/GO e Blumenau/SC; São Paulo capital usa GeoSampa. "
             "Cobertura, atributos e disponibilidade dependem da camada oficial."
         )
         if self.last_errors:
@@ -466,15 +470,16 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 "iptu_imovel",
             )
             is_goiania = layer_url == GOIANIA_ARCGIS_LAYER
+            is_blumenau = layer_url == BLUMENAU_ARCGIS_LAYER
             cib = _first(properties, "cib", "cd_cib", "codigo_cib")
             block = _first(
                 properties, "nrquadra", "quadra", "cod_quadra", "lt_quadra"
             )
             lot = _first(
-                properties, "nrlote", "lote", "np", "chavegeo", "ch_lote", "lt_lote"
+                properties, "nrlote", "numlote", "lote", "np", "chavegeo", "ch_lote", "lt_lote"
             )
             area = _area(_first(
-                properties, "areaterr", "area_m2", "area_descrita", "shape_area",
+                properties, "areaterr", "area_cartografica", "area_m2", "area_descrita", "shape_area",
                 "shape__area", "iptu_area_terr",
             ))
             built_area = _area(_first(
@@ -493,6 +498,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             municipal_registration = _first(
                 properties, "nrinscr", "inscricao_municipal", "inscricao_cadastral"
             ) if is_goiania else None
+            parcel_identifier = _first(properties, "iq", "parcel_identifier") if is_blumenau else None
             if is_goiania:
                 # nrinscr is retained as the source's registration field; do not
                 # mislabel it as SQL/IPTU without an authoritative field definition.
@@ -513,6 +519,8 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                     "official_source": (
                         "Prefeitura de Goiânia — Cadastro Imobiliário"
                         if is_goiania
+                        else "Prefeitura de Blumenau — Cadastro de Lotes"
+                        if is_blumenau
                         else "IDE-DF — Lotes com Inscrição do IPTU"
                         if layer_url == DF_ARCGIS_LAYER
                         else "Prefeitura da Cidade do Rio de Janeiro — GeoPAL/IMOVEIS_TERRITORIAIS"
@@ -527,6 +535,10 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                         str(municipal_registration)
                         if municipal_registration not in (None, "") else None
                     ),
+                    "parcel_identifier": (
+                        str(parcel_identifier) if parcel_identifier not in (None, "") else None
+                    ),
+                    "neighborhood": _first(properties, "nobairro", "bairro") if is_blumenau else None,
                     "sql": str(sql) if sql not in (None, "") else None,
                     "iptu_registration_number": str(sql) if sql not in (None, "") else None,
                     "sql_status": "provided_by_layer" if sql not in (None, "") else "not_provided_by_layer",
@@ -620,8 +632,11 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         elif city_key in {"brasilia", "distrito federal", "df"} and state_key in {"df", "distrito federal", "brasilia"}:
             city, state, service_key = "Brasília", "DF", "df"
             configured = None
-        elif city_key in {"goiania", "goiânia", "goiania (go)"} and state_key in {"go", "goias", "goiás"}:
+        elif city_key in {"goiania", "goiania (go)"} and state_key in {"go", "goias", "goiás"}:
             city, state, service_key = "Goiânia", "GO", "goiania"
+            configured = None
+        elif city_key == "blumenau" and state_key in {"sc", "santa catarina"}:
+            city, state, service_key = "Blumenau", "SC", "blumenau"
             configured = None
         else:
             service_key = (city_key, state_key)
@@ -652,6 +667,10 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             elif service_key == "goiania":
                 records = self._arcgis_records(
                     city, state, latitude, longitude, request, layer_url=GOIANIA_ARCGIS_LAYER
+                )
+            elif service_key == "blumenau":
+                records = self._arcgis_records(
+                    city, state, latitude, longitude, request, layer_url=BLUMENAU_ARCGIS_LAYER
                 )
             else:
                 records = self._wfs_records(

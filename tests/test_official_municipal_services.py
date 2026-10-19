@@ -9,6 +9,7 @@ from imobhunter.sources.official_municipal_services import (
     RIO_GEOPAL_LAYER,
     DF_ARCGIS_LAYER,
     GOIANIA_ARCGIS_LAYER,
+    BLUMENAU_ARCGIS_LAYER,
     OfficialMunicipalServicesAdapter,
     _cadastral_layers,
     _official_url,
@@ -450,4 +451,60 @@ def test_goiania_arcgis_maps_official_cadastral_fields_without_mislabeling_sql(t
     assert record.attributes["sql_status"] == "not_provided_by_layer"
     assert record.attributes["service_url"] == GOIANIA_ARCGIS_LAYER
     assert record.attributes["official_source"] == "Prefeitura de Goiânia — Cadastro Imobiliário"
+    assert json.loads(record.attributes["geometry_geojson"])["type"] == "Polygon"
+
+
+def test_blumenau_arcgis_maps_lot_geometry_and_keeps_iq_distinct_from_sql(tmp_path):
+    class BlumenauGeocoder:
+        def geocode(self, _query):
+            return {"latitude": -26.9194, "longitude": -49.0661}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        expected_path = BLUMENAU_ARCGIS_LAYER.removeprefix(
+            "https://geo.blumenau.sc.gov.br"
+        )
+        assert request.url.path == expected_path + "/query"
+        params = dict(request.url.params)
+        assert params["geometryType"] == "esriGeometryPoint"
+        assert params["inSR"] == "4326"
+        assert params["outSR"] == "4326"
+        return httpx.Response(200, json={
+            "features": [{
+                "attributes": {
+                    "OBJECTID": 412,
+                    "IQ": "BLU-001-0023",
+                    "NUMLOTE": 23,
+                    "NOBAIRRO": "CENTRO",
+                    "AREA_CARTOGRAFICA": 410.0,
+                },
+                "geometry": {
+                    "rings": [[
+                        [-49.0662, -26.9195], [-49.0660, -26.9195],
+                        [-49.0660, -26.9193], [-49.0662, -26.9195],
+                    ]],
+                },
+            }],
+        })
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = OfficialMunicipalServicesAdapter(
+        cache_dir=tmp_path / "cache", client=client, geocoder=BlumenauGeocoder()
+    )
+    records = adapter.search(SearchRequest(
+        address="Rua XV de Novembro", number="100", city="Blumenau", state="SC"
+    ))
+    client.close()
+
+    assert len(records) == 1
+    record = records[0]
+    assert record.city == "Blumenau"
+    assert record.state == "SC"
+    assert record.lot == "23"
+    assert record.area_m2 == 410.0
+    assert record.attributes["parcel_identifier"] == "BLU-001-0023"
+    assert record.attributes["neighborhood"] == "CENTRO"
+    assert record.attributes["sql"] is None
+    assert record.attributes["sql_status"] == "not_provided_by_layer"
+    assert record.attributes["service_url"] == BLUMENAU_ARCGIS_LAYER
+    assert record.attributes["official_source"] == "Prefeitura de Blumenau — Cadastro de Lotes"
     assert json.loads(record.attributes["geometry_geojson"])["type"] == "Polygon"
