@@ -4,7 +4,7 @@ import argparse
 import json
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -57,7 +57,7 @@ def _record_summary(record: Any) -> dict[str, Any]:
 
 
 def build_report() -> dict[str, Any]:
-    tested_at = datetime.now(timezone.utc).isoformat()
+    tested_at = datetime.now(UTC).isoformat()
     results = []
     with tempfile.TemporaryDirectory(prefix="imobhunter-live-cadastre-") as temp:
         root = Path(temp)
