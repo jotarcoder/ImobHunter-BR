@@ -85,6 +85,14 @@ CASES = [
         "state": "SC",
         "adapter": "official_municipal",
     },
+    {
+        "municipality": "Recife/PE",
+        "address": "Avenida Conde da Boa Vista",
+        "number": "100",
+        "city": "Recife",
+        "state": "PE",
+        "adapter": "official_municipal",
+    },
 ]
 
 
