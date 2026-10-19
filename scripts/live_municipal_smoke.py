@@ -42,8 +42,14 @@ def main() -> int:
                 "quadra": record.block,
                 "lote": record.lot,
                 "area_m2": record.area_m2,
+                "built_area_m2": record.attributes.get("built_area_m2"),
                 "sql": record.attributes.get("sql"),
                 "sql_status": record.attributes.get("sql_status"),
+                "cadastre_match": (
+                    record.attributes.get("cadastre_match")
+                    or record.attributes.get("house_number_match")
+                    or "not_marked_by_adapter"
+                ),
                 "geometry": bool(record.attributes.get("geometry_geojson")),
                 "service_url": record.attributes.get("service_url"),
                 "layer": record.attributes.get("wfs_layer"),
@@ -64,7 +70,7 @@ def main() -> int:
                 "sample_records": record_rows,
                 "adapter_error": error,
                 "diagnostics": diagnostics,
-                "result": "PASS" if records else "FAIL_NO_FEATURES",
+                "result": "PASS_FEATURES_RETURNED" if records else "FAIL_NO_FEATURES",
             }
             results.append(row)
             if not records:
@@ -78,7 +84,11 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    print("LIVE MUNICIPAL TEST PASSED: all tested addresses returned cadastral features.")
+    print(
+        "LIVE MUNICIPAL TEST PASSED: every test returned one or more official "
+        "cadastral features. Spatial candidates are not proof of an exact address "
+        "match or legal ownership; inspect cadastre_match and source fields."
+    )
     return 0
 
 
