@@ -49,6 +49,13 @@ def main() -> int:
                 "layer": record.attributes.get("wfs_layer"),
             } for record in records[:5]]
             error = getattr(adapter, "last_errors", {}).get(city)
+            diagnostics = getattr(adapter, "last_diagnostics", {}).get(city)
+            if source == "geosampa" and records:
+                diagnostics = {
+                    "endpoint": getattr(adapter, "endpoint", None),
+                    "layer": getattr(adapter, "layer", None),
+                    "source": "GeoSampaAdapter",
+                }
             row = {
                 "municipality": f"{city}/{state}",
                 "address_tested": f"{street}, {number}",
@@ -56,6 +63,7 @@ def main() -> int:
                 "records_returned": len(records),
                 "sample_records": record_rows,
                 "adapter_error": error,
+                "diagnostics": diagnostics,
                 "result": "PASS" if records else "FAIL_NO_FEATURES",
             }
             results.append(row)
