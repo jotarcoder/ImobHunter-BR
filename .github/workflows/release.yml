@@ -254,7 +254,7 @@ jobs:
   macos-arm:
     needs: meta
     if: github.event_name == 'pull_request' || needs.meta.outputs.should_release == 'true'
-    runs-on: macos-26
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
         with:
