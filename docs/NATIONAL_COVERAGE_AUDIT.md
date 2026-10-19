@@ -60,6 +60,12 @@ Teste unitário com resposta simulada comprova comportamento diante daquela resp
 - Builds verdes não substituem teste manual de fluxo.
 - Só declarar conclusão quando os quatro pacotes forem do mesmo commit validado.
 
+## Relatório automatizado já iniciado
+
+O smoke test `scripts/live_municipal_smoke.py` agora produz um relatório JSON por execução, com município, endereço testado, estado de conexão, resultado cadastral, campos disponíveis, endpoint/camada quando identificados, timestamp e limitações. O workflow `Live municipal integration smoke` anexa esse arquivo como artefato por 14 dias.
+
+**Limite atual:** são quatro endereços fixos (São Paulo, Praia Grande, Belo Horizonte e Rio de Janeiro), não uma medição nacional. `parcel_found` significa que o adaptador retornou geometria candidata; não comprova correspondência exata, propriedade ou titularidade.
+
 ## Próxima entrega técnica
 
-Automatizar um relatório de cobertura real por município/fonte, distinguindo explicitamente `not_tested`, `connection_ok`, `address_found`, `parcel_found` e `field_available`. O relatório será a base para ampliar cobertura nacional sem declarar suporte ainda não comprovado.
+Expandir o relatório para descoberta controlada de municípios e serviços oficiais a partir de catálogos, com limites de taxa, cache, allowlist de domínios oficiais e estados explícitos `not_tested`, `connection_ok`, `address_found`, `parcel_found` e `field_available`. A expansão precisa registrar quais municípios foram realmente testados e não converter ausência de resposta em suporte presumido.
