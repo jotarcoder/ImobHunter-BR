@@ -20,7 +20,7 @@ MUNICIPAL_WFS = {
     ("praia grande", "sp"): {
         "city": "Praia Grande",
         "state": "SP",
-        "url": "https://geoserver.praiagrande.sp.gov.br/PraiaGrandeProducao/wfs",
+        "url": "https://geoserver.praiagrande.sp.gov.br/PraiaGrandePlantaCadastral/wfs",
     },
     ("belo horizonte", "mg"): {
         "city": "Belo Horizonte",
@@ -93,7 +93,7 @@ def _first(properties: dict[str, Any], *names: str) -> Any:
     }
     for name in names:
         value = by_fold.get(name.casefold().replace("_", "").replace(" ", ""))
-        if value not in (None, ""):
+        if value not in (None, "") and str(value).strip() not in {"-", "—"}:
             return value
     return None
 
@@ -270,20 +270,33 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 lat, lon = _lat_lon(geometry)
                 sql = _first(
                     properties, "sql", "nr_contribuinte", "inscricao_imobiliaria",
-                    "inscricao_cadastral", "indice_cadastral", "lancamento",
+                    "inscricao_cadastral", "indice_cadastral", "indice_cadastral",
+                    "lancamento",
                 )
-                block = _first(properties, "quadra", "cd_quadra", "cd_quadra_fiscal")
-                lot = _first(properties, "lote", "cd_lote", "lote_fiscal")
+                cib = _first(properties, "cib", "cd_cib", "codigo_cib")
+                block = _first(
+                    properties, "quadra", "cd_quadra", "cd_quadra_fiscal",
+                    "numero_quadra", "cod_quadra",
+                )
+                lot = _first(
+                    properties, "lote", "cd_lote", "lote_fiscal", "nulotctm",
+                )
                 area = _area(_first(
                     properties, "area_m2", "area_terreno", "area_lote",
                     "qt_area_terreno", "area_total_terreno",
                 ))
+                street = _first(
+                    properties, "endereco", "logradouro", "nm_logradouro",
+                    "nome_logradouro", "endereco_oficial", "endereco_iptu",
+                )
+                number = _first(properties, "numero_imovel", "numero", "numero_predial")
+                address = str(street or request.address or "")
+                if number not in (None, "") and str(number) not in address:
+                    address = f"{address}, {number}" if address else str(number)
                 records.append(PropertyRecord(
                     property_id=str(feature.get("id") or sql or "") or None,
-                    address=str(_first(
-                        properties, "endereco", "logradouro", "nm_logradouro",
-                        "endereco_oficial", "endereco_iptu",
-                    ) or request.address or ""),
+                    cib=str(cib) if cib not in (None, "") else None,
+                    address=address,
                     city=city, state=state,
                     block=str(block) if block not in (None, "") else None,
                     lot=str(lot) if lot not in (None, "") else None,
@@ -358,11 +371,17 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 continue
             lat, lon = _lat_lon(geometry)
             sql = _first(properties, "inscricao_imobiliaria", "inscricao_cadastral", "cadastral")
+            cib = _first(properties, "cib", "cd_cib", "codigo_cib")
             block = _first(properties, "quadra", "cod_quadra")
             lot = _first(properties, "lote", "np", "chavegeo", "ch_lote")
-            area = _area(_first(properties, "area_m2", "area_descrita", "shape_area"))
+            area = _area(_first(
+                properties, "area_m2", "area_descrita", "shape_area", "shape__area",
+            ))
+            registry_number = _first(properties, "matricula", "rgi")
             records.append(PropertyRecord(
                 property_id=str(_first(properties, "objectid", "globalid", "chavegeo") or "") or None,
+                registry_number=str(registry_number) if registry_number not in (None, "") else None,
+                cib=str(cib) if cib not in (None, "") else None,
                 address=str(_first(properties, "endereco", "logradouro", "endereco_completo") or request.address or ""),
                 city=city, state=state,
                 block=str(block) if block not in (None, "") else None,
