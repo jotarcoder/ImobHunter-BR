@@ -67,9 +67,12 @@ def test_belo_horizonte_wfs_returns_geometry_quadra_lote_and_sql(tmp_path):
                 },
                 "properties": {
                     "quadra": "07",
-                    "lote": "42",
-                    "area_terreno": "350.5",
-                    "inscricao_imobiliaria": "123456789",
+                    "NULOTCTM": "42",
+                    "AREA_TERRENO": "350.5",
+                    "INDICE_CADASTRAL": "001020 001W0042",
+                    "CIB": "CIB-123",
+                    "NOME_LOGRADOURO": "Rua da Bahia",
+                    "NUMERO_IMOVEL": 1000,
                 },
             }],
         })
@@ -90,8 +93,10 @@ def test_belo_horizonte_wfs_returns_geometry_quadra_lote_and_sql(tmp_path):
     assert record.block == "07"
     assert record.lot == "42"
     assert record.area_m2 == 350.5
-    assert record.attributes["sql"] == "123456789"
+    assert record.attributes["sql"] == "001020 001W0042"
     assert record.attributes["sql_status"] == "provided_by_layer"
+    assert record.cib == "CIB-123"
+    assert record.address == "Rua da Bahia, 1000"
     assert json.loads(record.attributes["geometry_geojson"])["type"] == "Polygon"
 
 
