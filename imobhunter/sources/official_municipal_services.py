@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import ssl
 import unicodedata
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -218,6 +219,9 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         if self._client is not None:
             return self._client, False
         return httpx.Client(
+            # Use the operating system trust store while still validating TLS. Some
+            # municipal portals chain their certificates through system-installed CAs.
+            verify=ssl.create_default_context(),
             timeout=httpx.Timeout(self.timeout),
             headers={"User-Agent": "ImobHunter-BR/0.1.19 municipal-cadastre"},
             follow_redirects=True,
