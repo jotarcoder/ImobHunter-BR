@@ -177,6 +177,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         self.timeout = timeout
         self.last_errors: dict[str, str] = {}
         self.last_diagnostics: dict[str, dict[str, Any]] = {}
+        self.last_geocoded: dict[str, dict[str, Any]] = {}
 
     def status(self) -> SourceStatus:
         detail = (
@@ -228,6 +229,12 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             ) if part
         )
         result = self._geocoder.geocode(query)
+        self.last_geocoded[request.city] = {
+            "query": query,
+            "display_name": result.get("display_name"),
+            "latitude": result.get("latitude"),
+            "longitude": result.get("longitude"),
+        }
         return float(result["latitude"]), float(result["longitude"])
 
     @staticmethod
@@ -250,6 +257,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         layers = _cadastral_layers(capabilities.text)
         diagnostic: dict[str, Any] = {
             "endpoint": endpoint,
+            "geocoded_address": self.last_geocoded.get(city),
             "capabilities_layer_count": len(all_layers),
             "capabilities_layers": [
                 {"name": layer["name"], "title": layer["title"]}
@@ -292,6 +300,11 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                     "numero_lancamento",
                 )
                 cib = _first(properties, "cib", "cd_cib", "codigo_cib")
+                top_id = _first(properties, "top_id", "topid", "id_lote")
+                built_area = _area(_first(
+                    properties, "area_construida", "area_construcao",
+                    "vwSomaAreas_IPTU2026_total_const",
+                ))
                 block = _first(
                     properties, "quadra", "cd_quadra", "cd_quadra_fiscal",
                     "numero_quadra", "cod_quadra", "novins",
@@ -315,7 +328,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 if number not in (None, "") and str(number) not in address:
                     address = f"{address}, {number}" if address else str(number)
                 records.append(PropertyRecord(
-                    property_id=str(feature.get("id") or sql or "") or None,
+                    property_id=str(feature.get("id") or top_id or sql or "") or None,
                     cib=str(cib) if cib not in (None, "") else None,
                     address=address,
                     city=city, state=state,
@@ -330,6 +343,15 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                         "wfs_layer": layer["name"],
                         "geometry_geojson": json.dumps(geometry, ensure_ascii=False),
                         "source_properties": properties,
+                        "top_id": str(top_id) if top_id not in (None, "") else None,
+                        "built_area_m2": built_area,
+                        "fiscal_status": _first(properties, "fiscal"),
+                        "real_status": _first(properties, "real"),
+                        "parcel_status": _first(properties, "situacao"),
+                        "parcel_domain": _first(properties, "dominio"),
+                        "parcel_type": _first(properties, "tipo", "tipo_do_lote"),
+                        "tax_status": _first(properties, "tributo"),
+                        "gabarito": _first(properties, "gabarito"),
                         "sql": str(sql) if sql not in (None, "") else None,
                         "iptu_registration_number": str(sql) if sql not in (None, "") else None,
                         "sql_status": "provided_by_layer" if sql not in (None, "") else "not_provided_by_layer",
@@ -370,6 +392,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             raise TypeError("ArcGIS REST municipal retornou JSON sem a lista features.")
         self.last_diagnostics[city] = {
             "endpoint": RIO_ARCGIS_LAYER,
+            "geocoded_address": self.last_geocoded.get(city),
             "feature_count": len(payload["features"]),
             "fields": sorted({
                 str(key)
