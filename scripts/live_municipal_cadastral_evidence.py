@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import tempfile
 import time
-from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
 
@@ -128,7 +127,7 @@ def main() -> None:
                 item["status"] = "sql_returned" if item["sql_count"] else (
                     "records_without_sql" if records else "zero_records"
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - preserve each endpoint failure in the evidence report.
                 item["status"] = "request_error"
                 item["errors"]["exception"] = f"{type(exc).__name__}: {str(exc)[:300]}"
             if hasattr(adapter, "last_diagnostics"):
