@@ -8,6 +8,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -15,6 +16,18 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[dev]"
-      - run: python -m compileall -q imobhunter tests
+      - run: python -m compileall -q imobhunter tests scripts
       - run: pytest
       - run: ruff check .
+      - name: Query live municipal cadastral sources (evidence only)
+        id: municipal-evidence
+        continue-on-error: true
+        run: python scripts/live_municipal_cadastral_evidence.py
+      - name: Upload municipal evidence report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-municipal-cadastral-evidence
+          path: municipal-cadastral-evidence.json
+          if-no-files-found: warn
+          retention-days: 14
