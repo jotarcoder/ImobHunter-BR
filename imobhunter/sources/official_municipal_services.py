@@ -470,6 +470,59 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                     "query_fallback": "point_intersection_without_distance",
                     "initial_error": first_error,
                 }
+            elif layer_url == GOIANIA_ARCGIS_LAYER:
+                # Goiânia's public layer can reject spatial filters with HTTP 400.
+                # Fall back to a documented street-name attribute query, rather
+                # than returning unrelated parcels or failing the whole lookup.
+                street_tokens = [
+                    token.upper()
+                    for token in _fold(request.address or "").split()
+                    if len(token) > 2
+                    and token not in {
+                        "avenida", "av", "rua", "travessa", "alameda",
+                        "rodovia", "praca", "largo", "estrada",
+                    }
+                    and not token.isdigit()
+                ]
+                street_token = street_tokens[-1] if street_tokens else ""
+                if street_token:
+                    street_params = {
+                        "where": f"UPPER(nmlogradou) LIKE '%{street_token.replace(chr(39), chr(39) * 2)}%'",
+                        "outFields": "*",
+                        "returnGeometry": "true",
+                        "outSR": 4326,
+                        "f": "json",
+                        "resultRecordCount": MAX_FEATURES,
+                    }
+                    street_payload = self._get(url, street_params).json()
+                else:
+                    street_payload = None
+                if isinstance(street_payload, dict) and isinstance(street_payload.get("features"), list):
+                    payload = street_payload
+                    self.last_diagnostics[city] = {
+                        "endpoint": layer_url,
+                        "query_fallback": "street_name_attribute_query",
+                        "street_token": street_token,
+                        "initial_error": first_error,
+                        "spatial_fallback_error": (
+                            fallback_payload.get("error")
+                            if isinstance(fallback_payload, dict) else type(fallback_payload).__name__
+                        ),
+                    }
+                else:
+                    fallback_error = (
+                        fallback_payload.get("error")
+                        if isinstance(fallback_payload, dict) else type(fallback_payload).__name__
+                    )
+                    street_error = (
+                        street_payload.get("error")
+                        if isinstance(street_payload, dict) else type(street_payload).__name__
+                    )
+                    raise TypeError(
+                        "ArcGIS REST municipal sem lista features; "
+                        f"consulta inicial={first_error!r}; fallback={fallback_error!r}; "
+                        f"consulta por logradouro={street_error!r}"
+                    )
             else:
                 fallback_error = (
                     fallback_payload.get("error")
