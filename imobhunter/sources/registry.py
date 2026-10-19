@@ -9,6 +9,7 @@ from .iphan import IPHANAdapter
 from .municipal_iptu import MunicipalIPTUAdapter
 from .osm import OSMAdapter
 from .geosampa import GeoSampaAdapter
+from .national_geocoder import NationalAddressGeocoderAdapter
 from .sicar import SICARAdapter
 from .sigef import SIGEFAdapter
 from .sinter import SINTERAdapter
@@ -37,6 +38,7 @@ class SourceRegistry:
 def build_default_registry() -> SourceRegistry:
     registry = SourceRegistry({})
     registry.register(GeoSampaAdapter())
+    registry.register(NationalAddressGeocoderAdapter())
     registry.register(CNEFEAdapter())
     registry.register(SINTERAdapter())
     registry.register(SNCRAdapter())
