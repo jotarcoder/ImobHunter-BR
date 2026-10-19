@@ -27,6 +27,16 @@ MUNICIPAL_WFS = {
         "state": "MG",
         "url": "https://bhmap.pbh.gov.br/v2/api/idebhgeo/wfs",
     },
+    ("santos", "sp"): {
+        "city": "Santos",
+        "state": "SP",
+        "url": "https://egov.santos.sp.gov.br/geoserver/wfs",
+    },
+    ("bertioga", "sp"): {
+        "city": "Bertioga",
+        "state": "SP",
+        "url": "https://geoportal.bertioga.sp.gov.br/geoserver/ows",
+    },
 }
 RIO_ARCGIS_LAYER = (
     "https://pgeo3.rio.rj.gov.br/arcgis/rest/services/"
@@ -160,9 +170,9 @@ def _lat_lon(geometry: dict[str, Any]) -> tuple[float | None, float | None]:
 class OfficialMunicipalServicesAdapter(SourceAdapter):
     """Direct integrations for documented municipal parcel services.
 
-    Current direct integrations: Praia Grande/SP and Belo Horizonte/MG (WFS),
-    Rio de Janeiro/RJ and Distrito Federal (ArcGIS REST). São Paulo capital
-    remains covered by GeoSampaAdapter. This is not nationwide coverage.
+    Current direct integrations: Praia Grande/SP, Santos/SP, Bertioga/SP and
+    Belo Horizonte/MG (WFS), Rio de Janeiro/RJ and Distrito Federal (ArcGIS REST).
+    São Paulo capital remains covered by GeoSampaAdapter. This is not nationwide coverage.
     """
 
     source_id = "official_municipal_services"
@@ -304,8 +314,10 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                     continue
                 lat, lon = _lat_lon(geometry)
                 sql = _first(
-                    properties, "sql", "nr_contribuinte", "inscricao_imobiliaria",
-                    "inscricao_cadastral", "indice_cadastral", "lancamento",
+                    properties, "sql", "cod_sql", "codigo_sql", "sq_l", "s_q_l",
+                    "setor_quadra_lote", "nr_contribuinte", "inscricao_imobiliaria",
+                    "inscricao_municipal", "insc_imob", "inscricao_cadastral",
+                    "indice_cadastral", "geolot", "inscricao_do_lote", "lancamento",
                     "numero_lancamento",
                 )
                 cib = _first(properties, "cib", "cd_cib", "codigo_cib")
