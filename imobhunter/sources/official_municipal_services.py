@@ -20,7 +20,7 @@ MUNICIPAL_WFS = {
     ("praia grande", "sp"): {
         "city": "Praia Grande",
         "state": "SP",
-        "url": "https://geoserver.praiagrande.sp.gov.br/geoserver/PraiaGrandePlantaCadastral/wfs",
+        "url": "https://geoserver.praiagrande.sp.gov.br/PraiaGrandePlantaCadastral/wfs",
     },
     ("belo horizonte", "mg"): {
         "city": "Belo Horizonte",
@@ -83,6 +83,22 @@ def _cadastral_layers(xml_text: str) -> list[dict[str, str]]:
         label = f"{layer['name']} {layer['title']}".casefold()
         if any(term in label for term in CADASTRAL_TERMS):
             result.append(layer)
+
+    def priority(layer: dict[str, str]) -> int:
+        name = _fold(layer["name"]).replace(" ", "")
+        if any(term in name for term in (
+            "cadastroimobiliario", "lotesfiscais", "imoveisterritoriais",
+        )):
+            return 0
+        if any(term in name for term in ("lote_ctm", "lotes_total", ":lotes")):
+            return 1
+        if "loteamentoaprovado" in name:
+            return 2
+        if "quadra" in name:
+            return 3
+        return 4
+
+    result.sort(key=priority)
     return result[:6]
 
 
@@ -276,18 +292,21 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 cib = _first(properties, "cib", "cd_cib", "codigo_cib")
                 block = _first(
                     properties, "quadra", "cd_quadra", "cd_quadra_fiscal",
-                    "numero_quadra", "cod_quadra",
+                    "numero_quadra", "cod_quadra", "novins",
                 )
                 lot = _first(
                     properties, "lote", "cd_lote", "lote_fiscal", "nulotctm",
+                    "numero_lote", "lotes",
                 )
                 area = _area(_first(
                     properties, "area_m2", "area_terreno", "area_lote",
                     "qt_area_terreno", "area_total_terreno", "area_lote_m2",
+                    "area_terreno_m2", "area_total_do_terreno",
                 ))
                 street = _first(
                     properties, "endereco", "logradouro", "nm_logradouro",
                     "nome_logradouro", "endereco_oficial", "endereco_iptu",
+                    "endereco_local", "endereco_entrega", "local_do_imovel",
                 )
                 number = _first(properties, "numero_imovel", "numero", "numero_predial")
                 address = str(street or request.address or "")
