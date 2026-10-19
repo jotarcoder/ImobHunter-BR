@@ -487,7 +487,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 street_token = street_tokens[-1] if street_tokens else ""
                 if street_token:
                     street_params = {
-                        "where": f"UPPER(nmlogradou) LIKE '%{street_token.replace(chr(39), chr(39) * 2)}%'",
+                        "where": f"nmlogradou LIKE '%{street_token.replace(chr(39), chr(39) * 2)}%'",
                         "outFields": "*",
                         "returnGeometry": "true",
                         "outSR": 4326,
