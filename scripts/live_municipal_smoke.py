@@ -74,9 +74,21 @@ def build_report() -> dict[str, Any]:
             request = SearchRequest(
                 address=street, number=number, city=city, state=state
             )
-            records = adapter.search(request)
-            error = getattr(adapter, "last_errors", {}).get(city)
+            try:
+                records = adapter.search(request)
+                error = getattr(adapter, "last_errors", {}).get(city)
+            except Exception as exc:
+                # Keep collecting the remaining municipalities and always emit a
+                # diagnostic artifact, even when an external service times out.
+                records = []
+                error = f"{type(exc).__name__}: {exc}"
             diagnostics = getattr(adapter, "last_diagnostics", {}).get(city)
+            if error and not diagnostics:
+                diagnostics = {
+                    "source": adapter.source_id,
+                    "endpoint": getattr(adapter, "endpoint", None),
+                    "note": "Consulta falhou; ver adapter_error para o diagnóstico.",
+                }
             if source == "geosampa" and records:
                 diagnostics = {
                     "endpoint": getattr(adapter, "endpoint", None),
