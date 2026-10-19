@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
+
+import httpx
 
 from imobhunter.application.address_geocoding import CachedAddressGeocoder
 from imobhunter.domain.models import SearchRequest
@@ -16,11 +21,46 @@ CASES = (
     ("Belo Horizonte", "MG", "Rua da Bahia", "1000", "official"),
     ("Rio de Janeiro", "RJ", "Avenida Rio Branco", "1", "official"),
 )
+FIELD_MAP = {
+    "quadra": lambda record: record.block,
+    "lote": lambda record: record.lot,
+    "area_m2": lambda record: record.area_m2,
+    "sql_iptu": lambda record: record.attributes.get("sql"),
+    "cib": lambda record: record.cib,
+    "matricula": lambda record: record.attributes.get("matricula"),
+    "geometry": lambda record: record.attributes.get("geometry_geojson"),
+}
 
 
-def main() -> int:
+def _record_summary(record: Any) -> dict[str, Any]:
+    available = [
+        name for name, getter in FIELD_MAP.items()
+        if getter(record) not in (None, "", False)
+    ]
+    return {
+        "address": record.address,
+        "quadra": record.block,
+        "lote": record.lot,
+        "area_m2": record.area_m2,
+        "sql": record.attributes.get("sql"),
+        "sql_status": record.attributes.get("sql_status"),
+        "cib": record.cib,
+        "matricula": record.attributes.get("matricula"),
+        "cadastre_match": (
+            record.attributes.get("cadastre_match")
+            or record.attributes.get("house_number_match")
+            or "not_marked_by_adapter"
+        ),
+        "geometry": bool(record.attributes.get("geometry_geojson")),
+        "service_url": record.attributes.get("service_url"),
+        "layer": record.attributes.get("wfs_layer"),
+        "fields_available": available,
+    }
+
+
+def build_report() -> dict[str, Any]:
+    tested_at = datetime.now(UTC).isoformat()
     results = []
-    failed = False
     with tempfile.TemporaryDirectory(prefix="imobhunter-live-cadastre-") as temp:
         root = Path(temp)
         geocoder = CachedAddressGeocoder(
@@ -36,58 +76,102 @@ def main() -> int:
             request = SearchRequest(
                 address=street, number=number, city=city, state=state
             )
-            records = adapter.search(request)
-            record_rows = [{
-                "address": record.address,
-                "quadra": record.block,
-                "lote": record.lot,
-                "area_m2": record.area_m2,
-                "built_area_m2": record.attributes.get("built_area_m2"),
-                "sql": record.attributes.get("sql"),
-                "sql_status": record.attributes.get("sql_status"),
-                "cadastre_match": (
-                    record.attributes.get("cadastre_match")
-                    or record.attributes.get("house_number_match")
-                    or "not_marked_by_adapter"
-                ),
-                "geometry": bool(record.attributes.get("geometry_geojson")),
-                "service_url": record.attributes.get("service_url"),
-                "layer": record.attributes.get("wfs_layer"),
-            } for record in records[:5]]
-            error = getattr(adapter, "last_errors", {}).get(city)
+            try:
+                records = adapter.search(request)
+                error = getattr(adapter, "last_errors", {}).get(city)
+            except (httpx.HTTPError, RuntimeError, ValueError) as exc:
+                # Keep collecting the remaining municipalities and always emit a
+                # diagnostic artifact, even when an external service times out.
+                records = []
+                error = f"{type(exc).__name__}: {exc}"
             diagnostics = getattr(adapter, "last_diagnostics", {}).get(city)
+            if error and not diagnostics:
+                diagnostics = {
+                    "source": adapter.source_id,
+                    "endpoint": getattr(adapter, "endpoint", None),
+                    "note": "Consulta falhou; ver adapter_error para o diagnóstico.",
+                }
             if source == "geosampa" and records:
                 diagnostics = {
                     "endpoint": getattr(adapter, "endpoint", None),
                     "layer": getattr(adapter, "layer", None),
                     "source": "GeoSampaAdapter",
                 }
-            row = {
+            summaries = [_record_summary(record) for record in records[:5]]
+            has_geometry = any(row["geometry"] for row in summaries)
+            if error:
+                coverage_status = "query_failed"
+                connection_status = "error"
+            elif has_geometry:
+                coverage_status = "parcel_found"
+                connection_status = "responded"
+            elif records:
+                coverage_status = "address_found"
+                connection_status = "responded"
+            elif diagnostics:
+                coverage_status = "connection_ok"
+                connection_status = "responded"
+            else:
+                coverage_status = "no_result"
+                connection_status = "unknown"
+            fields = sorted({
+                field for row in summaries for field in row["fields_available"]
+            })
+            results.append({
+                "tested_at_utc": tested_at,
                 "municipality": f"{city}/{state}",
                 "address_tested": f"{street}, {number}",
                 "adapter": adapter.source_id,
+                "connection_status": connection_status,
+                "coverage_status": coverage_status,
                 "records_returned": len(records),
-                "sample_records": record_rows,
+                "fields_available": fields,
+                "sample_records": summaries,
                 "adapter_error": error,
                 "diagnostics": diagnostics,
-                "result": "PASS_FEATURES_RETURNED" if records else "FAIL_NO_FEATURES",
-            }
-            results.append(row)
-            if not records:
-                failed = True
+                "limitations": (
+                    "Retorno espacial não comprova correspondência exata do endereço, "
+                    "propriedade legal ou titularidade. Campos ausentes não foram inferidos."
+                ),
+            })
+    return {
+        "schema_version": 1,
+        "generated_at_utc": tested_at,
+        "scope": "smoke tests de quatro endereços fixos; não representa cobertura nacional",
+        "results": results,
+    }
 
-    print(json.dumps(results, ensure_ascii=False, indent=2))
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Gera relatório verificável de cobertura cadastral municipal ao vivo."
+    )
+    parser.add_argument(
+        "--report-file",
+        type=Path,
+        help="Opcional: grava o relatório JSON neste caminho.",
+    )
+    args = parser.parse_args()
+    report = build_report()
+    rendered = json.dumps(report, ensure_ascii=False, indent=2)
+    print(rendered)
+    if args.report_file:
+        args.report_file.parent.mkdir(parents=True, exist_ok=True)
+        args.report_file.write_text(rendered + "\n", encoding="utf-8")
+    failed = any(
+        row["coverage_status"] in {"query_failed", "no_result"}
+        for row in report["results"]
+    )
     if failed:
         print(
-            "LIVE MUNICIPAL TEST FAILED: one or more real-address searches returned "
-            "no cadastral features. Inspect the per-source error or layer response above.",
+            "LIVE MUNICIPAL TEST FAILED: consulte connection_status, adapter_error "
+            "e diagnostics no relatório JSON.",
             file=sys.stderr,
         )
         return 1
     print(
-        "LIVE MUNICIPAL TEST PASSED: every test returned one or more official "
-        "cadastral features. Spatial candidates are not proof of an exact address "
-        "match or legal ownership; inspect cadastre_match and source fields."
+        "LIVE MUNICIPAL TEST PASSED: todos os endereços de teste retornaram "
+        "registro ou diagnóstico de conexão. Isso não comprova cobertura nacional."
     )
     return 0
 
