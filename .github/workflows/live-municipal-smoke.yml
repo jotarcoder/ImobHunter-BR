@@ -1,0 +1,28 @@
+name: Live municipal integration smoke
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "imobhunter/sources/**"
+      - "tests/test_official_municipal_services.py"
+      - "scripts/live_municipal_smoke.py"
+      - ".github/workflows/live-municipal-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-municipal-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e .
+      - name: Test real addresses against official municipal services
+        run: python -u scripts/live_municipal_smoke.py
