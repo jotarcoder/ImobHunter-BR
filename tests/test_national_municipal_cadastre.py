@@ -101,7 +101,7 @@ def test_discovers_official_municipal_wfs_and_returns_polygon_with_provenance(tm
 
     assert len(records) == 1
     record = records[0]
-    assert record.property_id == "42"
+    assert record.property_id == "lote.42"
     assert record.block == "07"
     assert record.lot == "42"
     assert record.area_m2 == 350.5
