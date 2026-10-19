@@ -13,7 +13,7 @@ CSW = """<?xml version="1.0"?>
   <csw:SearchResults>
     <csw:Record>
       <dc:identifier xmlns:dc="http://purl.org/dc/elements/1.1/">muni-cadastre-1</dc:identifier>
-      <dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">Cadastro imobiliário municipal — lotes urbanos</dc:title>
+      <dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">Cadastro imobiliário municipal — Município de Teste, SP — lotes urbanos</dc:title>
       <dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Prefeitura Municipal</dc:creator>
       <dc:subject xmlns:dc="http://purl.org/dc/elements/1.1/">quadra; lote; cadastro territorial</dc:subject>
       <dct:references xmlns:dct="http://purl.org/dc/terms/" scheme="WFS">https://cadastro.exemplo.gov.br/geoserver/ows</dct:references>
@@ -66,7 +66,8 @@ def test_discovers_official_municipal_wfs_and_returns_polygon_with_provenance(tm
     def handler(request: httpx.Request) -> httpx.Response:
         calls.append(request)
         if request.method == "POST":
-            assert "cadastro imobiliario" in request.content.decode("utf-8").casefold()
+            query_text = request.content.decode("utf-8").casefold()
+            assert "município de teste" in query_text or "municipio de teste" in query_text
             return httpx.Response(200, text=CSW)
         params = dict(request.url.params)
         if params.get("request") == "GetCapabilities":
