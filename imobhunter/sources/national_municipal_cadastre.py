@@ -41,6 +41,15 @@ def _official_endpoint(url: str | None) -> bool:
     )
 
 
+def _wfs_endpoint(url: str | None) -> bool:
+    if not _official_endpoint(url):
+        return False
+    parsed = urlparse(url or "")
+    path = parsed.path.casefold()
+    query = parsed.query.casefold().replace("%3d", "=")
+    return any(token in path for token in ("/wfs", "/ows", "geoserver")) or "service=wfs" in query
+
+
 def _layer_candidates(xml_text: str) -> list[dict[str, str]]:
     try:
         root = ET.fromstring(xml_text)
@@ -206,7 +215,7 @@ class NationalMunicipalCadastreAdapter(SourceAdapter):
                         continue
                     if service.service_type and service.service_type.upper() not in {"WFS", "OGC:API"}:
                         continue
-                    if not _official_endpoint(service.url):
+                    if not _wfs_endpoint(service.url):
                         continue
                     if not any(token in combined for token in (
                         request.city.casefold(), request.state.casefold(), "municipal", "prefeitura",
@@ -298,7 +307,7 @@ class NationalMunicipalCadastreAdapter(SourceAdapter):
                         )
                         block = _attribute(properties, "quadra", "numero_quadra", "cd_quadra", "quadra_fiscal")
                         lot = _attribute(properties, "lote", "numero_lote", "cd_lote", "inscricao_imobiliaria")
-                        area = _float(_attribute(properties, "area_m2", "area_terreno", "area_lote", "area"))
+                        area = _float(_attribute(properties, "area_m2", "area_terreno", "area_lote"))
                         safe_properties = {
                             str(key): value for key, value in properties.items()
                             if value is not None and len(str(value)) <= 500
