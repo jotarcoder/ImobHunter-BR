@@ -91,6 +91,8 @@ def test_discovers_official_municipal_wfs_and_returns_polygon_with_provenance(tm
                     "area_m2": "350.5",
                     "logradouro": "Rua Exemplo",
                     "inscricao_imobiliaria": "123.456.789",
+                    "nome_contribuinte": "Contribuinte de teste",
+                    "ano_referencia": "2025",
                 },
             }],
         })
@@ -110,8 +112,13 @@ def test_discovers_official_municipal_wfs_and_returns_polygon_with_provenance(tm
     assert record.lot == "42"
     assert record.area_m2 == 350.5
     assert record.attributes["cadastre_match"] == "spatial_candidate_only"
-    assert record.attributes["sql_status"] == "not_provided_by_layer"
-    assert record.attributes["iptu_status"] == "not_provided_by_layer"
+    assert record.attributes["sql"] == "123.456.789"
+    assert record.attributes["iptu_registration_number"] == "123.456.789"
+    assert record.attributes["sql_status"] == "provided_by_layer"
+    assert record.attributes["iptu_status"] == "provided_by_layer"
+    assert record.attributes["taxpayer_name"] == "Contribuinte de teste"
+    assert record.attributes["taxpayer_name_status"] == "provided_by_source"
+    assert record.attributes["iptu_reference_year"] == "2025"
     assert record.attributes["owner_status"] == "not_provided_by_layer"
     assert record.attributes["geometry_geojson"].startswith('{"type": "Polygon"')
     assert record.provenance[0].source_id == "national_municipal_cadastre"
