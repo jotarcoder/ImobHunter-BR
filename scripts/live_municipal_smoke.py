@@ -25,7 +25,7 @@ def main() -> int:
         root = Path(temp)
         geocoder = CachedAddressGeocoder(
             root / "geocoding.sqlite3",
-            "ImobHunter-BR live municipal integration check (contact: support@imobhunter-br.invalid)",
+            "ImobHunter-BR/0.1.19 (live municipal integration test)",
         )
         geosampa = GeoSampaAdapter(geocoder=geocoder)
         official = OfficialMunicipalServicesAdapter(
