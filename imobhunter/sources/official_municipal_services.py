@@ -20,7 +20,7 @@ MUNICIPAL_WFS = {
     ("praia grande", "sp"): {
         "city": "Praia Grande",
         "state": "SP",
-        "url": "https://geoserver.praiagrande.sp.gov.br/PraiaGrandePlantaCadastral/wfs",
+        "url": "https://geoserver.praiagrande.sp.gov.br/geoserver/PraiaGrandePlantaCadastral/wfs",
     },
     ("belo horizonte", "mg"): {
         "city": "Belo Horizonte",
@@ -88,11 +88,11 @@ def _cadastral_layers(xml_text: str) -> list[dict[str, str]]:
 
 def _first(properties: dict[str, Any], *names: str) -> Any:
     by_fold = {
-        str(key).casefold().replace("_", "").replace(" ", ""): value
+        _fold(str(key)).replace("_", "").replace(" ", ""): value
         for key, value in properties.items()
     }
     for name in names:
-        value = by_fold.get(name.casefold().replace("_", "").replace(" ", ""))
+        value = by_fold.get(_fold(name).replace("_", "").replace(" ", ""))
         if value not in (None, "") and str(value).strip() not in {"-", "—"}:
             return value
     return None
@@ -270,8 +270,8 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 lat, lon = _lat_lon(geometry)
                 sql = _first(
                     properties, "sql", "nr_contribuinte", "inscricao_imobiliaria",
-                    "inscricao_cadastral", "indice_cadastral", "indice_cadastral",
-                    "lancamento",
+                    "inscricao_cadastral", "indice_cadastral", "lancamento",
+                    "numero_lancamento",
                 )
                 cib = _first(properties, "cib", "cd_cib", "codigo_cib")
                 block = _first(
@@ -283,7 +283,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 )
                 area = _area(_first(
                     properties, "area_m2", "area_terreno", "area_lote",
-                    "qt_area_terreno", "area_total_terreno",
+                    "qt_area_terreno", "area_total_terreno", "area_lote_m2",
                 ))
                 street = _first(
                     properties, "endereco", "logradouro", "nm_logradouro",
