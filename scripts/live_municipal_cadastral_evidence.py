@@ -69,6 +69,22 @@ CASES = [
         "state": "DF",
         "adapter": "official_municipal",
     },
+    {
+        "municipality": "Goiânia/GO",
+        "address": "Avenida Goiás",
+        "number": "1",
+        "city": "Goiânia",
+        "state": "GO",
+        "adapter": "official_municipal",
+    },
+    {
+        "municipality": "Blumenau/SC",
+        "address": "Rua XV de Novembro",
+        "number": "100",
+        "city": "Blumenau",
+        "state": "SC",
+        "adapter": "official_municipal",
+    },
 ]
 
 

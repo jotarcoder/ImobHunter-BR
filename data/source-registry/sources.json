@@ -54,9 +54,9 @@
       "category": "municipal",
       "tier": "mixed",
       "status": "implemented",
-      "validation": "known_official_endpoints_with_unit_tests",
-      "scope": "São Paulo capital (GeoSampa); Praia Grande/SP; Belo Horizonte/MG; Rio de Janeiro/RJ; Distrito Federal",
-      "limitations": "Cobertura limitada às fontes listadas; no DF, camada pública informa inscrição IPTU/CIU, endereço, lote/quadra e áreas, mas o retorno espacial é candidato e não prova titularidade."
+      "validation": "official_endpoints_and_unit_tests; Goiânia and Blumenau adapters implemented in PR #139, pending live evidence",
+      "scope": "São Paulo capital (GeoSampa); Praia Grande/SP; Belo Horizonte/MG; Rio de Janeiro/RJ; Distrito Federal; Santos/SP; Bertioga/SP; Goiânia/GO; Blumenau/SC (camadas cadastrais ArcGIS; teste ao vivo por endereço pendente)",
+      "limitations": "Cobertura limitada às cidades e camadas listadas; integração não garante que cada endereço retorne SQL/IPTU. Em Goiânia, nrinscr é inscrição municipal; em Blumenau, IQ é identificador cadastral de lote. Nenhum dos dois é rotulado como SQL sem definição fiscal oficial."
     },
     {
       "id": "national_municipal_cadastre",

@@ -51,6 +51,14 @@ DF_ARCGIS_LAYER = (
     "https://www.geoservicos.ide.df.gov.br/arcgis/rest/services/"
     "Aplicacoes/CERTIDAO_IMOVEL/FeatureServer/0"
 )
+GOIANIA_ARCGIS_LAYER = (
+    "https://portalmapa.goiania.go.gov.br/servicogyn/rest/services/"
+    "MapaServer/Feature_Base/MapServer/3"
+)
+BLUMENAU_ARCGIS_LAYER = (
+    "https://geo.blumenau.sc.gov.br/server/rest/services/"
+    "Cadastro_Imobiliario/Lotes_Blumenau/FeatureServer/0"
+)
 CADASTRAL_TERMS = (
     "lote", "lotes", "parcela", "parcelas", "quadra", "imobiliario",
     "imobiliário", "iptu", "inscricao_imobiliaria", "inscrição imobiliária",
@@ -173,8 +181,9 @@ def _lat_lon(geometry: dict[str, Any]) -> tuple[float | None, float | None]:
 class OfficialMunicipalServicesAdapter(SourceAdapter):
     """Direct integrations for documented municipal parcel services.
 
-    Current direct integrations: Praia Grande/SP, Santos/SP, Bertioga/SP and
-    Belo Horizonte/MG (WFS), Rio de Janeiro/RJ and Distrito Federal (ArcGIS REST).
+    Current direct integrations: Praia Grande/SP, Santos/SP and Bertioga/SP,
+    Belo Horizonte/MG (WFS), Rio de Janeiro/RJ and Distrito Federal (ArcGIS REST),
+    Goiânia/GO and Blumenau/SC (ArcGIS REST cadastral layers).
     São Paulo capital remains covered by GeoSampaAdapter. This is not nationwide coverage.
     """
 
@@ -204,7 +213,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
     def status(self) -> SourceStatus:
         detail = (
             "Integrações diretas configuradas para Praia Grande/SP, Belo Horizonte/MG, "
-            "Rio de Janeiro/RJ e Distrito Federal; São Paulo capital usa GeoSampa. "
+            "Rio de Janeiro/RJ, Distrito Federal, Goiânia/GO e Blumenau/SC; São Paulo capital usa GeoSampa. "
             "Cobertura, atributos e disponibilidade dependem da camada oficial."
         )
         if self.last_errors:
@@ -415,9 +424,15 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         request: SearchRequest, *, layer_url: str = RIO_ARCGIS_LAYER,
     ) -> list[PropertyRecord]:
         url = layer_url + "/query"
+        # Goiânia's ArcGIS 10.4 layer is stricter about the geometry payload:
+        # include the point's spatial reference inside the geometry object as well
+        # as the inSR query parameter. Keep all other municipalities unchanged.
+        point_geometry = {"x": longitude, "y": latitude}
+        if layer_url == GOIANIA_ARCGIS_LAYER:
+            point_geometry["spatialReference"] = {"wkid": 4326}
         response = self._get(url, {
             "where": "1=1",
-            "geometry": json.dumps({"x": longitude, "y": latitude}),
+            "geometry": json.dumps(point_geometry),
             "geometryType": "esriGeometryPoint",
             "inSR": 4326,
             "spatialRel": "esriSpatialRelIntersects",
@@ -430,9 +445,95 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             "resultRecordCount": MAX_FEATURES,
         })
         payload = response.json()
+        # Some ArcGIS municipal services reject distance-buffer queries despite
+        # exposing a public layer. Retry the same point intersection without the
+        # optional distance/units parameters before reporting a source failure.
         if not isinstance(payload, dict) or not isinstance(payload.get("features"), list):
-            raise TypeError("ArcGIS REST municipal retornou JSON sem a lista features.")
+            first_error = payload.get("error") if isinstance(payload, dict) else None
+            fallback_params = {
+                "where": "1=1",
+                "geometry": json.dumps(point_geometry),
+                "geometryType": "esriGeometryPoint",
+                "inSR": 4326,
+                "spatialRel": "esriSpatialRelIntersects",
+                "outFields": "*",
+                "returnGeometry": "true",
+                "outSR": 4326,
+                "f": "json",
+                "resultRecordCount": MAX_FEATURES,
+            }
+            fallback_payload = self._get(url, fallback_params).json()
+            if isinstance(fallback_payload, dict) and isinstance(fallback_payload.get("features"), list):
+                payload = fallback_payload
+                self.last_diagnostics[city] = {
+                    "endpoint": layer_url,
+                    "query_fallback": "point_intersection_without_distance",
+                    "initial_error": first_error,
+                }
+            elif layer_url == GOIANIA_ARCGIS_LAYER:
+                # Goiânia's public layer can reject spatial filters with HTTP 400.
+                # Fall back to a documented street-name attribute query, rather
+                # than returning unrelated parcels or failing the whole lookup.
+                street_tokens = [
+                    token.upper()
+                    for token in _fold(request.address or "").split()
+                    if len(token) > 2
+                    and token not in {
+                        "avenida", "av", "rua", "travessa", "alameda",
+                        "rodovia", "praca", "largo", "estrada",
+                    }
+                    and not token.isdigit()
+                ]
+                street_token = street_tokens[-1] if street_tokens else ""
+                if street_token:
+                    street_params = {
+                        "where": f"nmlogradou LIKE '%{street_token.replace(chr(39), chr(39) * 2)}%'",
+                        "outFields": "*",
+                        "returnGeometry": "true",
+                        "outSR": 4326,
+                        "f": "json",
+                        "resultRecordCount": MAX_FEATURES,
+                    }
+                    street_payload = self._get(url, street_params).json()
+                else:
+                    street_payload = None
+                if isinstance(street_payload, dict) and isinstance(street_payload.get("features"), list):
+                    payload = street_payload
+                    self.last_diagnostics[city] = {
+                        "endpoint": layer_url,
+                        "query_fallback": "street_name_attribute_query",
+                        "street_token": street_token,
+                        "initial_error": first_error,
+                        "spatial_fallback_error": (
+                            fallback_payload.get("error")
+                            if isinstance(fallback_payload, dict) else type(fallback_payload).__name__
+                        ),
+                    }
+                else:
+                    fallback_error = (
+                        fallback_payload.get("error")
+                        if isinstance(fallback_payload, dict) else type(fallback_payload).__name__
+                    )
+                    street_error = (
+                        street_payload.get("error")
+                        if isinstance(street_payload, dict) else type(street_payload).__name__
+                    )
+                    raise TypeError(
+                        "ArcGIS REST municipal sem lista features; "
+                        f"consulta inicial={first_error!r}; fallback={fallback_error!r}; "
+                        f"consulta por logradouro={street_error!r}"
+                    )
+            else:
+                fallback_error = (
+                    fallback_payload.get("error")
+                    if isinstance(fallback_payload, dict) else type(fallback_payload).__name__
+                )
+                raise TypeError(
+                    "ArcGIS REST municipal sem lista features; "
+                    f"consulta inicial={first_error!r}; fallback={fallback_error!r}"
+                )
         self.last_diagnostics[city] = {
+            **self.last_diagnostics.get(city, {}),
             "endpoint": layer_url,
             "geocoded_address": self.last_geocoded.get(city),
             "feature_count": len(payload["features"]),
@@ -460,20 +561,40 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 properties, "inscricao_imobiliaria", "inscricao_cadastral", "cadastral",
                 "iptu_imovel",
             )
+            is_goiania = layer_url == GOIANIA_ARCGIS_LAYER
+            is_blumenau = layer_url == BLUMENAU_ARCGIS_LAYER
             cib = _first(properties, "cib", "cd_cib", "codigo_cib")
-            block = _first(properties, "quadra", "cod_quadra", "lt_quadra")
-            lot = _first(properties, "lote", "np", "chavegeo", "ch_lote", "lt_lote")
+            block = _first(
+                properties, "nrquadra", "quadra", "cod_quadra", "lt_quadra"
+            )
+            lot = _first(
+                properties, "nrlote", "numlote", "lote", "np", "chavegeo", "ch_lote", "lt_lote"
+            )
             area = _area(_first(
-                properties, "area_m2", "area_descrita", "shape_area", "shape__area",
-                "iptu_area_terr",
+                properties, "areaterr", "area_cartografica", "area_m2", "area_descrita", "shape_area",
+                "shape__area", "iptu_area_terr",
             ))
             built_area = _area(_first(
-                properties, "ac_area_ct", "area_construida", "area_construcao",
+                properties, "areaedif", "ac_area_ct", "area_construida", "area_construcao",
             ))
-            address = _first(
-                properties, "endereco", "logradouro", "endereco_completo",
+            street = _first(
+                properties, "nmlogradou", "endereco", "logradouro", "endereco_completo",
                 "iptu_endereco", "lt_endereco",
             )
+            street_number = _first(properties, "nrimovel", "numero", "numero_imovel")
+            address = (
+                f"{street}, {street_number}"
+                if street not in (None, "") and street_number not in (None, "")
+                else street or request.address or ""
+            )
+            municipal_registration = _first(
+                properties, "nrinscr", "inscricao_municipal", "inscricao_cadastral"
+            ) if is_goiania else None
+            parcel_identifier = _first(properties, "iq", "parcel_identifier") if is_blumenau else None
+            if is_goiania:
+                # nrinscr is retained as the source's registration field; do not
+                # mislabel it as SQL/IPTU without an authoritative field definition.
+                sql = _first(properties, "sql", "inscricao_sql", "codigo_sql")
             ciu = _first(properties, "iptu_ciu")
             registry_number = _first(properties, "matricula", "rgi")
             records.append(PropertyRecord(
@@ -488,7 +609,11 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 attributes={
                     "source": self.source_id,
                     "official_source": (
-                        "IDE-DF — Lotes com Inscrição do IPTU"
+                        "Prefeitura de Goiânia — Cadastro Imobiliário"
+                        if is_goiania
+                        else "Prefeitura de Blumenau — Cadastro de Lotes"
+                        if is_blumenau
+                        else "IDE-DF — Lotes com Inscrição do IPTU"
                         if layer_url == DF_ARCGIS_LAYER
                         else "Prefeitura da Cidade do Rio de Janeiro — GeoPAL/IMOVEIS_TERRITORIAIS"
                     ),
@@ -498,6 +623,14 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                     "source_properties": properties,
                     "built_area_m2": built_area,
                     "iptu_ciu": str(ciu) if ciu not in (None, "") else None,
+                    "municipal_registration_number": (
+                        str(municipal_registration)
+                        if municipal_registration not in (None, "") else None
+                    ),
+                    "parcel_identifier": (
+                        str(parcel_identifier) if parcel_identifier not in (None, "") else None
+                    ),
+                    "neighborhood": _first(properties, "nobairro", "bairro") if is_blumenau else None,
                     "sql": str(sql) if sql not in (None, "") else None,
                     "iptu_registration_number": str(sql) if sql not in (None, "") else None,
                     "sql_status": "provided_by_layer" if sql not in (None, "") else "not_provided_by_layer",
@@ -591,6 +724,12 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         elif city_key in {"brasilia", "distrito federal", "df"} and state_key in {"df", "distrito federal", "brasilia"}:
             city, state, service_key = "Brasília", "DF", "df"
             configured = None
+        elif city_key in {"goiania", "goiania (go)"} and state_key in {"go", "goias", "goiás"}:
+            city, state, service_key = "Goiânia", "GO", "goiania"
+            configured = None
+        elif city_key == "blumenau" and state_key in {"sc", "santa catarina"}:
+            city, state, service_key = "Blumenau", "SC", "blumenau"
+            configured = None
         else:
             service_key = (city_key, state_key)
             configured = MUNICIPAL_WFS.get(service_key)
@@ -616,6 +755,14 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             elif service_key == "df":
                 records = self._arcgis_records(
                     city, state, latitude, longitude, request, layer_url=DF_ARCGIS_LAYER
+                )
+            elif service_key == "goiania":
+                records = self._arcgis_records(
+                    city, state, latitude, longitude, request, layer_url=GOIANIA_ARCGIS_LAYER
+                )
+            elif service_key == "blumenau":
+                records = self._arcgis_records(
+                    city, state, latitude, longitude, request, layer_url=BLUMENAU_ARCGIS_LAYER
                 )
             else:
                 records = self._wfs_records(
