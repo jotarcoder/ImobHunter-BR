@@ -4,6 +4,7 @@ from imobhunter.domain.models import SearchRequest
 from imobhunter.sources.national_municipal_cadastre import (
     NationalMunicipalCadastreAdapter,
     _official_endpoint,
+    _wfs_endpoint,
     _representative_point,
 )
 
@@ -46,6 +47,8 @@ def test_only_https_government_hosts_are_queried():
     assert _official_endpoint("https://cadastro.exemplo.gov.br/geoserver/ows")
     assert not _official_endpoint("http://cadastro.exemplo.gov.br/geoserver/ows")
     assert not _official_endpoint("https://random.example/geoserver/ows")
+    assert _wfs_endpoint("https://cadastro.exemplo.gov.br/geoserver/ows")
+    assert not _wfs_endpoint("https://cadastro.exemplo.gov.br/geoserver/wms")
 
 
 def test_representative_point_supports_polygon_geometry():
