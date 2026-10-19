@@ -4,6 +4,7 @@ import hashlib
 import json
 import math
 import time
+import unicodedata
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,11 @@ CADASTRAL_TERMS = (
 
 def _local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1].casefold()
+
+
+def _fold(value: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", value.casefold())
+    return " ".join("".join(char for char in decomposed if not unicodedata.combining(char)).split())
 
 
 def _official_endpoint(url: str | None) -> bool:
@@ -173,7 +179,7 @@ class NationalMunicipalCadastreAdapter(SourceAdapter):
             return None
         if self._geocoder is None:
             self._geocoder = CachedAddressGeocoder(
-                self.cache_dir / "address-geocoding.sqlite3", USER_AGENT
+                Path.home() / ".imobhunter" / "geocoding.sqlite3", USER_AGENT
             )
         query = ", ".join(part for part in (
             " ".join(part for part in (request.address, request.number) if part),
@@ -196,10 +202,7 @@ class NationalMunicipalCadastreAdapter(SourceAdapter):
 
         client, owned = self._http()
         found: dict[str, GeospatialService] = {}
-        queries = (
-            f'"{request.city}" "{request.state}" cadastro imobiliario lote',
-            f'"{request.city}" "{request.state}" cadastro territorial quadra',
-        )
+        queries = (request.city, f"{request.city} cadastro")
         try:
             for query in queries:
                 try:
@@ -219,10 +222,9 @@ class NationalMunicipalCadastreAdapter(SourceAdapter):
                         continue
                     if not _wfs_endpoint(service.url):
                         continue
-                    if not any(token in combined for token in (
-                        request.city.casefold(), request.state.casefold(), "municipal", "prefeitura",
-                        "cadastro territorial", "cadastro imobiliario", "cadastro imobiliário",
-                    )):
+                    folded_metadata = _fold(combined)
+                    # Require the municipality and UF to avoid cross-city parcel matches.
+                    if _fold(request.city) not in folded_metadata or _fold(request.state) not in folded_metadata:
                         continue
                     found[service.url or service.service_id] = service
                     if len(found) >= self.max_services:
@@ -233,13 +235,14 @@ class NationalMunicipalCadastreAdapter(SourceAdapter):
             if owned:
                 client.close()
         services = list(found.values())[:self.max_services]
-        try:
-            cache_path.write_text(
-                json.dumps([service.__dict__ for service in services], ensure_ascii=False),
-                encoding="utf-8",
-            )
-        except OSError:
-            pass
+        if services:
+            try:
+                cache_path.write_text(
+                    json.dumps([service.__dict__ for service in services], ensure_ascii=False),
+                    encoding="utf-8",
+                )
+            except OSError:
+                pass
         return services
 
     def _get(self, endpoint: str, params: dict[str, Any]) -> httpx.Response:
