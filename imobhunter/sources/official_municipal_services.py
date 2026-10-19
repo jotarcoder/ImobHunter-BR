@@ -94,13 +94,15 @@ def _cadastral_layers(xml_text: str) -> list[dict[str, str]]:
 
     def priority(layer: dict[str, str]) -> int:
         name = _fold(layer["name"]).replace(" ", "").replace("_", "")
-        # Prefer feature layers with individual parcel geometry over summary layers.
-        if name.endswith(":lotes"):
+        # Fiscal parcels carry IPTU/launch attributes; query them before geometry-only layers.
+        if "lotesfiscais" in name:
             return 0
-        if any(term in name for term in ("lotesfiscais", "cadastroimobiliario", "imoveisterritoriais", "lotectm")):
+        if any(term in name for term in ("cadastroimobiliario", "imoveisterritoriais", "lotectm")):
             return 1
-        if name.endswith(":lotestotal"):
+        if name.endswith(":lotes"):
             return 2
+        if name.endswith(":lotestotal"):
+            return 3
         if "loteamentoaprovado" in name:
             return 3
         if "quadra" in name:
