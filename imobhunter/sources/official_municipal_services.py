@@ -424,9 +424,15 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         request: SearchRequest, *, layer_url: str = RIO_ARCGIS_LAYER,
     ) -> list[PropertyRecord]:
         url = layer_url + "/query"
+        # Goiânia's ArcGIS 10.4 layer is stricter about the geometry payload:
+        # include the point's spatial reference inside the geometry object as well
+        # as the inSR query parameter. Keep all other municipalities unchanged.
+        point_geometry = {"x": longitude, "y": latitude}
+        if layer_url == GOIANIA_ARCGIS_LAYER:
+            point_geometry["spatialReference"] = {"wkid": 4326}
         response = self._get(url, {
             "where": "1=1",
-            "geometry": json.dumps({"x": longitude, "y": latitude}),
+            "geometry": json.dumps(point_geometry),
             "geometryType": "esriGeometryPoint",
             "inSR": 4326,
             "spatialRel": "esriSpatialRelIntersects",
@@ -446,7 +452,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             first_error = payload.get("error") if isinstance(payload, dict) else None
             fallback_params = {
                 "where": "1=1",
-                "geometry": json.dumps({"x": longitude, "y": latitude}),
+                "geometry": json.dumps(point_geometry),
                 "geometryType": "esriGeometryPoint",
                 "inSR": 4326,
                 "spatialRel": "esriSpatialRelIntersects",
