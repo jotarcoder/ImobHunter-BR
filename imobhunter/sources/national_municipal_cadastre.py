@@ -43,7 +43,7 @@ def _official_endpoint(url: str | None) -> bool:
     parsed = urlparse(url.strip())
     host = (parsed.hostname or "").casefold()
     return parsed.scheme == "https" and (
-        host.endswith(".gov.br") or host == "gov.br" or host.endswith(".gov")
+        host.endswith((".gov.br", ".gov")) or host == "gov.br"
     )
 
 
@@ -281,7 +281,7 @@ class NationalMunicipalCadastreAdapter(SourceAdapter):
         except ValueError as exc:
             raise RuntimeError("WFS cadastral oficial não retornou GeoJSON.") from exc
         if not isinstance(payload, dict) or not isinstance(payload.get("features"), list):
-            raise RuntimeError("WFS cadastral oficial retornou uma resposta GeoJSON inválida.")
+            raise TypeError("WFS cadastral oficial retornou uma resposta GeoJSON inválida.")
         return [feature for feature in payload["features"] if isinstance(feature, dict)]
 
     def search(self, request: SearchRequest) -> list[PropertyRecord]:
