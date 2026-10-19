@@ -60,7 +60,7 @@ def _local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1].casefold()
 
 
-def _cadastral_layers(xml_text: str) -> list[dict[str, str]]:
+def _all_wfs_layers(xml_text: str) -> list[dict[str, str]]:
     root = ET.fromstring(xml_text)
     result = []
     for node in root.iter():
@@ -71,11 +71,18 @@ def _cadastral_layers(xml_text: str) -> list[dict[str, str]]:
             key = _local_name(child.tag)
             if key in {"name", "title"} and child.text:
                 values[key] = child.text.strip()
-        if not values.get("name"):
-            continue
-        label = f"{values['name']} {values.get('title', '')}".casefold()
-        if any(term in label for term in CADASTRAL_TERMS):
+        if values.get("name"):
             result.append({"name": values["name"], "title": values.get("title", values["name"])})
+    return result
+
+
+def _cadastral_layers(xml_text: str) -> list[dict[str, str]]:
+    layers = _all_wfs_layers(xml_text)
+    result = []
+    for layer in layers:
+        label = f"{layer['name']} {layer['title']}".casefold()
+        if any(term in label for term in CADASTRAL_TERMS):
+            result.append(layer)
     return result[:6]
 
 
@@ -221,9 +228,15 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         capabilities = self._get(endpoint, {
             "service": "WFS", "version": "2.0.0", "request": "GetCapabilities",
         })
+        all_layers = _all_wfs_layers(capabilities.text)
         layers = _cadastral_layers(capabilities.text)
         diagnostic: dict[str, Any] = {
             "endpoint": endpoint,
+            "capabilities_layer_count": len(all_layers),
+            "capabilities_layers": [
+                {"name": layer["name"], "title": layer["title"]}
+                for layer in all_layers[:80]
+            ],
             "layers_found": [layer["name"] for layer in layers],
             "queries": [],
         }
