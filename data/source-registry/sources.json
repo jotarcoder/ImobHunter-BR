@@ -8,21 +8,165 @@
     "planned": "Ainda requer implementação."
   },
   "sources": [
-    {"id":"ibge_cnefe","name":"IBGE / CNEFE","category":"address","tier":"public","status":"implemented","validation":"adapter_present","scope":"enderecos","limitations":"Não equivale a cadastro fiscal ou geometria de lote; cobertura depende dos dados disponíveis."},
-    {"id":"ibge_localities","name":"IBGE / API de Localidades","category":"municipality","tier":"public","status":"implemented","validation":"api_client_present","scope":"municipios","limitations":"Resolve municípios e códigos IBGE; não fornece cadastro de parcelas."},
-    {"id":"ibge_sidra","name":"IBGE / SIDRA, tabela 6579","category":"demographics","tier":"public","status":"implemented","validation":"api_client_present","scope":"populacao_municipal","limitations":"Indicadores dependem da variável e período publicados; população não é indicador de renda."},
-    {"id":"sinter_cib","name":"SINTER / CIB","category":"national_cadastre","tier":"conditional","status":"conditional","validation":"adapter_present","scope":"dados_autorizados","limitations":"Não afirmar consulta online sem serviço, credenciais e autorização disponíveis."},
-    {"id":"municipal","name":"Serviços geoespaciais municipais","category":"municipal","tier":"mixed","status":"implemented","validation":"limited_known_endpoints","scope":"Praia Grande/SP; Belo Horizonte/MG; Rio de Janeiro/RJ","limitations":"Não representa cobertura de todos os municípios; cada camada precisa de teste real."},
-    {"id":"national_municipal_cadastre","name":"INDE + descoberta de cadastros municipais oficiais","category":"municipal","tier":"public","status":"discovery_only","validation":"adapter_present","scope":"descoberta_de_servicos","limitations":"Descobrir endpoint/camada não comprova busca por endereço, geometria ou campos fiscais."},
-    {"id":"geosampa","name":"GeoSampa / Prefeitura de São Paulo","category":"municipal","tier":"public","status":"implemented","validation":"adapter_present","scope":"Sao Paulo capital","limitations":"Não extrapolar cobertura para outros municípios."},
-    {"id":"cnpj","name":"Receita Federal / CNPJ","category":"company","tier":"mixed","status":"conditional","validation":"local_index_adapter_and_optional_authenticated_api","scope":"indice_local; enriquecimento_de_CNPJ_conhecido","limitations":"API autenticada enriquece CNPJs conhecidos; não descobre sozinha todas as empresas por raio/endereço. Requer credenciais válidas."},
-    {"id":"sncr","name":"INCRA / SNCR","category":"rural","tier":"conditional","status":"conditional","validation":"adapter_present","scope":"acesso_autorizado","limitations":"Não presumir API pública aberta; fluxos autenticados dependem de permissão."},
-    {"id":"sicar","name":"SICAR / CAR","category":"environmental","tier":"mixed","status":"implemented","validation":"adapter_present","scope":"camadas_disponiveis","limitations":"Cadastro ambiental rural não substitui cadastro fiscal urbano."},
-    {"id":"sigef","name":"INCRA / SIGEF","category":"rural","tier":"mixed","status":"implemented","validation":"adapter_present","scope":"camadas_e_dados_disponiveis","limitations":"Não equivale a cadastro de lote urbano nem a matrícula atualizada."},
-    {"id":"cnir","name":"INCRA / CNIR","category":"rural","tier":"conditional","status":"conditional","validation":"adapter_present","scope":"acesso_autorizado","limitations":"Disponibilidade depende dos dados e permissões do serviço."},
-    {"id":"inde","name":"INDE / catálogo de metadados geoespaciais","category":"geospatial","tier":"public","status":"discovery_only","validation":"catalog_module_present","scope":"descoberta_de_servicos","limitations":"Catálogo não é base de imóveis e não garante que cada serviço esteja ativo."},
-    {"id":"icmbio","name":"ICMBio","category":"environmental","tier":"public","status":"implemented","validation":"adapter_present","scope":"camadas_ambientais","limitations":"Contexto geográfico, não prova de propriedade ou dado fiscal."},
-    {"id":"iphan","name":"IPHAN","category":"heritage","tier":"public","status":"implemented","validation":"adapter_present","scope":"camadas_de_patrimonio","limitations":"Não substitui cadastro imobiliário municipal."},
-    {"id":"osm","name":"OpenStreetMap","category":"geospatial","tier":"public","status":"implemented","validation":"adapter_present","scope":"ruas_e_referencias_mapeadas","limitations":"Cobertura variável; não é fonte fiscal oficial nem garante limites cadastrais."}
+    {
+      "id": "ibge_cnefe",
+      "name": "IBGE / CNEFE",
+      "category": "address",
+      "tier": "public",
+      "status": "implemented",
+      "validation": "adapter_present",
+      "scope": "enderecos",
+      "limitations": "Não equivale a cadastro fiscal ou geometria de lote; cobertura depende dos dados disponíveis."
+    },
+    {
+      "id": "ibge_localities",
+      "name": "IBGE / API de Localidades",
+      "category": "municipality",
+      "tier": "public",
+      "status": "implemented",
+      "validation": "api_client_present",
+      "scope": "municipios",
+      "limitations": "Resolve municípios e códigos IBGE; não fornece cadastro de parcelas."
+    },
+    {
+      "id": "ibge_sidra",
+      "name": "IBGE / SIDRA, tabela 6579",
+      "category": "demographics",
+      "tier": "public",
+      "status": "implemented",
+      "validation": "api_client_present",
+      "scope": "populacao_municipal",
+      "limitations": "Indicadores dependem da variável e período publicados; população não é indicador de renda."
+    },
+    {
+      "id": "sinter_cib",
+      "name": "SINTER / CIB",
+      "category": "national_cadastre",
+      "tier": "conditional",
+      "status": "conditional",
+      "validation": "adapter_present",
+      "scope": "dados_autorizados",
+      "limitations": "Não afirmar consulta online sem serviço, credenciais e autorização disponíveis."
+    },
+    {
+      "id": "municipal",
+      "name": "Serviços geoespaciais municipais",
+      "category": "municipal",
+      "tier": "mixed",
+      "status": "implemented",
+      "validation": "limited_known_endpoints",
+      "scope": "Praia Grande/SP; Belo Horizonte/MG; Rio de Janeiro/RJ",
+      "limitations": "Não representa cobertura de todos os municípios; cada camada precisa de teste real."
+    },
+    {
+      "id": "national_municipal_cadastre",
+      "name": "INDE + descoberta de cadastros municipais oficiais",
+      "category": "municipal",
+      "tier": "public",
+      "status": "discovery_only",
+      "validation": "inde_remote_discovery_and_https_endpoint_probe",
+      "scope": "descoberta_de_servicos",
+      "limitations": "Descoberta automatizada inicial via INDE e sondagem WFS/ArcGIS em HTTPS gov.br; não comprova consulta por endereço, geometria cadastral, cobertura municipal ou campos fiscais."
+    },
+    {
+      "id": "geosampa",
+      "name": "GeoSampa / Prefeitura de São Paulo",
+      "category": "municipal",
+      "tier": "public",
+      "status": "implemented",
+      "validation": "adapter_present",
+      "scope": "Sao Paulo capital",
+      "limitations": "Não extrapolar cobertura para outros municípios."
+    },
+    {
+      "id": "cnpj",
+      "name": "Receita Federal / CNPJ",
+      "category": "company",
+      "tier": "mixed",
+      "status": "conditional",
+      "validation": "local_index_adapter_and_optional_authenticated_api",
+      "scope": "indice_local; enriquecimento_de_CNPJ_conhecido",
+      "limitations": "API autenticada enriquece CNPJs conhecidos; não descobre sozinha todas as empresas por raio/endereço. Requer credenciais válidas."
+    },
+    {
+      "id": "sncr",
+      "name": "INCRA / SNCR",
+      "category": "rural",
+      "tier": "conditional",
+      "status": "conditional",
+      "validation": "adapter_present",
+      "scope": "acesso_autorizado",
+      "limitations": "Não presumir API pública aberta; fluxos autenticados dependem de permissão."
+    },
+    {
+      "id": "sicar",
+      "name": "SICAR / CAR",
+      "category": "environmental",
+      "tier": "mixed",
+      "status": "implemented",
+      "validation": "adapter_present",
+      "scope": "camadas_disponiveis",
+      "limitations": "Cadastro ambiental rural não substitui cadastro fiscal urbano."
+    },
+    {
+      "id": "sigef",
+      "name": "INCRA / SIGEF",
+      "category": "rural",
+      "tier": "mixed",
+      "status": "implemented",
+      "validation": "adapter_present",
+      "scope": "camadas_e_dados_disponiveis",
+      "limitations": "Não equivale a cadastro de lote urbano nem a matrícula atualizada."
+    },
+    {
+      "id": "cnir",
+      "name": "INCRA / CNIR",
+      "category": "rural",
+      "tier": "conditional",
+      "status": "conditional",
+      "validation": "adapter_present",
+      "scope": "acesso_autorizado",
+      "limitations": "Disponibilidade depende dos dados e permissões do serviço."
+    },
+    {
+      "id": "inde",
+      "name": "INDE / catálogo de metadados geoespaciais",
+      "category": "geospatial",
+      "tier": "public",
+      "status": "discovery_only",
+      "validation": "catalog_module_present",
+      "scope": "descoberta_de_servicos",
+      "limitations": "Catálogo não é base de imóveis e não garante que cada serviço esteja ativo."
+    },
+    {
+      "id": "icmbio",
+      "name": "ICMBio",
+      "category": "environmental",
+      "tier": "public",
+      "status": "implemented",
+      "validation": "adapter_present",
+      "scope": "camadas_ambientais",
+      "limitations": "Contexto geográfico, não prova de propriedade ou dado fiscal."
+    },
+    {
+      "id": "iphan",
+      "name": "IPHAN",
+      "category": "heritage",
+      "tier": "public",
+      "status": "implemented",
+      "validation": "adapter_present",
+      "scope": "camadas_de_patrimonio",
+      "limitations": "Não substitui cadastro imobiliário municipal."
+    },
+    {
+      "id": "osm",
+      "name": "OpenStreetMap",
+      "category": "geospatial",
+      "tier": "public",
+      "status": "implemented",
+      "validation": "adapter_present",
+      "scope": "ruas_e_referencias_mapeadas",
+      "limitations": "Cobertura variável; não é fonte fiscal oficial nem garante limites cadastrais."
+    }
   ]
 }
