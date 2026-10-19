@@ -53,7 +53,7 @@ DF_ARCGIS_LAYER = (
 )
 GOIANIA_ARCGIS_LAYER = (
     "https://portalmapa.goiania.go.gov.br/servicogyn/rest/services/"
-    "MapaServer/Feature_Base/FeatureServer/3"
+    "MapaServer/Feature_Base/MapServer/3"
 )
 BLUMENAU_ARCGIS_LAYER = (
     "https://geo.blumenau.sc.gov.br/server/rest/services/"
