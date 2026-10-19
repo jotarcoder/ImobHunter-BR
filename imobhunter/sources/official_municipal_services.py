@@ -59,6 +59,8 @@ BLUMENAU_ARCGIS_LAYER = (
     "https://geo.blumenau.sc.gov.br/server/rest/services/"
     "Cadastro_Imobiliario/Lotes_Blumenau/FeatureServer/0"
 )
+RECIFE_CKAN_API = "https://dados.recife.pe.gov.br/api/3/action"
+RECIFE_IPTU_DATASET_ID = "imposto-predial-e-territorial-urbano-iptu"
 CADASTRAL_TERMS = (
     "lote", "lotes", "parcela", "parcelas", "quadra", "imobiliario",
     "imobiliário", "iptu", "inscricao_imobiliaria", "inscrição imobiliária",
@@ -213,7 +215,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
     def status(self) -> SourceStatus:
         detail = (
             "Integrações diretas configuradas para Praia Grande/SP, Belo Horizonte/MG, "
-            "Rio de Janeiro/RJ, Distrito Federal, Goiânia/GO e Blumenau/SC; São Paulo capital usa GeoSampa. "
+            "Rio de Janeiro/RJ, Distrito Federal, Goiânia/GO, Blumenau/SC e Recife/PE; São Paulo capital usa GeoSampa. "
             "Cobertura, atributos e disponibilidade dependem da camada oficial."
         )
         if self.last_errors:
@@ -714,6 +716,135 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             ))
         return records
 
+
+    def _recife_records(self, request: SearchRequest) -> list[PropertyRecord]:
+        """Search Recife's official IPTU open-data API when a resource is queryable.
+
+        Public annual datasets do not guarantee a row-level datastore API or a
+        spatial parcel layer, so availability and geometry are reported explicitly.
+        """
+        package_response = self._get(f"{RECIFE_CKAN_API}/package_show", {"id": RECIFE_IPTU_DATASET_ID})
+        package_payload = package_response.json()
+        package = package_payload.get("result") if isinstance(package_payload, dict) else None
+        if not isinstance(package, dict) or not package_payload.get("success"):
+            raise TypeError("Portal de dados do Recife não retornou metadados válidos do dataset IPTU.")
+        resources = package.get("resources") or []
+        queryable = [
+            resource for resource in resources
+            if isinstance(resource, dict) and resource.get("datastore_active") is True
+        ]
+        queryable.sort(key=lambda resource: (
+            0 if "2026" in str(resource.get("name", "")) else
+            1 if "2025" in str(resource.get("name", "")) else 2
+        ))
+        diagnostic: dict[str, Any] = {
+            "endpoint": f"{RECIFE_CKAN_API}/package_show",
+            "dataset_id": RECIFE_IPTU_DATASET_ID,
+            "dataset_title": package.get("title"),
+            "license_id": package.get("license_id"),
+            "resource_count": len(resources),
+            "queryable_resource_count": len(queryable),
+            "query": request.address,
+            "query_mode": "CKAN datastore full-text search",
+            "geometry_available": False,
+        }
+        self.last_diagnostics["Recife"] = diagnostic
+        if not queryable:
+            diagnostic["result"] = "dataset_public_but_no_datastore_resource"
+            diagnostic["resource_summary"] = [
+                {"name": resource.get("name"), "format": resource.get("format"),
+                 "datastore_active": resource.get("datastore_active"), "url": resource.get("url")}
+                for resource in resources if isinstance(resource, dict)
+            ][:30]
+            return []
+        query_text = " ".join(part for part in (request.address, request.number) if part).strip()
+        if not query_text:
+            return []
+        all_rows: list[dict[str, Any]] = []
+        used_resources: list[dict[str, Any]] = []
+        for resource in queryable[:3]:
+            response = self._get(f"{RECIFE_CKAN_API}/datastore_search", {
+                "resource_id": resource.get("id"), "q": request.address or query_text,
+                "limit": MAX_FEATURES,
+            })
+            payload = response.json()
+            result = payload.get("result") if isinstance(payload, dict) else None
+            if not isinstance(result, dict) or not payload.get("success"):
+                continue
+            rows = result.get("records")
+            if isinstance(rows, list):
+                all_rows.extend(row for row in rows if isinstance(row, dict))
+                used_resources.append({
+                    "id": resource.get("id"), "name": resource.get("name"),
+                    "total": result.get("total"), "returned": len(rows),
+                    "fields": [field.get("id") for field in result.get("fields", []) if isinstance(field, dict)],
+                })
+        diagnostic["resources_queried"] = used_resources
+        diagnostic["record_count"] = len(all_rows)
+        if not all_rows:
+            diagnostic["result"] = "datastore_query_returned_no_rows"
+            return []
+        records: list[PropertyRecord] = []
+        for index, properties in enumerate(all_rows[:MAX_FEATURES]):
+            street = _first(properties, "logradouro", "nome_logradouro", "nm_logradouro",
+                             "endereco", "endereco_imovel", "localizacao", "local_do_imovel")
+            number = _first(properties, "numero", "numero_imovel", "numero_predial",
+                            "num_imovel", "nr_imovel")
+            address = str(street or request.address or "")
+            if number not in (None, "") and str(number) not in address:
+                address = f"{address}, {number}" if address else str(number)
+            folded_street = _fold(str(street or ""))
+            folded_query = _fold(request.address or "")
+            folded_number = str(number or "").strip()
+            exact_street = bool(folded_street and folded_query and
+                                (folded_street == folded_query or folded_query in folded_street))
+            exact_number = not request.number or (
+                bool(folded_number) and folded_number == str(request.number).strip()
+            )
+            sql = _first(properties, "sql", "inscricao_sql", "sq_l", "s_q_l", "setor_quadra_lote")
+            iptu_registration = _first(
+                properties, "inscricao_iptu", "inscricao_imobiliaria", "inscricao_cadastral"
+            )
+            municipal_registration = _first(properties, "inscricao_municipal", "cadastro_municipal")
+            area = _area(_first(properties, "area_terreno", "area_terreno_m2", "area_lote",
+                                 "area_m2", "area_do_terreno", "area_total_terreno"))
+            block = _first(properties, "quadra", "numero_quadra", "cod_quadra")
+            lot = _first(properties, "lote", "numero_lote", "lote_fiscal")
+            records.append(PropertyRecord(
+                property_id=str(_first(properties, "id", "codigo_imovel", "cod_imovel",
+                                        "sequencial", "inscricao") or f"recife-iptu-{index}"),
+                address=address, city="Recife", state="PE",
+                block=str(block) if block not in (None, "") else None,
+                lot=str(lot) if lot not in (None, "") else None,
+                area_m2=area, latitude=None, longitude=None,
+                attributes={
+                    "source": self.source_id,
+                    "official_source": "Prefeitura do Recife — Portal de Dados Abertos / IPTU",
+                    "service_url": f"{RECIFE_CKAN_API}/datastore_search",
+                    "service_type": "CKAN Data API",
+                    "dataset_id": RECIFE_IPTU_DATASET_ID,
+                    "resource_id": used_resources[0]["id"] if used_resources else None,
+                    "source_properties": properties,
+                    "geometry_geojson": None,
+                    "sql": str(sql) if sql not in (None, "") else None,
+                    "iptu_registration_number": str(iptu_registration) if iptu_registration not in (None, "") else None,
+                    "municipal_registration_number": str(municipal_registration) if municipal_registration not in (None, "") else None,
+                    "sql_status": "provided_by_dataset" if sql not in (None, "") else "not_provided_by_dataset",
+                    "iptu_status": "provided_by_dataset" if iptu_registration not in (None, "") else "not_provided_by_dataset",
+                    "cadastre_match": "exact_address_match" if exact_street and exact_number else "dataset_text_search_candidate",
+                    "address_match_note": "Correspondência textual conferida nos campos disponíveis; o recurso não fornece geometria.",
+                    "owner_status": "not_inferred_from_taxpayer_fields",
+                    "geometry_status": "not_provided_by_dataset",
+                },
+                provenance=(Provenance(
+                    source_id=self.source_id, confidence=0.9 if exact_street and exact_number else 0.55,
+                    reference=str(_first(properties, "id", "codigo_imovel", "cod_imovel", "sequencial") or ""),
+                ),),
+            ))
+        diagnostic["result"] = "records_returned"
+        diagnostic["returned_record_count"] = len(records)
+        return records
+
     def search(self, request: SearchRequest) -> list[PropertyRecord]:
         if not request.city or not request.state:
             return []
@@ -730,6 +861,9 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         elif city_key == "blumenau" and state_key in {"sc", "santa catarina"}:
             city, state, service_key = "Blumenau", "SC", "blumenau"
             configured = None
+        elif city_key in {"recife", "recife (pe)"} and state_key in {"pe", "pernambuco"}:
+            city, state, service_key = "Recife", "PE", "recife"
+            configured = None
         else:
             service_key = (city_key, state_key)
             configured = MUNICIPAL_WFS.get(service_key)
@@ -738,6 +872,10 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             city, state = configured["city"], configured["state"]
 
         try:
+            if service_key == "recife":
+                records = self._recife_records(request)
+                self.last_errors.pop(city, None)
+                return records
             if request.address:
                 latitude, longitude = self._geocode(request)
             elif request.block and request.lot:
