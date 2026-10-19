@@ -54,9 +54,9 @@
       "category": "municipal",
       "tier": "mixed",
       "status": "implemented",
-      "validation": "known_official_endpoints_with_unit_tests",
-      "scope": "São Paulo capital (GeoSampa); Praia Grande/SP; Belo Horizonte/MG; Rio de Janeiro/RJ; Distrito Federal",
-      "limitations": "Cobertura limitada às fontes listadas; no DF, camada pública informa inscrição IPTU/CIU, endereço, lote/quadra e áreas, mas o retorno espacial é candidato e não prova titularidade."
+      "validation": "official_endpoints_and_unit_tests; Goiania adapter implemented in PR #139, pending CI/live evidence",
+      "scope": "São Paulo capital (GeoSampa); Praia Grande/SP; Belo Horizonte/MG; Rio de Janeiro/RJ; Distrito Federal; Santos/SP; Bertioga/SP; Goiânia/GO (ArcGIS REST cadastral layer; live address result still requires validation)",
+      "limitations": "Cobertura limitada às cidades e camadas listadas; integração não garante que cada endereço retorne SQL/IPTU. Em Goiânia, nrinscr é armazenado como inscrição municipal, sem ser rotulado como SQL até confirmar a definição oficial."
     },
     {
       "id": "national_municipal_cadastre",
