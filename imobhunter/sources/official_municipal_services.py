@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+import certifi
 import httpx
 
 from imobhunter.application.address_geocoding import CachedAddressGeocoder, GeocodingError
@@ -236,11 +237,11 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         if self._client is not None:
             return self._client, False
         return httpx.Client(
-            # Use the operating system trust store while still validating TLS. Some
-            # municipal portals chain their certificates through system-installed CAs.
-            verify=ssl.create_default_context(),
+            # Use certifi's maintained CA bundle for consistent validation in packaged
+            # Windows/macOS/Linux builds. TLS verification stays enabled.
+            verify=certifi.where(),
             timeout=httpx.Timeout(self.timeout),
-            headers={"User-Agent": "ImobHunter-BR/0.1.19 municipal-cadastre"},
+            headers={"User-Agent": "ImobHunter-BR/2.0.0 municipal-cadastre"},
             follow_redirects=True,
         ), True
 
@@ -290,9 +291,22 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         self, city: str, state: str, endpoint: str, latitude: float, longitude: float,
         request: SearchRequest,
     ) -> list[PropertyRecord]:
-        capabilities = self._get(endpoint, {
-            "service": "WFS", "version": "2.0.0", "request": "GetCapabilities",
-        })
+        # Municipal GeoServer deployments vary in their WFS support. Prefer 2.0.0,
+        # then retry documented older protocol versions only when the server rejects it.
+        capabilities = None
+        wfs_version = "2.0.0"
+        for candidate_version in ("2.0.0", "1.1.0", "1.0.0"):
+            try:
+                capabilities = self._get(endpoint, {
+                    "service": "WFS", "version": candidate_version, "request": "GetCapabilities",
+                })
+                wfs_version = candidate_version
+                break
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code != 403 or candidate_version == "1.0.0":
+                    raise
+        if capabilities is None:
+            raise RuntimeError("BHMap/GeoServer não retornou capacidades WFS em versões compatíveis.")
         all_layers = _all_wfs_layers(capabilities.text)
         layers = _cadastral_layers(capabilities.text)
         diagnostic: dict[str, Any] = {
@@ -311,7 +325,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         for layer in layers:
             layer_records: list[PropertyRecord] = []
             response = self._get(endpoint, {
-                "service": "WFS", "version": "2.0.0", "request": "GetFeature",
+                "service": "WFS", "version": wfs_version, "request": "GetFeature",
                 "typeNames": layer["name"], "outputFormat": "application/json",
                 "srsName": "EPSG:4326", "bbox": self._bbox(latitude, longitude),
                 "count": MAX_FEATURES, "startIndex": 0,
