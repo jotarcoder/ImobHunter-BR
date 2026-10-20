@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+    paths:
+      - "imobhunter/sources/geosampa.py"
+      - "tests/test_geosampa.py"
+      - ".github/workflows/geosampa-live-smoke.yml"
   pull_request:
     paths:
       - "imobhunter/sources/geosampa.py"
