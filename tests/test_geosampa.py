@@ -469,3 +469,21 @@ def test_geosampa_uses_live_public_wfs_endpoint_and_parameters() -> None:
     assert params["typeName"] == "geoportal:lote_cidadao"
     assert params["outputFormat"] == "json"
     assert params["srsName"] == "EPSG:4326"
+
+
+def test_geosampa_fails_closed_when_city_or_state_is_missing() -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        return httpx.Response(200, json={"type": "FeatureCollection", "features": []}, request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = GeoSampaAdapter(client=client)
+
+    assert adapter.search(SearchRequest(address="Rua Exemplo", city="São Paulo")) == []
+    assert adapter.search(SearchRequest(address="Rua Exemplo", state="SP")) == []
+    assert adapter.search(SearchRequest(address="Rua Exemplo", city="Santos", state="SP")) == []
+    assert adapter.search(SearchRequest(address="Rua Exemplo", city="São Paulo", state="RJ")) == []
+    assert calls == []
+    client.close()
