@@ -1,13 +1,12 @@
 name: Publish installers to Cloudflare R2
 
-# Publishing is intentionally manual: validate all four installers and the
-# license/source flows before dispatching this workflow.
+# Publish only after the installer release workflow finishes successfully.
+# Manual dispatch remains available for an explicitly validated release.
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/publish-r2-installers.yml
+  workflow_run:
+    workflows: ["Release installers"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       release_tag:
@@ -20,7 +19,7 @@ permissions:
 
 jobs:
   publish:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_run') && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     steps:
       - name: Select release tag
