@@ -112,12 +112,12 @@ class GeoSampaAdapter(SourceAdapter):
         )
 
     def search(self, request: SearchRequest) -> list[PropertyRecord]:
-        if (request.state or "").strip().upper() not in ("", "SP"):
-            return []
-        if request.city and " ".join(request.city.upper().split()) not in {
-            "SAO PAULO",
-            "SÃO PAULO",
-        }:
+        # GeoSampa is the cadastral source for São Paulo capital only.
+        # Missing city/UF context must fail closed instead of querying this
+        # source for an ambiguous or different municipality.
+        state = " ".join((request.state or "").upper().split())
+        city = " ".join((request.city or "").upper().split())
+        if state != "SP" or city not in {"SAO PAULO", "SÃO PAULO"}:
             return []
 
         normalized = normalize_request(request)
