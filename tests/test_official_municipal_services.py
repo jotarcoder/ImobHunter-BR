@@ -652,3 +652,44 @@ def test_porto_alegre_arcgis_returns_official_fiscal_lot_geometry_without_invent
     assert record.attributes["official_source"] == "Prefeitura de Porto Alegre — Lotes Fiscais (SMF/SMAMUS)"
     assert record.attributes["service_url"] == PORTO_ALEGRE_ARCGIS_LAYER
     assert json.loads(record.attributes["geometry_geojson"])["type"] == "Polygon"
+
+
+
+def test_bhmap_wfs_retries_older_versions_after_forbidden(tmp_path):
+    requested_versions = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        params = dict(request.url.params)
+        if params.get("request") == "GetCapabilities":
+            requested_versions.append(params.get("version"))
+            if params.get("version") == "2.0.0":
+                return httpx.Response(403, text="forbidden")
+            return httpx.Response(200, text=CAPABILITIES)
+        assert params.get("version") == "1.1.0"
+        return httpx.Response(200, json={"type": "FeatureCollection", "features": []})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = OfficialMunicipalServicesAdapter(
+        cache_dir=tmp_path / "cache", client=client, geocoder=FakeGeocoder()
+    )
+    records = adapter.search(SearchRequest(
+        address="Rua da Bahia", number="1000", city="Belo Horizonte", state="MG"
+    ))
+    client.close()
+
+    assert records == []
+    assert requested_versions == ["2.0.0", "1.1.0"]
+    assert "Belo Horizonte" not in adapter.last_errors
+
+
+def test_bertioga_tls_client_uses_validated_certifi_bundle(tmp_path):
+    import certifi
+
+    adapter = OfficialMunicipalServicesAdapter(cache_dir=tmp_path / "cache")
+    client, owned = adapter._http()
+    try:
+        assert owned is True
+        assert client._transport is not None
+        assert certifi.where()
+    finally:
+        client.close()
