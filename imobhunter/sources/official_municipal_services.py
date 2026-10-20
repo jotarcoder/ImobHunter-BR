@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import math
-import ssl
 import unicodedata
 import xml.etree.ElementTree as ET
 from pathlib import Path
