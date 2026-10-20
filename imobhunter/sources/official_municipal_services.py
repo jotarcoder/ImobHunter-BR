@@ -921,7 +921,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 records = self._arcgis_records(
                     city, state, latitude, longitude, request, layer_url=PORTO_ALEGRE_ARCGIS_LAYER
                 )
-            else
+            else:
                 records = self._wfs_records(
                     city, state, configured["url"], latitude, longitude, request
                 )
