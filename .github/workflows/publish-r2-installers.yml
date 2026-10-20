@@ -8,7 +8,7 @@ on:
       release_tag:
         description: Validated GitHub release tag to publish
         required: true
-        default: v0.1.19
+        default: v2.0.0
 
 permissions:
   contents: read
