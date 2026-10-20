@@ -38,7 +38,7 @@ def test_landing_is_institutional_only():
     assert "magnetic-cursor" in css
     assert "cursor.className = 'magnetic-cursor'" in motion
     assert 'href="https://ridigital.org.br/" target="_blank" rel="noopener noreferrer"' in html
-    assert "ImobHunter-BR-Setup-Windows-0.1.19.exe" in html
+    assert "ImobHunter-BR-Setup-Windows-2.0.0.exe" in html
     assert "grid-template-columns:minmax(0,1fr)" in css
     assert "Premium centered composition" in css
     assert "data-magnetic" in motion
