@@ -13,6 +13,24 @@ from PySide6.QtWidgets import (
     QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
+
+# Official municipal services currently used by the address-search adapters.
+# These URLs intentionally mirror the adapter endpoints; GeoSampa is separate
+# and is only used for São Paulo capital.
+MUNICIPAL_SOURCE_ENDPOINTS = (
+    {"id": "praia_grande", "label": "Praia Grande — SP", "url": "https://geoserver.praiagrande.sp.gov.br/ows", "kind": "wfs", "layer": "Descoberta via GetCapabilities", "limits": "Atributos variam por camada; não presumir SQL/IPTU ou titularidade."},
+    {"id": "santos", "label": "Santos — SP", "url": "https://egov.santos.sp.gov.br/geoserver/wfs", "kind": "wfs", "layer": "Descoberta via GetCapabilities", "limits": "Atributos variam por camada; não presumir SQL/IPTU ou titularidade."},
+    {"id": "bertioga", "label": "Bertioga — SP", "url": "https://geoportal.bertioga.sp.gov.br/geoserver/ows", "kind": "wfs", "layer": "Descoberta via GetCapabilities", "limits": "Atributos variam por camada; não presumir SQL/IPTU ou titularidade."},
+    {"id": "belo_horizonte", "label": "Belo Horizonte — MG", "url": "https://bhmap.pbh.gov.br/v2/api/idebhgeo/wfs", "kind": "wfs", "layer": "Descoberta via GetCapabilities", "limits": "Cobertura apenas do município e das camadas publicadas."},
+    {"id": "rio_territorial", "label": "Rio de Janeiro — RJ (imóveis territoriais)", "url": "https://pgeo3.rio.rj.gov.br/arcgis/rest/services/CadParcel/IMOVEIS_TERRITORIAIS/FeatureServer/0", "kind": "arcgis", "layer": "FeatureServer/0", "limits": "Não presumir SQL/IPTU individual, titularidade ou matrícula."},
+    {"id": "rio_geopal", "label": "Rio de Janeiro — RJ (GeoPAL)", "url": "https://pgeo3.rio.rj.gov.br/arcgis/rest/services/CadParcel/GeoPAL/FeatureServer/0", "kind": "arcgis", "layer": "FeatureServer/0", "limits": "Fonte complementar; não substitui os atributos da camada territorial."},
+    {"id": "df", "label": "Distrito Federal — IDE-DF", "url": "https://www.geoservicos.ide.df.gov.br/arcgis/rest/services/Aplicacoes/CERTIDAO_IMOVEL/FeatureServer/0", "kind": "arcgis", "layer": "FeatureServer/0", "limits": "Campos disponíveis dependem do retorno da camada."},
+    {"id": "goiania", "label": "Goiânia — GO", "url": "https://portalmapa.goiania.go.gov.br/servicogyn/rest/services/MapaServer/Feature_Base/MapServer/3", "kind": "arcgis", "layer": "MapServer/3", "limits": "nrinscr é inscrição cadastral; não renomear automaticamente como SQL."},
+    {"id": "blumenau", "label": "Blumenau — SC", "url": "https://geo.blumenau.sc.gov.br/server/rest/services/Cadastro_Imobiliario/Lotes_Blumenau/FeatureServer/0", "kind": "arcgis", "layer": "FeatureServer/0", "limits": "IQ é identificador cadastral, não SQL/IPTU."},
+    {"id": "recife", "label": "Recife — PE (dados abertos IPTU)", "url": "https://dados.recife.pe.gov.br/api/3/action/package_show?id=imposto-predial-e-territorial-urbano-iptu", "kind": "ckan", "layer": "Dataset CKAN: imposto-predial-e-territorial-urbano-iptu", "limits": "Dataset não garante pesquisa por endereço nem geometria de lote."},
+    {"id": "porto_alegre", "label": "Porto Alegre — RS (lotes fiscais)", "url": "https://gis-smamus.portoalegre.rs.gov.br/server/rest/services/01_PUBLICACOES/dmweb_lotes_fiscais/MapServer/0", "kind": "arcgis", "layer": "MapServer/0", "limits": "A camada documenta id_lotes, setor, quarteirão e bairro; não confirma SQL/IPTU individual."},
+)
+
 SOURCE_FILES = (
     ("ibge_cnefe", "IBGE / CNEFE", "data_path", "CSV, ZIP, JSON ou GeoJSON"),
     ("sinter_cib", "SINTER / CIB", "data_path", "CSV, JSON ou GeoJSON"),
@@ -100,6 +118,45 @@ class SourceSettingsDialog(QDialog):
         geosampa_test.clicked.connect(self._test_geosampa)
         geosampa_row.addWidget(geosampa_test)
         form.addRow("GeoSampa — endpoint WFS", geosampa_row)
+
+        # Display the exact municipal service URLs used by the city/state-routed
+        # adapter. They are read-only here so the UI cannot silently diverge from
+        # the endpoint actually called by the adapter.
+        municipal_title = QLabel("Fontes cadastrais municipais por localidade")
+        municipal_title.setStyleSheet("font-size:16px;font-weight:800;margin-top:12px;")
+        form.addRow(municipal_title)
+        municipal_help = QLabel(
+            "A pesquisa escolhe a fonte pelo município e UF do endereço. "
+            "São Paulo capital usa exclusivamente GeoSampa; as demais localidades "
+            "usam seus próprios serviços listados abaixo. Testar conexão verifica "
+            "a resposta do serviço, não garante que todo endereço tenha cadastro."
+        )
+        municipal_help.setWordWrap(True)
+        municipal_help.setObjectName("muted")
+        form.addRow(municipal_help)
+        self.municipal_endpoint_rows = {}
+        for item in MUNICIPAL_SOURCE_ENDPOINTS:
+            endpoint_field = QLineEdit(item["url"])
+            endpoint_field.setReadOnly(True)
+            endpoint_field.setToolTip(item["url"])
+            self.municipal_endpoint_rows[item["id"]] = endpoint_field
+            open_button = QPushButton("Abrir fonte")
+            open_button.clicked.connect(
+                lambda checked=False, url=item["url"]: self._open_source_url(url)
+            )
+            test_button = QPushButton("Testar conexão")
+            test_button.clicked.connect(
+                lambda checked=False, source=item: self._test_municipal_source(source)
+            )
+            row = QHBoxLayout()
+            row.addWidget(endpoint_field, 1)
+            row.addWidget(open_button)
+            row.addWidget(test_button)
+            form.addRow(item["label"], row)
+            layer_label = QLabel(f"Serviço/camada: {item['layer']}  •  Limite: {item['limits']}")
+            layer_label.setWordWrap(True)
+            layer_label.setObjectName("muted")
+            form.addRow(layer_label)
 
         sinter = registry.get("sinter_cib")
         self.sinter_url = QLineEdit(
@@ -338,6 +395,59 @@ class SourceSettingsDialog(QDialog):
             return True
         except Exception:  # noqa: BLE001 - keyring backend errors vary by platform.
             return False
+
+
+    def _open_source_url(self, url: str) -> None:
+        import webbrowser
+        webbrowser.open(url)
+
+    def _test_municipal_source(self, source: dict[str, str]) -> None:
+        url = source["url"]
+        kind = source["kind"]
+        try:
+            if kind == "wfs":
+                response = httpx.get(
+                    url,
+                    params={"service": "WFS", "version": "1.1.0", "request": "GetCapabilities"},
+                    timeout=12.0,
+                    follow_redirects=True,
+                )
+                response.raise_for_status()
+                if "WFS_Capabilities" not in response.text and "WFS_Capabilities" not in response.text:
+                    QMessageBox.warning(self, source["label"], "O endpoint respondeu, mas não retornou WFS GetCapabilities reconhecível.")
+                    return
+                result = "O endpoint WFS respondeu ao GetCapabilities."
+            elif kind == "arcgis":
+                separator = "&" if "?" in url else "?"
+                response = httpx.get(url + separator + "f=json", timeout=12.0, follow_redirects=True)
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict) or not any(key in payload for key in ("name", "layers", "fields", "serviceDescription", "error")):
+                    QMessageBox.warning(self, source["label"], "O endpoint respondeu, mas o JSON não parece ser uma descrição ArcGIS REST.")
+                    return
+                if "error" in payload:
+                    QMessageBox.warning(self, source["label"], f"ArcGIS REST retornou erro: {payload['error']}")
+                    return
+                result = "O endpoint ArcGIS REST respondeu com metadados JSON."
+            else:
+                response = httpx.get(url, timeout=12.0, follow_redirects=True)
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict) or payload.get("success") is not True:
+                    QMessageBox.warning(self, source["label"], "O portal respondeu, mas a API CKAN não confirmou success=true.")
+                    return
+                result = "A API CKAN respondeu com success=true."
+        except (httpx.HTTPError, ValueError, TypeError) as exc:
+            QMessageBox.warning(
+                self, source["label"],
+                f"Falha ao testar a fonte oficial. Isso não significa que o imóvel não exista.\n{type(exc).__name__}: {exc}"
+            )
+            return
+        QMessageBox.information(
+            self, source["label"],
+            f"{result}\nURL: {url}\nCamada/serviço: {source['layer']}\nLimite: {source['limits']}\n\n"
+            "Teste de conexão não comprova consulta útil por endereço."
+        )
 
     def _test_geosampa(self) -> None:
         endpoint = self.geosampa_url.text().strip()
