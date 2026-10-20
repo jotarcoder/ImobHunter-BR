@@ -644,7 +644,11 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                         str(parcel_identifier) if parcel_identifier not in (None, "") else None
                     ),
                     "neighborhood": _first(properties, "nobairro", "bairro") if is_blumenau or is_porto_alegre else None,
-                    "municipal_sector": _first(properties, "setor") if is_porto_alegre else None,
+                    "municipal_sector": (
+                        str(_first(properties, "setor"))
+                        if is_porto_alegre and _first(properties, "setor") not in (None, "")
+                        else None
+                    ),
                     "sql": str(sql) if sql not in (None, "") else None,
                     "iptu_registration_number": str(sql) if sql not in (None, "") else None,
                     "sql_status": "provided_by_layer" if sql not in (None, "") else "not_provided_by_layer",
