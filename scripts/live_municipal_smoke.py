@@ -23,6 +23,7 @@ CASES = (
     ("Goiânia", "GO", "Avenida Goiás", "1", "official"),
     ("Blumenau", "SC", "Rua XV de Novembro", "100", "official"),
     ("Recife", "PE", "Avenida Conde da Boa Vista", "100", "official"),
+    ("Porto Alegre", "RS", "Rua dos Andradas", "100", "official"),
 )
 FIELD_MAP = {
     "quadra": lambda record: record.block,
