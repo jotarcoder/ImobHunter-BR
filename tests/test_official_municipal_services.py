@@ -12,6 +12,7 @@ from imobhunter.sources.official_municipal_services import (
     BLUMENAU_ARCGIS_LAYER,
     RECIFE_CKAN_API,
     RECIFE_IPTU_DATASET_ID,
+    PORTO_ALEGRE_ARCGIS_LAYER,
     OfficialMunicipalServicesAdapter,
     _cadastral_layers,
     _official_url,
@@ -593,3 +594,61 @@ def test_recife_reports_public_dataset_without_row_level_api(tmp_path):
     diagnostic = adapter.last_diagnostics["Recife"]
     assert diagnostic["result"] == "dataset_public_but_no_datastore_resource"
     assert diagnostic["queryable_resource_count"] == 0
+
+
+
+def test_porto_alegre_arcgis_returns_official_fiscal_lot_geometry_without_inventing_sql(tmp_path):
+    class PortoAlegreGeocoder:
+        def geocode(self, _query):
+            return {"latitude": -30.0346, "longitude": -51.2177}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == PORTO_ALEGRE_ARCGIS_LAYER.removeprefix(
+            "https://gis-smamus.portoalegre.rs.gov.br"
+        ) + "/query"
+        params = dict(request.url.params)
+        assert params["geometryType"] == "esriGeometryPoint"
+        assert params["inSR"] == "4326"
+        assert params["outSR"] == "4326"
+        assert params["returnGeometry"] == "true"
+        return httpx.Response(200, json={
+            "features": [{
+                "attributes": {
+                    "OBJECTID": 51,
+                    "id_lotes": 80123,
+                    "setor": 12,
+                    "qtd": 34,
+                    "bairro": "CENTRO HISTORICO",
+                },
+                "geometry": {
+                    "rings": [[
+                        [-51.2180, -30.0350], [-51.2175, -30.0350],
+                        [-51.2175, -30.0345], [-51.2180, -30.0350],
+                    ]],
+                },
+            }],
+        })
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = OfficialMunicipalServicesAdapter(
+        cache_dir=tmp_path / "cache", client=client, geocoder=PortoAlegreGeocoder()
+    )
+    records = adapter.search(SearchRequest(
+        address="Rua dos Andradas", number="100", city="Porto Alegre", state="RS"
+    ))
+    client.close()
+
+    assert len(records) == 1
+    record = records[0]
+    assert record.city == "Porto Alegre" and record.state == "RS"
+    assert record.block == "34"
+    assert record.attributes["parcel_identifier"] == "80123"
+    assert record.attributes["municipal_sector"] == "12"
+    assert record.attributes["neighborhood"] == "CENTRO HISTORICO"
+    assert record.attributes["sql"] is None
+    assert record.attributes["iptu_registration_number"] is None
+    assert record.attributes["sql_status"] == "not_provided_by_layer"
+    assert record.attributes["cadastre_match"] == "spatial_candidate_only"
+    assert record.attributes["official_source"] == "Prefeitura de Porto Alegre — Lotes Fiscais (SMF/SMAMUS)"
+    assert record.attributes["service_url"] == PORTO_ALEGRE_ARCGIS_LAYER
+    assert json.loads(record.attributes["geometry_geojson"])["type"] == "Polygon"

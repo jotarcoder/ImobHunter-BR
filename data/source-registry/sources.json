@@ -55,8 +55,8 @@
       "tier": "mixed",
       "status": "implemented",
       "validation": "official_endpoints_and_unit_tests; Recife CKAN IPTU API adapter added; live API evidence pending",
-      "scope": "São Paulo capital (GeoSampa); Praia Grande/SP; Belo Horizonte/MG; Rio de Janeiro/RJ; Distrito Federal; Santos/SP; Bertioga/SP; Goiânia/GO; Blumenau/SC (camadas cadastrais ArcGIS; teste ao vivo por endereço pendente); Recife/PE (portal oficial de IPTU via CKAN Data API, sem geometria confirmada)",
-      "limitations": "Cobertura limitada às cidades e camadas listadas; integração não garante que cada endereço retorne SQL/IPTU. Em Goiânia, nrinscr é inscrição municipal; em Blumenau, IQ é identificador cadastral de lote. Nenhum dos dois é rotulado como SQL sem definição fiscal oficial. Recife: consulta por endereço depende de recurso com datastore ativo e campos compatíveis; sem geometria confirmada e sem inferência de titularidade."
+      "scope": "São Paulo capital (GeoSampa); Praia Grande/SP; Belo Horizonte/MG; Rio de Janeiro/RJ; Distrito Federal; Santos/SP; Bertioga/SP; Goiânia/GO; Blumenau/SC; Recife/PE (IPTU via CKAN); Porto Alegre/RS (camada ArcGIS oficial de lotes fiscais, geometria e identificador de lote, sem SQL confirmado)",
+      "limitations": "Cobertura limitada às cidades e camadas listadas; integração não garante que cada endereço retorne SQL/IPTU. Goiânia nrinscr e Blumenau IQ não são rotulados como SQL. Recife depende de recurso CKAN consultável e não fornece geometria confirmada. Porto Alegre retorna candidatos espaciais da camada fiscal de lotes; id_lotes é identificador cadastral, não SQL/IPTU; sem inferência de titularidade."
     },
     {
       "id": "national_municipal_cadastre",
@@ -167,6 +167,16 @@
       "validation": "adapter_present",
       "scope": "ruas_e_referencias_mapeadas",
       "limitations": "Cobertura variável; não é fonte fiscal oficial nem garante limites cadastrais."
+    },
+    {
+      "id": "porto_alegre_fiscal_lots",
+      "name": "Prefeitura de Porto Alegre / Lotes Fiscais (SMF/SMAMUS)",
+      "category": "municipal",
+      "tier": "public",
+      "status": "implemented",
+      "validation": "arcgis_rest_adapter_and_unit_test; live address evidence pending",
+      "scope": "consulta espacial por endereço geocodificado; identificador de lote, setor, quarteirão, bairro e geometria quando retornados",
+      "limitations": "A camada pública documenta id_lotes, setor, qtd (quarteirão) e bairro; não publica SQL/IPTU individual nem área nos campos documentados. Resultado é candidato espacial, não correspondência exata do endereço ou titularidade."
     },
     {
       "id": "recife_iptu_open_data",

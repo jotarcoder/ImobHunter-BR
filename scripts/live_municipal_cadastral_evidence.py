@@ -93,6 +93,14 @@ CASES = [
         "state": "PE",
         "adapter": "official_municipal",
     },
+    {
+        "municipality": "Porto Alegre/RS",
+        "address": "Rua dos Andradas",
+        "number": "100",
+        "city": "Porto Alegre",
+        "state": "RS",
+        "adapter": "official_municipal",
+    },
 ]
 
 
