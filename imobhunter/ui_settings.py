@@ -413,7 +413,7 @@ class SourceSettingsDialog(QDialog):
                     follow_redirects=True,
                 )
                 response.raise_for_status()
-                if "WFS_Capabilities" not in response.text and "WFS_Capabilities" not in response.text:
+                if "WFS_Capabilities" not in response.text:
                     QMessageBox.warning(self, source["label"], "O endpoint respondeu, mas não retornou WFS GetCapabilities reconhecível.")
                     return
                 result = "O endpoint WFS respondeu ao GetCapabilities."
