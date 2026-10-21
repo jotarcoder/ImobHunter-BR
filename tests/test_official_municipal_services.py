@@ -1,5 +1,6 @@
 import json
 
+import certifi
 import httpx
 
 from imobhunter.domain.models import SearchRequest
@@ -275,6 +276,27 @@ def test_rio_uses_geopal_as_secondary_parcel_source_when_territorial_layer_is_em
     assert record.attributes["service_url"] == RIO_GEOPAL_LAYER
 
 
+
+
+def test_default_http_client_uses_certifi_bundle_with_tls_verification_enabled(tmp_path, monkeypatch):
+    captured = {}
+
+    class DummyClient:
+        pass
+
+    def fake_client(**kwargs):
+        captured.update(kwargs)
+        return DummyClient()
+
+    monkeypatch.setattr(httpx, "Client", fake_client)
+    adapter = OfficialMunicipalServicesAdapter(cache_dir=tmp_path / "cache")
+
+    client, owned = adapter._http()
+
+    assert isinstance(client, DummyClient)
+    assert owned is True
+    assert captured["verify"] == certifi.where()
+    assert captured["verify"] is not False
 
 def test_santos_and_bertioga_public_wfs_sources_are_configured():
     assert MUNICIPAL_WFS[("santos", "sp")]["url"] == "https://egov.santos.sp.gov.br/geoserver/wfs"
