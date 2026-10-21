@@ -235,9 +235,9 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
     def _http(self) -> tuple[httpx.Client, bool]:
         if self._client is not None:
             return self._client, False
+        # Use certifi's maintained CA bundle for consistent validation in packaged
+        # Windows/macOS/Linux builds. TLS verification stays enabled.
         return httpx.Client(
-            # Use certifi's maintained CA bundle for consistent validation in packaged
-            # Windows/macOS/Linux builds. TLS verification stays enabled.
             verify=certifi.where(),
             timeout=httpx.Timeout(self.timeout),
             headers={"User-Agent": "ImobHunter-BR/2.0.0 municipal-cadastre"},
