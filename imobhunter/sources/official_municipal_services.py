@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import ssl
 import unicodedata
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -235,10 +236,13 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
     def _http(self) -> tuple[httpx.Client, bool]:
         if self._client is not None:
             return self._client, False
+        # Combine the operating system trust store with certifi's maintained CA
+        # bundle. This keeps certificate verification enabled while supporting
+        # municipal servers whose chain depends on a system-installed issuer.
+        tls_context = ssl.create_default_context()
+        tls_context.load_verify_locations(cafile=certifi.where())
         return httpx.Client(
-            # Use certifi's maintained CA bundle for consistent validation in packaged
-            # Windows/macOS/Linux builds. TLS verification stays enabled.
-            verify=certifi.where(),
+            verify=tls_context,
             timeout=httpx.Timeout(self.timeout),
             headers={"User-Agent": "ImobHunter-BR/2.0.0 municipal-cadastre"},
             follow_redirects=True,
