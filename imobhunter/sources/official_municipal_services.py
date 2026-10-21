@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import json
 import math
-import ssl
 import unicodedata
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+import certifi
 import httpx
 
 from imobhunter.application.address_geocoding import CachedAddressGeocoder, GeocodingError
@@ -221,9 +221,9 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         if self._client is not None:
             return self._client, False
         return httpx.Client(
-            # Use the operating system trust store while still validating TLS. Some
-            # municipal portals chain their certificates through system-installed CAs.
-            verify=ssl.create_default_context(),
+            # Use certifi's maintained CA bundle consistently in packaged builds.
+            # TLS verification stays enabled; never fall back to verify=False.
+            verify=certifi.where(),
             timeout=httpx.Timeout(self.timeout),
             headers={"User-Agent": "ImobHunter-BR/0.1.19 municipal-cadastre"},
             follow_redirects=True,
