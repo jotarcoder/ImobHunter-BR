@@ -240,3 +240,222 @@ def test_map_offline_with_only_geocoded_point_never_draws_fiscal_polygon(monkeyp
     finally:
         widget.close()
         app.processEvents()
+
+
+
+def test_municipal_settings_show_actual_urls_and_test_without_blocking(monkeypatch):
+    """The user sees the exact adapter endpoint; a probe runs asynchronously."""
+    pytest.importorskip("PySide6")
+    from PySide6.QtCore import QThreadPool
+
+    from imobhunter.application.municipal_endpoints import settings_endpoint_rows
+    from imobhunter.application.source_probe import EndpointProbe
+    from imobhunter.sources.registry import build_default_registry
+    from imobhunter.ui_settings import SourceSettingsDialog
+    import imobhunter.ui_settings as settings_module
+
+    # Deterministic fake probe; clicking the button never performs HTTP.
+    calls = []
+    def fake_probe(item):
+        calls.append(item["id"])
+        return EndpointProbe(
+            "responded", "GetCapabilities WFS respondeu com XML válido", 18
+        )
+    monkeypatch.setattr(settings_module, "probe_endpoint", fake_probe)
+
+    app = _app()
+    dialog = SourceSettingsDialog(build_default_registry())
+    dialog.show()
+    app.processEvents()
+    try:
+        expected = {item["id"]: item for item in settings_endpoint_rows()}
+        for id_, field in dialog.municipal_endpoint_rows.items():
+            assert field.isReadOnly()
+            assert field.text() == expected[id_]["url"]
+        assert dialog.geosampa_url.text().startswith("https://")
+        assert "Indisponibilidade" in (
+            dialog._municipal_probe_labels["bertioga"].text()
+        )
+        button = dialog._municipal_probe_buttons["santos"]
+        button.click()
+        # Complete the small simulated QRunnable, then deliver the Qt signal.
+        assert QThreadPool.globalInstance().waitForDone(3000)
+        app.processEvents()
+        assert calls == ["santos"]
+        assert button.isEnabled()
+        assert "Metadados acessíveis" in (
+            dialog._municipal_probe_labels["santos"].text()
+        )
+        assert "Não confirma SQL/IPTU" in (
+            dialog._municipal_probe_labels["santos"].text()
+        )
+    finally:
+        dialog.close()
+        app.processEvents()
+
+
+
+def test_screen_fit_math_respects_taskbar_monitor_origin_and_logical_dpi() -> None:
+    pytest.importorskip("PySide6")
+    from PySide6.QtCore import QRect, QSize
+    from imobhunter.ui_responsive import geometry_within_screen
+
+    for available in (
+        QRect(0, 0, 1366, 728),  # Windows taskbar occupies the bottom.
+        QRect(0, 0, 800, 560),  # Low-resolution display.
+        QRect(1920, 50, 910, 490),  # Secondary display with 150% DPI scaling.
+        QRect(-1024, 0, 1024, 600),  # Secondary monitor to the left.
+    ):
+        desired = geometry_within_screen(
+            available, QSize(1280, 820), QSize(650, 450),
+        )
+        assert available.contains(desired)
+        assert desired.width() <= available.width() - 24
+        assert desired.height() <= available.height() - 24
+        assert desired.width() > 0 and desired.height() > 0
+
+
+def test_settings_save_and_close_buttons_fit_inside_available_screen() -> None:
+    pytest.importorskip("PySide6")
+    from PySide6.QtCore import QPoint
+    from PySide6.QtWidgets import QPushButton
+
+    from imobhunter.sources.registry import build_default_registry
+    from imobhunter.ui_settings import SourceSettingsDialog
+
+    app = _app()
+    window = SourceSettingsDialog(build_default_registry())
+    window.show()
+    app.processEvents()
+    try:
+        assert window.screen().availableGeometry().contains(window.geometry())
+        for caption in ("Validar configurações", "Salvar configurações", "Fechar"):
+            button = next(
+                child for child in window.findChildren(QPushButton)
+                if child.text() == caption
+            )
+            top_left = button.mapTo(window, QPoint(0, 0))
+            assert top_left.y() >= 0
+            assert top_left.y() + button.height() <= window.height()
+            assert top_left.x() >= 0
+            assert top_left.x() + button.width() <= window.width()
+    finally:
+        window.close()
+        app.processEvents()
+
+
+def test_market_tabs_reflow_and_company_table_scroll_without_truncating_buttons(
+    monkeypatch, tmp_path
+) -> None:
+    pytest.importorskip("PySide6")
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QHeaderView
+
+    import builtins
+    from pathlib import Path
+    from imobhunter.ui_market import MarketIntelligenceDialog
+
+    # Keep the test offline and avoid launching a Chromium subprocess.
+    original_import = builtins.__import__
+
+    def no_webengine(name, *args, **kwargs):
+        if name.startswith("PySide6.QtWebEngine"):
+            raise ImportError("No WebEngine during desktop layout test")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", no_webengine)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    app = _app()
+    window = MarketIntelligenceDialog()
+    window.show()
+    app.processEvents()
+    try:
+        assert window.screen().availableGeometry().contains(window.geometry())
+        assert window.tabs.widget(0) is window.search_scroll
+        assert window.tabs.widget(1) is window.results_scroll
+        window.resize(760, min(540, window.screen().availableGeometry().height()))
+        app.processEvents()
+        assert window._action_grid.itemAtPosition(3, 1) is not None
+        assert window._action_grid.itemAtPosition(0, 3) is None
+        for table in (window.table, window.results_table):
+            assert not table.horizontalHeader().stretchLastSection()
+            assert table.horizontalHeader().sectionResizeMode(0) == (
+                QHeaderView.ResizeMode.Interactive
+            )
+            assert table.horizontalScrollBarPolicy() == (
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            )
+            assert sum(table.columnWidth(i) for i in range(8)) > table.viewport().width()
+        # Switching to results must target the scroll host, not the old page.
+        window.tabs.setCurrentWidget(window.results_scroll)
+        assert window.tabs.currentWidget() is window.results_scroll
+    finally:
+        window.close()
+        window.deleteLater()
+        app.processEvents()
+
+
+def test_local_cnpj_browser_filters_and_table_fit_small_windows(tmp_path) -> None:
+    pytest.importorskip("PySide6")
+    from PySide6.QtCore import Qt
+
+    from imobhunter.ui_market import ReceitaBrowseDialog
+
+    app = _app()
+    browser = ReceitaBrowseDialog(tmp_path / "companies.sqlite3")
+    browser.show()
+    app.processEvents()
+    try:
+        assert browser.screen().availableGeometry().contains(browser.geometry())
+        assert browser.table.horizontalScrollBarPolicy() == (
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        assert browser.table.columnWidth(0) >= 200
+        assert browser.table.columnWidth(5) >= 300
+        assert browser.findChildren(type(browser.query))
+    finally:
+        browser.close()
+        browser.deleteLater()
+        app.processEvents()
+
+
+
+def test_main_window_and_integrations_keep_controls_inside_screen(tmp_path) -> None:
+    pytest.importorskip("PySide6")
+    from PySide6.QtWidgets import QDialog, QPushButton, QScrollArea
+
+    from imobhunter.application.coverage import DDDCoverageRegistry
+    from imobhunter.application.search import SearchService
+    from imobhunter.infrastructure.local_db import LocalDatabase
+    from imobhunter.sources.registry import build_default_registry
+    from imobhunter.ui import MainWindow
+
+    app = _app()
+    window = MainWindow(
+        SearchService(build_default_registry(), LocalDatabase(tmp_path / "cache.sqlite3")),
+        DDDCoverageRegistry(()),
+    )
+    window.show()
+    app.processEvents()
+    try:
+        assert window.screen().availableGeometry().contains(window.geometry())
+        assert window.content_scroll.widget() is not None
+        window._show_integrations()
+        app.processEvents()
+        dialog = window._utility_dialogs[-1]
+        assert isinstance(dialog, QDialog)
+        assert dialog.screen().availableGeometry().contains(dialog.geometry())
+        scroll_areas = dialog.findChildren(QScrollArea)
+        assert scroll_areas
+        assert any(area.verticalScrollBar().maximum() > 0 for area in scroll_areas)
+        close = next(btn for btn in dialog.findChildren(QPushButton) if btn.text() == "Fechar")
+        assert close.isVisible()
+        dialog.close()
+        dialog.deleteLater()
+        window._utility_dialogs.clear()
+    finally:
+        window.close()
+        window.deleteLater()
+        from PySide6.QtCore import QCoreApplication, QEvent
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        app.processEvents()

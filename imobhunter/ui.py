@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 import uuid
 
-from PySide6.QtCore import QThreadPool, QObject, QRunnable, QUrl, Qt, Signal, Slot, QTimer
+from PySide6.QtCore import QThreadPool, QObject, QRunnable, QUrl, Qt, Signal, Slot, QTimer, QSize
 from PySide6.QtGui import QCursor, QDesktopServices, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -29,6 +29,7 @@ from .domain.models import SearchRequest
 from .ui_market import MarketIntelligenceDialog
 from .ui_settings import SourceSettingsDialog
 from .ui_results import SearchResultsWindow
+from .ui_responsive import fit_window_to_screen
 
 
 APP_STYLE = """
@@ -170,13 +171,14 @@ class MainWindow(QMainWindow):
         self._magnetic_cursor = QCursor(cursor_pixmap, 4, 3)
         self.setCursor(self._magnetic_cursor)
         self.resize(1320, 820)
-        self.setMinimumSize(980, 680)
+        self.setMinimumSize(650, 440)
         self._build()
         for button in self.findChildren(QPushButton):
             button.setCursor(self._magnetic_cursor)
         for field in self.findChildren(QLineEdit):
             field.setCursor(Qt.CursorShape.IBeamCursor)
         self._populate_coverage()
+        fit_window_to_screen(self, QSize(1320, 820), QSize(650, 440))
 
     def _build(self) -> None:
         root = QWidget()
@@ -370,7 +372,15 @@ class MainWindow(QMainWindow):
         layout.addLayout(metrics)
 
         root.setLayout(shell)
-        shell.addWidget(content, 1)
+        # The primary search area also remains accessible at high Windows DPI:
+        # the fixed-width sidebar stays usable while content may scroll.
+        self.content_scroll = QScrollArea()
+        self.content_scroll.setWidgetResizable(True)
+        self.content_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.content_scroll.setWidget(content)
+        shell.addWidget(self.content_scroll, 1)
         self.setCentralWidget(root)
 
     def _show_market_intelligence(self) -> None:
@@ -400,7 +410,7 @@ class MainWindow(QMainWindow):
         dialog = QDialog(self)
         dialog.setWindowTitle("Painel de integrações")
         dialog.resize(980, 760)
-        dialog.setMinimumSize(760, 560)
+        dialog.setMinimumSize(500, 380)
         root = QVBoxLayout(dialog)
         title = QLabel("Diagnóstico das integrações")
         title.setObjectName("title")
@@ -450,6 +460,14 @@ class MainWindow(QMainWindow):
 
         status_labels = {}
         buttons = {}
+        # A fixed row for every adapter forced this dialog below the taskbar.
+        # Put the tests into their own vertical scroll area.
+        tests_scroll = QScrollArea()
+        tests_scroll.setWidgetResizable(True)
+        tests_scroll.setMinimumHeight(85)
+        tests_host = QWidget()
+        tests_layout = QVBoxLayout(tests_host)
+        tests_layout.setContentsMargins(6, 6, 6, 6)
         for source in sources:
             row = QHBoxLayout()
             label = QLabel(f"{source.name} ({source.source_id}) — aguardando teste")
@@ -460,9 +478,12 @@ class MainWindow(QMainWindow):
                 lambda checked=False, s=source, l=label, b=button: self._test_integration(s, l, b, dialog)
             )
             row.addWidget(button)
-            root.addLayout(row)
+            tests_layout.addLayout(row)
             status_labels[source.source_id] = label
             buttons[source.source_id] = button
+        tests_layout.addStretch(1)
+        tests_scroll.setWidget(tests_host)
+        root.addWidget(tests_scroll, 1)
 
         links = QLabel(
             "<a href='https://geosampa.prefeitura.sp.gov.br/'>GeoSampa oficial</a> · "
@@ -477,6 +498,7 @@ class MainWindow(QMainWindow):
         root.addWidget(close_button, alignment=Qt.AlignmentFlag.AlignRight)
         dialog.setWindowFlag(Qt.WindowType.Window, True)
         dialog.setWindowModality(Qt.WindowModality.NonModal)
+        fit_window_to_screen(dialog, QSize(980, 760), QSize(500, 380))
         self._utility_dialogs.append(dialog)
         dialog.show()
 

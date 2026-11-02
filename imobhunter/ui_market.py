@@ -5,11 +5,11 @@ import json
 from pathlib import Path
 from urllib.parse import parse_qs
 
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, Signal
+from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, Signal, QSize
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QFileDialog, QHBoxLayout, QInputDialog, QLabel,
     QLineEdit, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem,
-    QVBoxLayout, QTabWidget, QFrame, QWidget,
+    QVBoxLayout, QTabWidget, QFrame, QWidget, QScrollArea, QGridLayout, QHeaderView,
 )
 
 from .application.market_intelligence import MarketIntelligenceStore
@@ -18,6 +18,7 @@ from .application.receita_import import import_receita_archives, search_receita_
 from .application.receita_geo import import_receita_coordinates, save_geocoded_establishment
 from .application.address_geocoding import CachedAddressGeocoder, GeocodingError
 from .application.sidra import fetch_population_estimate, search_municipalities
+from .ui_responsive import fit_window_to_screen
 
 
 class _OnlineSearchSignals(QObject):
@@ -75,10 +76,12 @@ class MarketIntelligenceDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("ImobHunter • Inteligência de Mercado")
         self.resize(1280, 820)
-        self.setMinimumSize(980, 680)
+        self.setMinimumSize(650, 450)
         data_dir = Path.home() / ".imobhunter" / "market"
         self.store = MarketIntelligenceStore(data_dir / "businesses.sqlite3")
         self._build()
+        fit_window_to_screen(self, QSize(1280, 820), QSize(650, 450))
+        self._reflow_actions()
         self._refresh_count()
 
     def _build(self) -> None:
@@ -105,9 +108,14 @@ class MarketIntelligenceDialog(QDialog):
         search_layout.addWidget(title)
         subtitle = QLabel("Explore empresas por raio e consulte dados econômicos armazenados no seu computador.")
         subtitle.setObjectName("muted")
+        subtitle.setWordWrap(True)
         search_layout.addWidget(subtitle)
 
-        controls = QHBoxLayout()
+        # Keep coordinates and search controls in two rows; even at 800 px
+        # no button should require scrolling off the right side of the screen.
+        controls = QGridLayout()
+        controls.setHorizontalSpacing(8)
+        controls.setVerticalSpacing(8)
         self.latitude = QLineEdit()
         self.latitude.setPlaceholderText("Latitude do ponto central")
         self.longitude = QLineEdit()
@@ -115,21 +123,27 @@ class MarketIntelligenceDialog(QDialog):
         self.radius = QLineEdit("5")
         self.radius.setMaximumWidth(100)
         self.segment = QComboBox()
-        self.segment.addItems(["Todos os segmentos", "CNAE contém: comércio", "CNAE contém: serviços", "CNAE contém: indústria", "CNAE contém: construção"])
-        controls.addWidget(self.latitude, 1)
-        controls.addWidget(self.longitude, 1)
-        controls.addWidget(QLabel("Raio (km)"))
-        controls.addWidget(self.radius)
-        controls.addWidget(self.segment)
+        self.segment.addItems([
+            "Todos os segmentos", "CNAE contém: comércio",
+            "CNAE contém: serviços", "CNAE contém: indústria",
+            "CNAE contém: construção",
+        ])
+        controls.addWidget(self.latitude, 0, 0)
+        controls.addWidget(self.longitude, 0, 1)
+        radius_row = QHBoxLayout()
+        radius_row.addWidget(QLabel("Raio (km)"))
+        radius_row.addWidget(self.radius)
+        controls.addLayout(radius_row, 0, 2)
+        controls.addWidget(self.segment, 1, 0, 1, 2)
         search = QPushButton("Pesquisar região")
         search.setObjectName("primary")
         search.clicked.connect(self._search)
-        controls.addWidget(search)
+        controls.addWidget(search, 1, 2)
         search_layout.addLayout(controls)
 
         # Ações em grelha: evita que os rótulos fiquem cortados em ecrãs menores.
-        from PySide6.QtWidgets import QGridLayout
         actions = QGridLayout()
+        self._action_grid = actions
         actions.setHorizontalSpacing(8)
         actions.setVerticalSpacing(8)
         geocode_button = QPushButton("Localizar endereço")
@@ -158,10 +172,14 @@ class MarketIntelligenceDialog(QDialog):
             geocode_button, import_button, receita_button, geo_button,
             browse_button, sidra_button, self.online_button, export_button,
         ]
-        for index, button in enumerate(action_buttons):
+        self._action_buttons = action_buttons
+        for button in action_buttons:
             button.setMinimumHeight(38)
-            button.setSizePolicy(button.sizePolicy().Policy.Expanding, button.sizePolicy().Policy.Fixed)
-            actions.addWidget(button, index // 4, index % 4)
+            button.setSizePolicy(
+                button.sizePolicy().Policy.Expanding,
+                button.sizePolicy().Policy.Fixed,
+            )
+        self._reflow_actions()
         search_layout.addLayout(actions)
         self.status = QLabel("Base local pronta. Localize um endereço ou importe dados empresariais para começar.")
         self.status.setObjectName("muted")
@@ -218,14 +236,20 @@ class MarketIntelligenceDialog(QDialog):
         ])
         self.table.setAlternatingRowColors(True)
         self.table.setSortingEnabled(True)
-        self.table.horizontalHeader().setStretchLastSection(True)
+        self._configure_table_columns(self.table)
         search_layout.addWidget(self.table, 1)
         note = QLabel("Os valores de faturamento só são exibidos quando constam no arquivo importado. Estimativas devem incluir metodologia e fonte; o aplicativo não inventa valores nem consulta o seu servidor.")
         note.setObjectName("muted")
         note.setWordWrap(True)
         search_layout.addWidget(note)
         self.results = []
-        self.tabs.addTab(self.search_page, "Pesquisar e mapa")
+        self.search_scroll = QScrollArea()
+        self.search_scroll.setWidgetResizable(True)
+        self.search_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.search_scroll.setWidget(self.search_page)
+        self.tabs.addTab(self.search_scroll, "Pesquisar e mapa")
 
         self.results_page = QWidget()
         results_layout = QVBoxLayout(self.results_page)
@@ -267,14 +291,47 @@ class MarketIntelligenceDialog(QDialog):
         ])
         self.results_table.setAlternatingRowColors(True)
         self.results_table.setSortingEnabled(True)
-        self.results_table.horizontalHeader().setStretchLastSection(True)
+        self._configure_table_columns(self.results_table)
         self.results_table.verticalHeader().setDefaultSectionSize(32)
         results_layout.addWidget(self.results_table, 1)
         results_note = QLabel("A exportação inclui os registros retornados pela pesquisa, coordenadas disponíveis, origem dos dados e campos de faturamento sem preencher valores ausentes.")
         results_note.setObjectName("muted")
         results_note.setWordWrap(True)
         results_layout.addWidget(results_note)
-        self.tabs.addTab(self.results_page, "Resultados e exportação")
+        self.results_scroll = QScrollArea()
+        self.results_scroll.setWidgetResizable(True)
+        self.results_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.results_scroll.setWidget(self.results_page)
+        self.tabs.addTab(self.results_scroll, "Resultados e exportação")
+
+    @staticmethod
+    def _configure_table_columns(table: QTableWidget) -> None:
+        # Keep readable widths and allow a horizontal scrollbar rather than
+        # shrinking headings/values to clipped fragments.
+        header = table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        for column, width in enumerate((210, 155, 130, 265, 125, 185, 185, 245)):
+            table.setColumnWidth(column, width)
+        table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+    def _reflow_actions(self) -> None:
+        if not hasattr(self, "_action_grid"):
+            return
+        columns = 2 if self.width() < 1040 else 4
+        for button in self._action_buttons:
+            self._action_grid.removeWidget(button)
+        for index, button in enumerate(self._action_buttons):
+            self._action_grid.addWidget(button, index // columns, index % columns)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        # Closing a Qt window can delete the button children before its layout;
+        # never reparent widgets while the hidden dialog is tearing down.
+        if self.isVisible() and hasattr(self, "_action_grid"):
+            self._reflow_actions()
 
     def _refresh_count(self) -> None:
         self.status.setText(f"{self.store.count()} empresa(s) no banco local.")
@@ -448,7 +505,7 @@ class MarketIntelligenceDialog(QDialog):
             f"{summary} Segmento: {segment or 'todos'} · "
             f"{reported_count} com faturamento divulgado · {estimated_count} com estimativa."
         )
-        self.tabs.setCurrentWidget(self.results_page)
+        self.tabs.setCurrentWidget(self.results_scroll)
 
     def _populate_results_table(self, table: QTableWidget) -> None:
         table.setSortingEnabled(False)
@@ -658,6 +715,7 @@ class ReceitaBrowseDialog(QDialog):
         self.database_path = database_path
         self.setWindowTitle("ImobHunter • Base oficial de CNPJ local")
         self.resize(1250, 650)
+        self.setMinimumSize(600, 420)
         self.setStyleSheet("""
             QDialog { background:#07111b; color:#eaf2f7; }
             QLabel { color:#eaf2f7; }
@@ -671,28 +729,35 @@ class ReceitaBrowseDialog(QDialog):
         title = QLabel("Base oficial de CNPJ importada no computador")
         title.setStyleSheet("font-size:22px;font-weight:800")
         root.addWidget(title)
-        filters = QHBoxLayout()
+        filters = QVBoxLayout()
+        filters.setSpacing(8)
+        search_row = QHBoxLayout()
         self.query = QLineEdit()
         self.query.setPlaceholderText("Razão social, nome fantasia ou CNPJ")
         self.state = QLineEdit()
         self.state.setPlaceholderText("UF (ex.: SP)")
-        self.state.setMaximumWidth(100)
+        self.state.setMaximumWidth(90)
         self.cnae = QLineEdit()
-        self.cnae.setPlaceholderText("Prefixo CNAE (opcional)")
-        self.cnae.setMaximumWidth(180)
-        filters.addWidget(self.query, 1)
-        filters.addWidget(self.state)
-        filters.addWidget(self.cnae)
+        self.cnae.setPlaceholderText("Prefixo CNAE")
+        self.cnae.setMaximumWidth(150)
+        search_row.addWidget(self.query, 1)
+        search_row.addWidget(self.state)
+        search_row.addWidget(self.cnae)
         search = QPushButton("Pesquisar")
         search.clicked.connect(self._search)
-        filters.addWidget(search)
+        search_row.addWidget(search)
+        filters.addLayout(search_row)
+        action_row = QHBoxLayout()
         geocode_selected = QPushButton("Localizar estabelecimento selecionado")
-        geocode_selected.setToolTip("Geocodifica somente a linha selecionada e grava as coordenadas pelo CNPJ.")
+        geocode_selected.setToolTip(
+            "Geocodifica somente a linha selecionada e grava as coordenadas pelo CNPJ."
+        )
         geocode_selected.clicked.connect(self._geocode_selected)
-        filters.addWidget(geocode_selected)
+        action_row.addWidget(geocode_selected, 1)
         export_geo = QPushButton("Exportar endereços para coordenadas")
         export_geo.clicked.connect(self._export_geocoding_csv)
-        filters.addWidget(export_geo)
+        action_row.addWidget(export_geo, 1)
+        filters.addLayout(action_row)
         root.addLayout(filters)
         self.current_rows = []
         self.status = QLabel("Pesquise na base importada; os resultados ficam no PC.")
@@ -700,8 +765,17 @@ class ReceitaBrowseDialog(QDialog):
         self.table = QTableWidget(0, 8)
         self.table.setHorizontalHeaderLabels(["Razão social", "Nome fantasia", "CNPJ", "Situação", "CNAE principal", "Endereço", "UF / município", "Porte"])
         self.table.setAlternatingRowColors(True)
-        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setStretchLastSection(False)
+        self.table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Interactive
+        )
+        for column, width in enumerate((240, 210, 165, 120, 175, 310, 160, 110)):
+            self.table.setColumnWidth(column, width)
+        self.table.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
         root.addWidget(self.table, 1)
+        fit_window_to_screen(self, QSize(1250, 650), QSize(600, 420))
 
 
     def _geocode_selected(self) -> None:

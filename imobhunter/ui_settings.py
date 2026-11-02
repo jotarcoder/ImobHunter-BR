@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import httpx
 from urllib.parse import urlparse
 
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QSettings, QObject, QRunnable, QThreadPool, Signal, QSize, Qt
+from .application.municipal_endpoints import settings_endpoint_rows
+from .application.source_probe import EndpointProbe, is_official_service_url, probe_endpoint
 from .sources.geosampa import DEFAULT_WFS_URL
+from .ui_responsive import fit_window_to_screen
 
 from PySide6.QtWidgets import (
     QDialog, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
@@ -14,21 +16,10 @@ from PySide6.QtWidgets import (
 )
 
 
-# Official municipal services currently used by the address-search adapters.
-# These URLs intentionally mirror the adapter endpoints; GeoSampa is separate
-# and is only used for São Paulo capital.
-MUNICIPAL_SOURCE_ENDPOINTS = (
-    {"id": "praia_grande", "label": "Praia Grande — SP", "url": "https://geoserver.praiagrande.sp.gov.br/ows", "kind": "wfs", "layer": "Descoberta via GetCapabilities", "limits": "Atributos variam por camada; não presumir SQL/IPTU ou titularidade."},
-    {"id": "santos", "label": "Santos — SP", "url": "https://egov.santos.sp.gov.br/geoserver/wfs", "kind": "wfs", "layer": "Descoberta via GetCapabilities", "limits": "Atributos variam por camada; não presumir SQL/IPTU ou titularidade."},
-    {"id": "bertioga", "label": "Bertioga — SP", "url": "https://geoportal.bertioga.sp.gov.br/geoserver/ows", "kind": "wfs", "layer": "Descoberta via GetCapabilities", "limits": "Atributos variam por camada; não presumir SQL/IPTU ou titularidade."},
-    {"id": "belo_horizonte", "label": "Belo Horizonte — MG", "url": "https://bhmap.pbh.gov.br/v2/api/idebhgeo/wfs", "kind": "wfs", "layer": "Descoberta via GetCapabilities", "limits": "Cobertura apenas do município e das camadas publicadas."},
-    {"id": "rio_territorial", "label": "Rio de Janeiro — RJ (imóveis territoriais)", "url": "https://pgeo3.rio.rj.gov.br/arcgis/rest/services/CadParcel/IMOVEIS_TERRITORIAIS/FeatureServer/0", "kind": "arcgis", "layer": "FeatureServer/0", "limits": "Não presumir SQL/IPTU individual, titularidade ou matrícula."},
-    {"id": "rio_geopal", "label": "Rio de Janeiro — RJ (GeoPAL)", "url": "https://pgeo3.rio.rj.gov.br/arcgis/rest/services/CadParcel/GeoPAL/FeatureServer/0", "kind": "arcgis", "layer": "FeatureServer/0", "limits": "Fonte complementar; não substitui os atributos da camada territorial."},
-    {"id": "df", "label": "Distrito Federal — IDE-DF", "url": "https://www.geoservicos.ide.df.gov.br/arcgis/rest/services/Aplicacoes/CERTIDAO_IMOVEL/FeatureServer/0", "kind": "arcgis", "layer": "FeatureServer/0", "limits": "Campos disponíveis dependem do retorno da camada."},
-    {"id": "goiania", "label": "Goiânia — GO", "url": "https://portalmapa.goiania.go.gov.br/servicogyn/rest/services/MapaServer/Feature_Base/MapServer/3", "kind": "arcgis", "layer": "MapServer/3", "limits": "nrinscr é inscrição cadastral; não renomear automaticamente como SQL."},
-    {"id": "blumenau", "label": "Blumenau — SC", "url": "https://geo.blumenau.sc.gov.br/server/rest/services/Cadastro_Imobiliario/Lotes_Blumenau/FeatureServer/0", "kind": "arcgis", "layer": "FeatureServer/0", "limits": "IQ é identificador cadastral, não SQL/IPTU."},
-    {"id": "recife", "label": "Recife — PE (dados abertos IPTU)", "url": "https://dados.recife.pe.gov.br/api/3/action/package_show?id=imposto-predial-e-territorial-urbano-iptu", "kind": "ckan", "layer": "Dataset CKAN: imposto-predial-e-territorial-urbano-iptu", "limits": "Dataset não garante pesquisa por endereço nem geometria de lote."},
-    {"id": "porto_alegre", "label": "Porto Alegre — RS (lotes fiscais)", "url": "https://gis-smamus.portoalegre.rs.gov.br/server/rest/services/01_PUBLICACOES/dmweb_lotes_fiscais/MapServer/0", "kind": "arcgis", "layer": "MapServer/0", "limits": "A camada documenta id_lotes, setor, quarteirão e bairro; não confirma SQL/IPTU individual."},
+# Always generated from the URLs used by the actual municipal adapters.
+# GeoSampa is already displayed as its own editable row above this list.
+MUNICIPAL_SOURCE_ENDPOINTS = tuple(
+    source for source in settings_endpoint_rows() if source["id"] != "sao_paulo"
 )
 
 SOURCE_FILES = (
@@ -44,6 +35,23 @@ SOURCE_FILES = (
 )
 
 
+class MunicipalProbeSignals(QObject):
+    finished = Signal(str, object)
+
+
+class MunicipalProbeWorker(QRunnable):
+    """Probe capabilities in a Qt worker; do not block the settings dialog."""
+
+    def __init__(self, source: dict[str, str]) -> None:
+        super().__init__()
+        self.source = source
+        self.signals = MunicipalProbeSignals()
+
+    def run(self) -> None:
+        result = probe_endpoint(self.source)
+        self.signals.finished.emit(self.source["id"], result)
+
+
 class SourceSettingsDialog(QDialog):
     """Configures local datasets and supported source endpoints for this user."""
 
@@ -52,15 +60,18 @@ class SourceSettingsDialog(QDialog):
         self.registry = registry
         self.settings = QSettings("ImobHunter", "ImobHunter-BR")
         self.path_fields: dict[str, QLineEdit] = {}
+        self._municipal_probe_workers: dict[str, MunicipalProbeWorker] = {}
+        self._municipal_probe_buttons: dict[str, QPushButton] = {}
+        self._municipal_probe_labels: dict[str, QLabel] = {}
         self.setWindowTitle("Configurações de fontes e acessos")
         self.resize(820, 720)
-        self.setMinimumSize(700, 560)
+        self.setMinimumSize(480, 360)
         self.setStyleSheet("""
-            QDialog { background:#07111b; color:#eaf2f7; }
-            QLabel { color:#eaf2f7; }
-            QLabel#muted { color:#8da2b2; }
-            QLineEdit { background:#0b1926; color:#f4f8fb; border:1px solid #254156; border-radius:7px; padding:8px; }
-            QPushButton { background:#102332; color:#eaf2f7; border:1px solid #2b4c63; border-radius:8px; padding:8px 12px; }
+            QDialog { background:#08120b; color:#eaf2ed; }
+            QLabel { color:#eaf2ed; }
+            QLabel#muted { color:#91af97; }
+            QLineEdit { background:#101c13; color:#f4fbf5; border:1px solid #2a5334; border-radius:7px; padding:8px; }
+            QPushButton { background:#14291a; color:#eaf2ed; border:1px solid #2a5334; border-radius:8px; padding:8px 12px; }
             QPushButton#primary { background:#35ff77; color:#04110a; font-weight:800; }
         """)
         root = QVBoxLayout(self)
@@ -79,10 +90,13 @@ class SourceSettingsDialog(QDialog):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setMinimumSize(0, 0)
         host = QWidget()
         form = QFormLayout(host)
         form.setSpacing(10)
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
 
         for source_id, label, attr, file_types in SOURCE_FILES:
             source = registry.get(source_id)
@@ -116,8 +130,14 @@ class SourceSettingsDialog(QDialog):
         geosampa_row.addWidget(self.geosampa_url, 1)
         geosampa_test = QPushButton("Testar conexão")
         geosampa_test.clicked.connect(self._test_geosampa)
+        self._municipal_probe_buttons["sao_paulo"] = geosampa_test
         geosampa_row.addWidget(geosampa_test)
         form.addRow("GeoSampa — endpoint WFS", geosampa_row)
+        geo_result = QLabel("Não testada nesta sessão — somente São Paulo capital")
+        geo_result.setObjectName("muted")
+        geo_result.setWordWrap(True)
+        self._municipal_probe_labels["sao_paulo"] = geo_result
+        form.addRow(geo_result)
 
         # Display the exact municipal service URLs used by the city/state-routed
         # adapter. They are read-only here so the UI cannot silently diverge from
@@ -152,11 +172,24 @@ class SourceSettingsDialog(QDialog):
             row.addWidget(endpoint_field, 1)
             row.addWidget(open_button)
             row.addWidget(test_button)
+            self._municipal_probe_buttons[item["id"]] = test_button
             form.addRow(item["label"], row)
-            layer_label = QLabel(f"Serviço/camada: {item['layer']}  •  Limite: {item['limits']}")
+            layer_label = QLabel(
+                f"Serviço/camada: {item['layer']}  •  Limite: {item['limits']}"
+            )
             layer_label.setWordWrap(True)
             layer_label.setObjectName("muted")
             form.addRow(layer_label)
+            status_text = (
+                "Indisponibilidade relatada; testar para atualizar a conexão"
+                if item["id"] == "bertioga" else
+                "Não testada nesta sessão · apenas conectividade, não SQL/IPTU"
+            )
+            status_label = QLabel(status_text)
+            status_label.setObjectName("muted")
+            status_label.setWordWrap(True)
+            self._municipal_probe_labels[item["id"]] = status_label
+            form.addRow(status_label)
 
         sinter = registry.get("sinter_cib")
         self.sinter_url = QLineEdit(
@@ -270,6 +303,9 @@ class SourceSettingsDialog(QDialog):
         root.addLayout(buttons)
 
         self._load_saved_token()
+        # Keep action buttons above the Windows taskbar. The source catalogue
+        # scrolls independently; the save/close row always remains accessible.
+        fit_window_to_screen(self, QSize(820, 720), QSize(480, 360))
 
     def _search_inde_online(self) -> None:
         query = self.inde_query.text().strip()
@@ -402,89 +438,54 @@ class SourceSettingsDialog(QDialog):
         webbrowser.open(url)
 
     def _test_municipal_source(self, source: dict[str, str]) -> None:
-        url = source["url"]
-        kind = source["kind"]
-        try:
-            if kind == "wfs":
-                response = httpx.get(
-                    url,
-                    params={"service": "WFS", "version": "1.1.0", "request": "GetCapabilities"},
-                    timeout=12.0,
-                    follow_redirects=True,
-                )
-                response.raise_for_status()
-                if "WFS_Capabilities" not in response.text:
-                    QMessageBox.warning(self, source["label"], "O endpoint respondeu, mas não retornou WFS GetCapabilities reconhecível.")
-                    return
-                result = "O endpoint WFS respondeu ao GetCapabilities."
-            elif kind == "arcgis":
-                separator = "&" if "?" in url else "?"
-                response = httpx.get(url + separator + "f=json", timeout=12.0, follow_redirects=True)
-                response.raise_for_status()
-                payload = response.json()
-                if not isinstance(payload, dict) or not any(key in payload for key in ("name", "layers", "fields", "serviceDescription", "error")):
-                    QMessageBox.warning(self, source["label"], "O endpoint respondeu, mas o JSON não parece ser uma descrição ArcGIS REST.")
-                    return
-                if "error" in payload:
-                    QMessageBox.warning(self, source["label"], f"ArcGIS REST retornou erro: {payload['error']}")
-                    return
-                result = "O endpoint ArcGIS REST respondeu com metadados JSON."
-            else:
-                response = httpx.get(url, timeout=12.0, follow_redirects=True)
-                response.raise_for_status()
-                payload = response.json()
-                if not isinstance(payload, dict) or payload.get("success") is not True:
-                    QMessageBox.warning(self, source["label"], "O portal respondeu, mas a API CKAN não confirmou success=true.")
-                    return
-                result = "A API CKAN respondeu com success=true."
-        except (httpx.HTTPError, ValueError, TypeError) as exc:
-            QMessageBox.warning(
-                self, source["label"],
-                f"Falha ao testar a fonte oficial. Isso não significa que o imóvel não exista.\n{type(exc).__name__}: {exc}"
-            )
+        source_id = source["id"]
+        if source_id in self._municipal_probe_workers:
             return
-        QMessageBox.information(
-            self, source["label"],
-            f"{result}\nURL: {url}\nCamada/serviço: {source['layer']}\nLimite: {source['limits']}\n\n"
-            "Teste de conexão não comprova consulta útil por endereço."
-        )
+        button = self._municipal_probe_buttons[source_id]
+        status_label = self._municipal_probe_labels[source_id]
+        button.setEnabled(False)
+        status_label.setText("Consultando metadados da fonte oficial…")
+        worker = MunicipalProbeWorker(source)
+        self._municipal_probe_workers[source_id] = worker
+        worker.signals.finished.connect(self._municipal_probe_finished)
+        QThreadPool.globalInstance().start(worker)
+
+    def _municipal_probe_finished(
+        self, source_id: str, result: EndpointProbe
+    ) -> None:
+        self._municipal_probe_workers.pop(source_id, None)
+        button = self._municipal_probe_buttons.get(source_id)
+        label = self._municipal_probe_labels.get(source_id)
+        if button is not None:
+            button.setEnabled(True)
+        if label is None:
+            return
+        if result.state == "responded":
+            label.setText(
+                f"Metadados acessíveis ({result.latency_ms} ms). "
+                f"{result.message}. Não confirma SQL/IPTU, lotes ou proprietário."
+            )
+            label.setStyleSheet("color:#61ee8d;")
+        elif result.state == "timeout":
+            label.setText(
+                f"Tempo limite excedido ({result.latency_ms} ms): "
+                f"{result.message}. Serviço não confirmado; imóvel não foi descartado."
+            )
+            label.setStyleSheet("color:#f1bb7c;")
+        else:
+            label.setText(
+                f"Fonte indisponível ou resposta inválida ({result.latency_ms} ms): "
+                f"{result.message}. Não significa que o imóvel não exista."
+            )
+            label.setStyleSheet("color:#f1bb7c;")
 
     def _test_geosampa(self) -> None:
-        endpoint = self.geosampa_url.text().strip()
-        parsed = urlparse(endpoint)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            QMessageBox.warning(self, "GeoSampa", "Informe um endpoint HTTP/HTTPS válido.")
-            return
-        try:
-            response = httpx.get(
-                endpoint,
-                params={"service": "WFS", "version": "1.0.0", "request": "GetCapabilities"},
-                timeout=12.0,
-                follow_redirects=True,
-            )
-            response.raise_for_status()
-            payload = response.text
-        except httpx.HTTPError as exc:
-            QMessageBox.warning(self, "GeoSampa", f"Falha na conexão WFS: {exc}")
-            return
-        if "WFS_Capabilities" not in payload:
-            QMessageBox.warning(
-                self, "GeoSampa",
-                "O servidor respondeu, mas não retornou um documento WFS GetCapabilities válido."
-            )
-            return
-        layer = "geoportal:lote_cidadao"
-        if layer not in payload:
-            QMessageBox.warning(
-                self, "GeoSampa",
-                f"Conexão WFS respondeu, mas a camada padrão {layer} não foi encontrada. "
-                "Confirme o nome da camada antes de pesquisar."
-            )
-            return
-        QMessageBox.information(
-            self, "GeoSampa",
-            f"Conexão WFS validada. Camada {layer} anunciada pelo servidor."
+        item = next(
+            item for item in settings_endpoint_rows()
+            if item["id"] == "sao_paulo"
         )
+        source = {**item, "url": self.geosampa_url.text().strip()}
+        self._test_municipal_source(source)
 
     def _validate(self) -> None:
         problems: list[str] = []
@@ -492,9 +493,8 @@ class SourceSettingsDialog(QDialog):
             value = field.text().strip()
             if value and not Path(value).expanduser().is_file():
                 problems.append(f"{source_id}: arquivo não encontrado — {value}")
-        parsed = urlparse(self.geosampa_url.text().strip())
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            problems.append("GeoSampa: informe uma URL HTTP/HTTPS válida.")
+        if not is_official_service_url(self.geosampa_url.text().strip()):
+            problems.append("GeoSampa: informe um endpoint HTTPS oficial gov.br.")
         sinter_url = self.sinter_url.text().strip()
         if sinter_url and (urlparse(sinter_url).scheme not in {"http", "https"} or not urlparse(sinter_url).netloc):
             problems.append("SINTER/CIB: URL-base inválida.")
@@ -544,6 +544,8 @@ class SourceSettingsDialog(QDialog):
             problems.append("WFS municipal: informe endpoint e camada juntos.")
         if wfs_endpoint and (urlparse(wfs_endpoint).scheme not in {"http", "https"} or not urlparse(wfs_endpoint).netloc):
             problems.append("WFS municipal: endpoint HTTP/HTTPS inválido.")
+        if not is_official_service_url(self.geosampa_url.text().strip()):
+            problems.append("GeoSampa: apenas endpoint HTTPS oficial gov.br.")
         for source_id, field in self.path_fields.items():
             value = field.text().strip()
             if value and not Path(value).expanduser().is_file():
@@ -620,7 +622,7 @@ def apply_saved_source_settings(registry) -> None:
     geosampa = registry.get("geosampa")
     if geosampa is not None:
         endpoint = str(settings.value("sources/geosampa/endpoint", "") or "").strip()
-        if endpoint:
+        if endpoint and is_official_service_url(endpoint):
             geosampa.endpoint = endpoint
 
     sinter = registry.get("sinter_cib")
