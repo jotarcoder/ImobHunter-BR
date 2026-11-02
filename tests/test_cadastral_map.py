@@ -163,3 +163,27 @@ def test_block_lot_match_respects_city_and_state() -> None:
     assert classification(cadastral_lot, another_city) == "unverified"
     assert classification(cadastral_lot, another_state) == "unverified"
     assert preferred_target(prepare_features((cadastral_lot,), another_city)) is None
+
+
+
+def test_bad_vertex_or_hole_cannot_fabricate_new_parcel_edges() -> None:
+    """Invalid vertices must invalidate an entire ring, not join across it."""
+    from imobhunter.application.cadastral_map import parse_geometry
+
+    outer = [
+        [-46.65, -23.55], [-46.649, -23.55],
+        ["not-a-longitude", -23.549],
+        [-46.649, -23.549], [-46.65, -23.55],
+    ]
+    assert parse_geometry({"type": "Polygon", "coordinates": [outer]}) == ((), None)
+    complete = [
+        [-46.65, -23.55], [-46.649, -23.55],
+        [-46.649, -23.549], [-46.65, -23.55],
+    ]
+    incomplete_hole = [
+        [-46.6499, -23.5499], [-46.6498, -23.5499],
+        [float("nan"), -23.5498], [-46.6499, -23.5499],
+    ]
+    assert parse_geometry({
+        "type": "Polygon", "coordinates": [complete, incomplete_hole]
+    }) == ((), None)

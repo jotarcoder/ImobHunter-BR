@@ -45,15 +45,19 @@ def valid_lon_lat(longitude: Any, latitude: Any) -> Point | None:
 def _ring(raw: Any) -> Ring:
     if not isinstance(raw, (list, tuple)) or len(raw) > 10_000:
         return ()
-    points = tuple(
-        point for entry in raw
-        if isinstance(entry, (list, tuple))
-        and len(entry) >= 2
-        if (point := valid_lon_lat(entry[0], entry[1])) is not None
-    )
+    # Dropping just one invalid vertex would connect distant points and
+    # fabricate a cadastral boundary that the official source never supplied.
+    points = []
+    for entry in raw:
+        if not isinstance(entry, (list, tuple)) or len(entry) < 2:
+            return ()
+        point = valid_lon_lat(entry[0], entry[1])
+        if point is None:
+            return ()
+        points.append(point)
     if len(set(points)) < 3:
         return ()
-    return points
+    return tuple(points)
 
 
 def _polygon(raw: Any) -> Polygon:
@@ -62,7 +66,9 @@ def _polygon(raw: Any) -> Polygon:
     outer = _ring(raw[0])
     if not outer:
         return ()
-    holes = tuple(ring for item in raw[1:] if (ring := _ring(item)))
+    holes = tuple(_ring(item) for item in raw[1:])
+    if any(not ring for ring in holes):
+        return ()
     return (outer, *holes)
 
 

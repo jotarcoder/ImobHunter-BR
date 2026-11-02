@@ -112,8 +112,21 @@ class IntegrationProbeWorker(QRunnable):
                     state = "ok"
                     message = f"Consulta respondida com {len(records)} registro(s)."
                 else:
-                    state = "no_results"
-                    message = "A fonte respondeu, mas não encontrou registros para esta consulta."
+                    errors = getattr(self.source, "last_errors", {})
+                    city = (self.request.city or "").casefold()
+                    failure = next(
+                        (
+                            str(detail) for place, detail in errors.items()
+                            if place.casefold() == city
+                        ),
+                        None,
+                    ) if isinstance(errors, dict) else None
+                    if failure and self.source.source_id == "official_municipal_services":
+                        state = "error"
+                        message = f"Serviço municipal indisponível: {failure}"
+                    else:
+                        state = "no_results"
+                        message = "A fonte respondeu, mas não encontrou registros para esta consulta."
         except Exception as exc:  # noqa: BLE001 - each adapter is isolated.
             state = "error"
             message = f"{type(exc).__name__}: {exc}"

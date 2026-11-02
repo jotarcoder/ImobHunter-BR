@@ -46,6 +46,7 @@ TILE_SIZE = 256
 MIN_ZOOM = 11
 MAX_ZOOM = 19
 MAX_TILES_PER_VIEW = 36
+MAX_CONCURRENT_TILES = 3
 TILE_URL = "https://tile.openstreetmap.org/{zoom}/{x}/{y}.png"
 CACHE_DIR = Path.home() / ".imobhunter" / "map-tiles"
 
@@ -175,8 +176,9 @@ class CadastralMapWidget(QWidget):
         self._pending_tiles: dict[tuple[int, int, int], TileWorker] = {}
         self._failed_tiles: set[tuple[int, int, int]] = set()
         self._displayed_record: PropertyRecord | None = None
-        self._workers = QThreadPool(self)
-        self._workers.setMaxThreadCount(3)
+        # Global pool survives a closed results window. A per-widget pool's
+        # destructor can block the GUI waiting for queued network requests.
+        self._workers = QThreadPool.globalInstance()
         self._refresh = QTimer(self)
         self._refresh.setSingleShot(True)
         self._refresh.setInterval(200)
@@ -195,6 +197,10 @@ class CadastralMapWidget(QWidget):
         plus.setToolTip("Aproximar mapa: buscar ruas na resolução correta")
         plus.clicked.connect(lambda: self._change_zoom(1))
         controls.addWidget(plus)
+        reload_button = QPushButton("Recarregar ruas")
+        reload_button.setToolTip("Tentar novamente tiles temporariamente indisponíveis")
+        reload_button.clicked.connect(self._retry_tiles)
+        controls.addWidget(reload_button)
         fit_button = QPushButton("Enquadrar lotes")
         fit_button.clicked.connect(self._fit_features)
         controls.addWidget(fit_button)
@@ -388,6 +394,10 @@ class CadastralMapWidget(QWidget):
                 break
         self._rebuild(zoom, center)
 
+    def _retry_tiles(self) -> None:
+        self._failed_tiles.clear()
+        self._schedule_tiles()
+
     def _schedule_tiles(self) -> None:
         if self.features:
             self._refresh.start()
@@ -419,8 +429,9 @@ class CadastralMapWidget(QWidget):
             key = zoom, x, y
             if key in self._loaded_tiles or key in self._pending_tiles or key in self._failed_tiles:
                 continue
-            # Bound queued requests so rapid pans do not cause a tile flood.
-            if len(self._pending_tiles) >= MAX_TILES_PER_VIEW:
+            # Only three active jobs per map: a closed window cannot leave
+            # 36 requests queued and freeze on a pool destructor.
+            if len(self._pending_tiles) >= MAX_CONCURRENT_TILES:
                 break
             worker = TileWorker(zoom, x, y)
             self._pending_tiles[key] = worker
@@ -430,14 +441,17 @@ class CadastralMapWidget(QWidget):
     def _tile_loaded(self, zoom: int, x: int, y: int, data: bytes) -> None:
         key = zoom, x, y
         self._pending_tiles.pop(key, None)
-        if zoom != self._zoom:
+        if zoom != self._zoom or not self.isVisible():
+            self._schedule_tiles()
             return
         if not data:
             self._failed_tiles.add(key)
+            self._schedule_tiles()
             return
         pixmap = QPixmap()
         if not pixmap.loadFromData(data, "PNG"):
             self._failed_tiles.add(key)
+            self._schedule_tiles()
             return
         if key in self._loaded_tiles:
             return
@@ -449,6 +463,13 @@ class CadastralMapWidget(QWidget):
         self._loaded_tiles[key] = item
         # A viewport pan may have occurred during the asynchronous request.
         self._schedule_tiles()
+
+    def closeEvent(self, event) -> None:
+        self._refresh.stop()
+        for worker in self._pending_tiles.values():
+            worker.cancelled = True
+        self._pending_tiles.clear()
+        super().closeEvent(event)
 
     def showEvent(self, event) -> None:
         super().showEvent(event)

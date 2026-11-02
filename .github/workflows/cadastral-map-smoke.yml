@@ -1,0 +1,35 @@
+name: Cadastral map Linux offscreen smoke
+
+# Only run for cadastral UI changes; never build installers or publish releases.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "imobhunter/ui_cadastral_map.py"
+      - "imobhunter/ui_results.py"
+      - "tests/test_cadastral_map_desktop.py"
+      - ".github/workflows/cadastral-map-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cadastral-map-smoke-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  linux-offscreen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies and native Qt without installer builds
+        run: python -m pip install -e ".[dev]" "PySide6>=6.8,<7"
+      - name: Execute desktop map Qt contract tests offline
+        run: python -m pytest -q tests/test_cadastral_map_desktop.py tests/test_cadastral_map.py

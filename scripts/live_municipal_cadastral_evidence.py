@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from imobhunter.application.address_geocoding import CachedAddressGeocoder
+from imobhunter.application.cadastral_map import prepare_features
 from imobhunter.domain.models import SearchRequest
 from imobhunter.sources.geosampa import GeoSampaAdapter
 from imobhunter.sources.official_municipal_services import OfficialMunicipalServicesAdapter
@@ -107,6 +108,8 @@ CASES = [
 def safe_record(record: Any) -> dict[str, Any]:
     attributes = getattr(record, "attributes", {}) or {}
     source_properties = attributes.get("source_properties")
+    map_features = prepare_features((record,))
+    geometry = map_features[0] if map_features else None
     return {
         "address": getattr(record, "address", None),
         "city": getattr(record, "city", None),
@@ -119,6 +122,9 @@ def safe_record(record: Any) -> dict[str, Any]:
         "area_m2": getattr(record, "area_m2", None),
         "built_area_m2": attributes.get("built_area_m2"),
         "geometry_returned": bool(attributes.get("geometry_geojson")),
+        "map_renderable": geometry is not None,
+        "valid_cadastral_polygon": bool(geometry and geometry.has_official_polygon),
+        "map_classification": geometry.classification if geometry else None,
         "cadastre_match": attributes.get("cadastre_match"),
         "sql_status": attributes.get("sql_status"),
         "iptu_status": attributes.get("iptu_status"),
@@ -160,6 +166,9 @@ def main() -> None:
                 "records": [],
                 "record_count": 0,
                 "sql_count": 0,
+                "map_polygon_count": 0,
+                "map_renderable_count": 0,
+                "geocoded_spatial_match_count": 0,
                 "status": "not_verified",
                 "diagnostics": {},
                 "errors": {},
@@ -172,6 +181,16 @@ def main() -> None:
                     1 for record in item["records"]
                     if record.get("sql") or record.get("iptu_registration_number")
                 )
+                item["map_polygon_count"] = sum(
+                    bool(record["valid_cadastral_polygon"]) for record in item["records"]
+                )
+                item["map_renderable_count"] = sum(
+                    bool(record["map_renderable"]) for record in item["records"]
+                )
+                item["geocoded_spatial_match_count"] = sum(
+                    record["map_classification"] in {"exact", "spatial_match", "parcel_query_match"}
+                    for record in item["records"]
+                )
                 item["status"] = "sql_returned" if item["sql_count"] else (
                     "records_without_sql" if records else "zero_records"
                 )
@@ -179,15 +198,24 @@ def main() -> None:
                 item["status"] = "request_error"
                 item["errors"]["exception"] = f"{type(exc).__name__}: {str(exc)[:300]}"
             if hasattr(adapter, "last_diagnostics"):
-                item["diagnostics"] = adapter.last_diagnostics
+                item["diagnostics"] = dict(
+                    adapter.last_diagnostics.get(case["city"], {})
+                )
             if hasattr(adapter, "last_geocoded"):
-                item["diagnostics"]["geocoding"] = adapter.last_geocoded
+                item["diagnostics"]["geocoding"] = adapter.last_geocoded.get(
+                    case["city"]
+                )
             if hasattr(adapter, "last_errors"):
-                item["errors"].update(adapter.last_errors)
+                error = adapter.last_errors.get(case["city"])
+                if error:
+                    item["errors"]["municipal_source"] = error
+            if item["errors"]:
+                item["status"] = "source_error"
             results.append(item)
             print(
                 f'{item["municipality"]}: status={item["status"]}; '
-                f'records={item["record_count"]}; SQL/inscrição={item["sql_count"]}'
+                f'records={item["record_count"]}; SQL/inscrição={item["sql_count"]}; '
+                f'polígonos={item["map_polygon_count"]}'
             )
             for record in item["records"][:3]:
                 print(
@@ -201,7 +229,7 @@ def main() -> None:
 
     report = {
         "purpose": "Live municipal cadastral evidence; geocoding alone is not cadastral proof.",
-        "rule": "SQL is considered returned only when the real response contains a non-empty SQL or iptu_registration_number field.",
+        "rule": "SQL is considered returned only when the real response contains a non-empty SQL or iptu_registration_number field. A connection failure is never absence of a registered property.",
         "results": results,
     }
     output = Path("municipal-cadastral-evidence.json")
