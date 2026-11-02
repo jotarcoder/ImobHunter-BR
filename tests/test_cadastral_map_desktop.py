@@ -391,6 +391,7 @@ def test_market_tabs_reflow_and_company_table_scroll_without_truncating_buttons(
         assert window.tabs.currentWidget() is window.results_scroll
     finally:
         window.close()
+        window.deleteLater()
         app.processEvents()
 
 
@@ -414,6 +415,7 @@ def test_local_cnpj_browser_filters_and_table_fit_small_windows(tmp_path) -> Non
         assert browser.findChildren(type(browser.query))
     finally:
         browser.close()
+        browser.deleteLater()
         app.processEvents()
 
 
@@ -449,6 +451,11 @@ def test_main_window_and_integrations_keep_controls_inside_screen(tmp_path) -> N
         close = next(btn for btn in dialog.findChildren(QPushButton) if btn.text() == "Fechar")
         assert close.isVisible()
         dialog.close()
+        dialog.deleteLater()
+        window._utility_dialogs.clear()
     finally:
         window.close()
+        window.deleteLater()
+        from PySide6.QtCore import QCoreApplication, QEvent
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         app.processEvents()

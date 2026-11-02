@@ -81,6 +81,7 @@ class MarketIntelligenceDialog(QDialog):
         self.store = MarketIntelligenceStore(data_dir / "businesses.sqlite3")
         self._build()
         fit_window_to_screen(self, QSize(1280, 820), QSize(650, 450))
+        self._reflow_actions()
         self._refresh_count()
 
     def _build(self) -> None:
@@ -327,7 +328,9 @@ class MarketIntelligenceDialog(QDialog):
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        if hasattr(self, "_action_grid"):
+        # Closing a Qt window can delete the button children before its layout;
+        # never reparent widgets while the hidden dialog is tearing down.
+        if self.isVisible() and hasattr(self, "_action_grid"):
             self._reflow_actions()
 
     def _refresh_count(self) -> None:
