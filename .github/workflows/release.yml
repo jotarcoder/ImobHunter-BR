@@ -11,6 +11,11 @@ on:
       - "imobhunter/__init__.py"
       - "imobhunter/licensing.py"
       - "data/coverage/ddd.json"
+  # Only a green main CI with a new version starts a candidate build.
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       build_target:
@@ -69,16 +74,17 @@ jobs:
           PY
 
   meta:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
       ref: ${{ steps.ref.outputs.ref }}
       should_release: ${{ steps.ref.outputs.should_release }}
+      should_build: ${{ steps.ref.outputs.should_build }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
           fetch-tags: true
       - name: Read project version
@@ -96,7 +102,7 @@ jobs:
           PY
           )"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-      - name: Validate release intent (no automatic publishing)
+      - name: Detect version bump after approved main CI
         id: ref
         shell: bash
         env:
@@ -106,21 +112,38 @@ jobs:
         run: |
           set -euo pipefail
           SHOULD_RELEASE=false
+          SHOULD_BUILD=false
           REF="$(git rev-parse HEAD)"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            SHOULD_BUILD=true
+          elif [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
+            PREVIOUS_VERSION="$(git show HEAD^:pyproject.toml | grep '^version = "' | cut -d '"' -f2 | head -n 1)"
+            if [ -z "$PREVIOUS_VERSION" ]; then
+              echo "::error::Previous version missing."
+              exit 1
+            fi
+            if [ "$PREVIOUS_VERSION" != "$VERSION" ]; then
+              SHOULD_BUILD=true
+              echo "New version: $PREVIOUS_VERSION -> $VERSION"
+            else
+              echo "Version unchanged ($VERSION); no native builds."
+            fi
+          fi
           if [ "$PUBLISH_RELEASE" = "true" ]; then
             if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ] || [ "$GITHUB_REF" != "refs/heads/main" ] || [ "$BUILD_TARGET" != "all" ]; then
-              echo "::error::Publishing requires a manually dispatched 'all' build on main."
+              echo "::error::GitHub release publishing requires a manually dispatched all-target run on main."
               exit 1
             fi
             SHOULD_RELEASE=true
           fi
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
           echo "should_release=$SHOULD_RELEASE" >> "$GITHUB_OUTPUT"
-          echo "Version: $VERSION; should_release=$SHOULD_RELEASE; ref=$REF"
+          echo "should_build=$SHOULD_BUILD" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION; build=$SHOULD_BUILD; release=$SHOULD_RELEASE; ref=$REF"
 
   icon:
     needs: meta
-    if: github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'windows')
+    if: needs.meta.outputs.should_build == 'true' && (github.event_name == 'workflow_run' || inputs.build_target == 'all' || inputs.build_target == 'windows')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -153,7 +176,7 @@ jobs:
 
   windows:
     needs: [meta, icon]
-    if: github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'windows')
+    if: needs.meta.outputs.should_build == 'true' && (github.event_name == 'workflow_run' || inputs.build_target == 'all' || inputs.build_target == 'windows')
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -213,7 +236,7 @@ jobs:
 
   linux:
     needs: meta
-    if: github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'linux')
+    if: needs.meta.outputs.should_build == 'true' && (github.event_name == 'workflow_run' || inputs.build_target == 'all' || inputs.build_target == 'linux')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -250,7 +273,7 @@ jobs:
 
   macos-intel:
     needs: meta
-    if: github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'macos-intel')
+    if: needs.meta.outputs.should_build == 'true' && (github.event_name == 'workflow_run' || inputs.build_target == 'all' || inputs.build_target == 'macos-intel')
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
@@ -292,7 +315,7 @@ jobs:
 
   macos-arm:
     needs: meta
-    if: github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'macos-arm')
+    if: needs.meta.outputs.should_build == 'true' && (github.event_name == 'workflow_run' || inputs.build_target == 'all' || inputs.build_target == 'macos-arm')
     runs-on: macos-26
     timeout-minutes: 60
     steps:
@@ -331,6 +354,42 @@ jobs:
         with:
           name: ImobHunter-BR-macOS-AppleSilicon
           path: ImobHunter-BR-macOS-AppleSilicon.dmg
+          if-no-files-found: error
+
+  candidate-manifest:
+    needs: [meta, windows, linux, macos-intel, macos-arm]
+    if: success() && needs.meta.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ImobHunter-BR-*
+          path: candidate
+          merge-multiple: true
+      - name: Verify four installers and record SHA256
+        shell: bash
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+          BUILD_REF: ${{ needs.meta.outputs.ref }}
+        run: |
+          set -euo pipefail
+          cd candidate
+          for file in ImobHunter-BR-Setup-Windows.exe ImobHunter-BR-Linux.AppImage ImobHunter-BR-macOS-Intel.dmg ImobHunter-BR-macOS-AppleSilicon.dmg; do
+            test -s "$file" || { echo "::error::Missing or empty installer: $file"; exit 1; }
+          done
+          {
+            echo "ImobHunter-BR candidate version: $VERSION"
+            echo "Source commit: $BUILD_REF"
+            echo "NOT published to R2; installers require manual acceptance."
+            sha256sum ImobHunter-BR-Setup-Windows.exe ImobHunter-BR-Linux.AppImage ImobHunter-BR-macOS-Intel.dmg ImobHunter-BR-macOS-AppleSilicon.dmg
+          } > ../build-manifest.txt
+          cat ../build-manifest.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-Checksums-v${{ needs.meta.outputs.version }}
+          path: build-manifest.txt
           if-no-files-found: error
 
   publish:
