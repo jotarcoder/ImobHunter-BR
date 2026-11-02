@@ -1,32 +1,33 @@
 name: Publish installers to Cloudflare R2
 
-# Publish only after the installer release workflow finishes successfully.
-# Manual dispatch remains available for an explicitly validated release.
+# R2 must NEVER upload simply because release-candidate builds completed.
+# Separate candidate generation from explicit final approval to publish.
 on:
-  workflow_run:
-    workflows: ["Release installers"]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Validated GitHub release tag to publish
+        description: GitHub release tag with four validated installers (e.g. v2.1.0)
         required: true
-        default: v2.0.0
+        type: string
+      confirm_publish:
+        description: I have checked all four installers and authorize replacing R2 downloads
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   publish:
-    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_run') && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
+    if: inputs.confirm_publish == true
     runs-on: ubuntu-latest
     steps:
       - name: Select release tag
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
-          INPUT_TAG: ${{ inputs.release_tag || 'v2.0.0' }}
+          INPUT_TAG: ${{ inputs.release_tag }}
         shell: bash
         run: |
           set -euo pipefail
