@@ -26,7 +26,7 @@ def _explicit_door_number(record: PropertyRecord) -> str:
     if door not in (None, ""):
         return canonical_text(door)
     address = str(record.address or "")
-    match = re.search(r",\s*(?:N[º°.]\s*)?(\d+[A-Za-z]?)\s*$", address, re.I)
+    match = re.search(r",\s*(?:N[º°.]\s*)?(\d+[A-Za-z]?)\s*$", address, re.IGNORECASE)
     return canonical_text(match.group(1)) if match else ""
 
 
