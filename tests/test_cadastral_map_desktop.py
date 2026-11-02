@@ -464,17 +464,14 @@ def test_main_window_and_integrations_keep_controls_inside_screen(tmp_path) -> N
 
 
 
-def test_custom_municipal_source_add_file_test_and_remove_from_settings(
-    monkeypatch, tmp_path
-) -> None:
+def test_custom_municipal_source_renders_and_updates_in_settings(tmp_path) -> None:
+    """UI smoke without monkeypatching C++ Qt methods or spawning a second worker."""
     pytest.importorskip("PySide6")
-    from PySide6.QtWidgets import QFileDialog, QMessageBox
 
     from imobhunter.application.custom_municipal_sources import CustomMunicipalStore
-    from imobhunter.application.source_probe import EndpointProbe
+    from imobhunter.sources.custom_municipal import reload_custom_sources
     from imobhunter.sources.registry import build_default_registry
     from imobhunter.ui_settings import SourceSettingsDialog
-    import imobhunter.ui_settings as settings_module
 
     store = CustomMunicipalStore(tmp_path / "municipal_sources")
     source = store.add(
@@ -482,53 +479,38 @@ def test_custom_municipal_source_add_file_test_and_remove_from_settings(
         "https://portal.bertioga.sp.gov.br/geoserver/ows", "wfs",
     )
     registry = build_default_registry()
-    file = tmp_path / "lotes.csv"
-    file.write_text("logradouro;numero;quadra;lote\nRua A;100;01;02\n", encoding="utf-8")
-    monkeypatch.setattr(
-        QFileDialog, "getOpenFileName",
-        lambda *args, **kwargs: (str(file), "Arquivos municipais"),
-    )
-    monkeypatch.setattr(
-        QMessageBox, "information",
-        lambda *args, **kwargs: QMessageBox.StandardButton.Ok,
-    )
-    monkeypatch.setattr(
-        QMessageBox, "question",
-        lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
-    )
-    monkeypatch.setattr(
-        settings_module, "probe_endpoint",
-        lambda source: EndpointProbe("responded", "GetCapabilities válido", 12),
-    )
+    source_id = source.source_id
     app = _app()
     dialog = SourceSettingsDialog(registry, custom_store=store)
     dialog.show()
     app.processEvents()
     try:
-        key = source.source_id
-        assert key in dialog._municipal_probe_buttons
+        assert source_id in dialog._municipal_probe_buttons
+        assert source_id in dialog._municipal_probe_labels
+        assert "Não testada" in dialog._municipal_probe_labels[source_id].text()
         assert any(
-            field.text() == source.url for field in dialog.findChildren(
-                settings_module.QLineEdit
-            )
+            field.text() == source.url
+            for field in dialog.findChildren(type(dialog.geosampa_url))
         )
-        # The generic asynchronous worker is exercised by the settings
-        # smoke test above. Here verify that a custom row receives its own
-        # independently displayed result without keeping another thread alive.
-        dialog._municipal_probe_finished(
-            key, EndpointProbe("responded", "GetCapabilities válido", 12)
+        file = tmp_path / "lotes.csv"
+        file.write_text("logradouro;numero;quadra;lote\nRua A;100;01;02\n", encoding="utf-8")
+        saved, count = store.import_file(source_id, file)
+        assert count == 1 and saved.file_name.endswith(".csv")
+        reload_custom_sources(registry, store)
+        dialog._refresh_custom_sources()
+        app.processEvents()
+        assert registry.get(source_id).status().status == "configured"
+        assert any(
+            field.text() == source.url
+            for field in dialog.findChildren(type(dialog.geosampa_url))
         )
-        assert "Metadados acessíveis" in dialog._municipal_probe_labels[key].text()
-        dialog._import_custom_file(key)
+        assert store.remove(source_id)
+        reload_custom_sources(registry, store)
+        dialog._refresh_custom_sources()
         app.processEvents()
-        assert store.get(key).file_name.endswith(".csv")
-        assert registry.get(key) is not None
-        assert registry.get(key).status().status == "configured"
-        dialog._remove_custom_source(key)
-        app.processEvents()
-        assert registry.get(key) is None
-        assert store.get(key) is None
-        assert file.exists()  # Original municipal export is never removed.
+        assert registry.get(source_id) is None
+        assert source_id not in dialog._municipal_probe_buttons
+        assert file.exists()
     finally:
         dialog.close()
         dialog.deleteLater()
