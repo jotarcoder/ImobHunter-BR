@@ -159,11 +159,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.service = service
         self.coverage = coverage
-        # Avoid holding the PySide wrapper of Qt's shared global pool.
-        # QApplication owns this pool, so closing an independent window does
-        # not destroy active search workers or tear down the Qt singleton.
-        self.thread_pool = QThreadPool(QApplication.instance())
-        self.thread_pool.setMaxThreadCount(8)
+        self.thread_pool = QThreadPool.globalInstance()
         self._result_windows: list[SearchResultsWindow] = []
         self._search_workers: dict[SearchResultsWindow, SearchWorker] = {}
         self._utility_dialogs: list[QDialog] = []

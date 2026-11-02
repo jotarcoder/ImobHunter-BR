@@ -13,7 +13,7 @@ from .sources.geosampa import DEFAULT_WFS_URL
 from .ui_responsive import fit_window_to_screen
 
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
+    QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
     QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
     QScrollArea, QVBoxLayout, QWidget,
 )
@@ -36,34 +36,6 @@ SOURCE_FILES = (
     ("municipal_iptu", "IPTU municipal", "data_path", "CSV ou JSON"),
     ("osm", "OpenStreetMap (base local)", "data_path", "CSV, JSON, GeoJSON ou JSONL"),
 )
-
-
-_SOURCE_PROBE_POOL: QThreadPool | None = None
-
-
-def _shutdown_source_probes() -> None:
-    """Finish metadata requests before the Qt runtime is torn down."""
-    global _SOURCE_PROBE_POOL
-    pool = _SOURCE_PROBE_POOL
-    if pool is not None:
-        pool.waitForDone(9000)
-        _SOURCE_PROBE_POOL = None
-
-
-def _source_probe_pool() -> QThreadPool:
-    """Own the pool in Python, not Qt's shared global singleton.
-
-    QThreadPool.globalInstance() may be deleted as a shared QObject during
-    PySide6 interpreter shutdown when workers and dialogs use its wrapper.
-    """
-    global _SOURCE_PROBE_POOL
-    if _SOURCE_PROBE_POOL is None:
-        _SOURCE_PROBE_POOL = QThreadPool()
-        _SOURCE_PROBE_POOL.setMaxThreadCount(3)
-        app = QApplication.instance()
-        if app is not None:
-            app.aboutToQuit.connect(_shutdown_source_probes)
-    return _SOURCE_PROBE_POOL
 
 
 class MunicipalProbeSignals(QObject):
@@ -692,7 +664,7 @@ class SourceSettingsDialog(QDialog):
         worker = MunicipalProbeWorker(source)
         self._municipal_probe_workers[source_id] = worker
         worker.signals.finished.connect(self._municipal_probe_finished)
-        _source_probe_pool().start(worker)
+        QThreadPool.globalInstance().start(worker)
 
     def _municipal_probe_finished(
         self, source_id: str, result: EndpointProbe

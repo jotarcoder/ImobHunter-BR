@@ -39,7 +39,7 @@ def _release_qt_before_python_interpreter_shutdown():
     from PySide6.QtCore import QCoreApplication, QEvent
     from PySide6.QtWidgets import QApplication
 
-    from imobhunter import ui_cadastral_map, ui_settings
+    from imobhunter import ui_cadastral_map
 
     app = _QT_APP
     QApplication.closeAllWindows()
@@ -48,7 +48,6 @@ def _release_qt_before_python_interpreter_shutdown():
     if pool is not None:
         pool.waitForDone(5000)
         ui_cadastral_map._MAP_TILE_POOL = None
-    ui_settings._shutdown_source_probes()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     app.processEvents()
     app.quit()
@@ -247,6 +246,7 @@ def test_map_offline_with_only_geocoded_point_never_draws_fiscal_polygon(monkeyp
 def test_municipal_settings_show_actual_urls_and_test_without_blocking(monkeypatch):
     """The user sees the exact adapter endpoint; a probe runs asynchronously."""
     pytest.importorskip("PySide6")
+    from PySide6.QtCore import QThreadPool
 
     from imobhunter.application.municipal_endpoints import settings_endpoint_rows
     from imobhunter.application.source_probe import EndpointProbe
@@ -279,7 +279,7 @@ def test_municipal_settings_show_actual_urls_and_test_without_blocking(monkeypat
         button = dialog._municipal_probe_buttons["santos"]
         button.click()
         # Complete the small simulated QRunnable, then deliver the Qt signal.
-        assert settings_module._source_probe_pool().waitForDone(3000)
+        assert QThreadPool.globalInstance().waitForDone(3000)
         app.processEvents()
         assert calls == ["santos"]
         assert button.isEnabled()
@@ -439,8 +439,6 @@ def test_main_window_and_integrations_keep_controls_inside_screen(tmp_path) -> N
     app.processEvents()
     try:
         assert window.screen().availableGeometry().contains(window.geometry())
-        # Ownership: never release a wrapper for Qt's global QThreadPool.
-        assert window.thread_pool.parent() is app
         assert window.content_scroll.widget() is not None
         window._show_integrations()
         app.processEvents()
@@ -461,7 +459,6 @@ def test_main_window_and_integrations_keep_controls_inside_screen(tmp_path) -> N
         from PySide6.QtCore import QCoreApplication, QEvent
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         app.processEvents()
-
 
 
 def test_custom_municipal_source_renders_and_updates_in_settings(tmp_path) -> None:
