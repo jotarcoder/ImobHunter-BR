@@ -81,3 +81,13 @@ criação, persistência, exclusão, importação CSV/XLSX/GeoJSON, roteamento
 por município/UF e testes de conexão sem rede. O teste visual dos
 instaladores em Windows/Linux ainda é exigido para homologação de release.
 **Não publicar R2 nesta etapa.**
+
+## Versão Qt homologada no CI
+
+O extra desktop fixa PySide6 em 6.8.3. No runner Linux de 02/11/2026, a
+instalação anterior de PySide6 6.12.0 produziu falhas nativas intermitentes
+após a execução dos testes de interface; com PySide6 6.8.3, o conjunto
+completo de testes Qt concluiu três vezes em processos Python independentes,
+com código de saída zero. A validação automatizada verifica essa mesma
+versão usada pela instalação desktop. A validação visual em Windows/Linux
+instalados continua pendente e não autoriza publicação automática no R2.
