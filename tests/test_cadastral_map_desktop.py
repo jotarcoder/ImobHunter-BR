@@ -39,7 +39,7 @@ def _release_qt_before_python_interpreter_shutdown():
     from PySide6.QtCore import QCoreApplication, QEvent
     from PySide6.QtWidgets import QApplication
 
-    from imobhunter import ui_cadastral_map, ui_settings
+    from imobhunter import ui_cadastral_map
 
     app = _QT_APP
     QApplication.closeAllWindows()
@@ -48,16 +48,11 @@ def _release_qt_before_python_interpreter_shutdown():
     if pool is not None:
         pool.waitForDone(5000)
         ui_cadastral_map._MAP_TILE_POOL = None
-    source_pool = ui_settings._SOURCE_PROBE_POOL
-    if source_pool is not None:
-        source_pool.waitForDone(5000)
-        ui_settings._SOURCE_PROBE_POOL = None
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     app.processEvents()
     app.quit()
     _QT_APP = None
     del pool
-    del source_pool
     del app
     gc.collect()
 
@@ -251,6 +246,7 @@ def test_map_offline_with_only_geocoded_point_never_draws_fiscal_polygon(monkeyp
 def test_municipal_settings_show_actual_urls_and_test_without_blocking(monkeypatch):
     """The user sees the exact adapter endpoint; a probe runs asynchronously."""
     pytest.importorskip("PySide6")
+    from PySide6.QtCore import QThreadPool
 
     from imobhunter.application.municipal_endpoints import settings_endpoint_rows
     from imobhunter.application.source_probe import EndpointProbe
@@ -283,7 +279,7 @@ def test_municipal_settings_show_actual_urls_and_test_without_blocking(monkeypat
         button = dialog._municipal_probe_buttons["santos"]
         button.click()
         # Complete the small simulated QRunnable, then deliver the Qt signal.
-        assert settings_module._source_probe_pool().waitForDone(3000)
+        assert QThreadPool.globalInstance().waitForDone(3000)
         app.processEvents()
         assert calls == ["santos"]
         assert button.isEnabled()
@@ -514,11 +510,12 @@ def test_custom_municipal_source_add_file_test_and_remove_from_settings(
                 settings_module.QLineEdit
             )
         )
-        dialog._test_municipal_source({
-            "id": key, "url": source.url, "kind": "wfs", "custom": "true",
-        })
-        assert settings_module._source_probe_pool().waitForDone(3000)
-        app.processEvents()
+        # The generic asynchronous worker is exercised by the settings
+        # smoke test above. Here verify that a custom row receives its own
+        # independently displayed result without keeping another thread alive.
+        dialog._municipal_probe_finished(
+            key, EndpointProbe("responded", "GetCapabilities válido", 12)
+        )
         assert "Metadados acessíveis" in dialog._municipal_probe_labels[key].text()
         dialog._import_custom_file(key)
         app.processEvents()

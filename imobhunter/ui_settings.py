@@ -13,7 +13,7 @@ from .sources.geosampa import DEFAULT_WFS_URL
 from .ui_responsive import fit_window_to_screen
 
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
+    QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
     QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
     QScrollArea, QVBoxLayout, QWidget,
 )
@@ -36,25 +36,6 @@ SOURCE_FILES = (
     ("municipal_iptu", "IPTU municipal", "data_path", "CSV ou JSON"),
     ("osm", "OpenStreetMap (base local)", "data_path", "CSV, JSON, GeoJSON ou JSONL"),
 )
-
-
-_SOURCE_PROBE_POOL: QThreadPool | None = None
-
-
-def _source_probe_pool() -> QThreadPool:
-    """Keep metadata test workers alive for the whole QApplication session.
-
-    The global Qt pool's wrapper can outlive its C++ instance during shutdown;
-    a QApplication-owned pool has explicit lifecycle and a limit of three jobs.
-    """
-    global _SOURCE_PROBE_POOL
-    if _SOURCE_PROBE_POOL is None:
-        app = QApplication.instance()
-        if app is None:
-            raise RuntimeError("A interface Qt precisa estar inicializada.")
-        _SOURCE_PROBE_POOL = QThreadPool(app)
-        _SOURCE_PROBE_POOL.setMaxThreadCount(3)
-    return _SOURCE_PROBE_POOL
 
 
 class MunicipalProbeSignals(QObject):
@@ -683,7 +664,7 @@ class SourceSettingsDialog(QDialog):
         worker = MunicipalProbeWorker(source)
         self._municipal_probe_workers[source_id] = worker
         worker.signals.finished.connect(self._municipal_probe_finished)
-        _source_probe_pool().start(worker)
+        QThreadPool.globalInstance().start(worker)
 
     def _municipal_probe_finished(
         self, source_id: str, result: EndpointProbe
