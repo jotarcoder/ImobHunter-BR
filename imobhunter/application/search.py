@@ -7,6 +7,7 @@ from imobhunter.application.reconcile import reconcile
 from imobhunter.domain.models import NormalizedAddress, PropertyRecord, SearchRequest
 from imobhunter.infrastructure.local_db import LocalDatabase
 from imobhunter.sources.base import SourceAdapter
+from imobhunter.sources.custom_municipal import CustomMunicipalAdapter
 from imobhunter.sources.registry import SourceRegistry
 
 DEFAULT_SOURCE_TIMEOUT_SECONDS = 25.0
@@ -118,7 +119,13 @@ class SearchService:
     def search(self, request: SearchRequest) -> SearchResult:
         request.validate()
         normalized = normalize_request(request)
-        sources = self.registry.all()
+        # User-added municipal adapters are considered only for their exact
+        # municipality/UF; never report "no results" from a city not searched.
+        sources = [
+            source for source in self.registry.all()
+            if not isinstance(source, CustomMunicipalAdapter)
+            or source.definition.matches(request.city, request.state)
+        ]
         results: list[tuple[SourceSearchResult, list[PropertyRecord]] | None] = [
             None
         ] * len(sources)

@@ -6,13 +6,16 @@ from urllib.parse import urlparse
 
 from PySide6.QtCore import QSettings, QObject, QRunnable, QThreadPool, Signal, QSize, Qt
 from .application.municipal_endpoints import settings_endpoint_rows
+from .application.custom_municipal_sources import CustomMunicipalStore, infer_protocol
+from .sources.custom_municipal import reload_custom_sources
 from .application.source_probe import EndpointProbe, is_official_service_url, probe_endpoint
 from .sources.geosampa import DEFAULT_WFS_URL
 from .ui_responsive import fit_window_to_screen
 
 from PySide6.QtWidgets import (
-    QDialog, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
-    QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget,
+    QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
+    QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
+    QScrollArea, QVBoxLayout, QWidget,
 )
 
 
@@ -55,9 +58,10 @@ class MunicipalProbeWorker(QRunnable):
 class SourceSettingsDialog(QDialog):
     """Configures local datasets and supported source endpoints for this user."""
 
-    def __init__(self, registry, parent=None) -> None:
+    def __init__(self, registry, parent=None, custom_store=None) -> None:
         super().__init__(parent)
         self.registry = registry
+        self.custom_store = custom_store or CustomMunicipalStore()
         self.settings = QSettings("ImobHunter", "ImobHunter-BR")
         self.path_fields: dict[str, QLineEdit] = {}
         self._municipal_probe_workers: dict[str, MunicipalProbeWorker] = {}
@@ -190,6 +194,34 @@ class SourceSettingsDialog(QDialog):
             status_label.setWordWrap(True)
             self._municipal_probe_labels[item["id"]] = status_label
             form.addRow(status_label)
+
+        # User-added municipal endpoints and authorized municipal exports are
+        # stored separately from the built-in governmental integrations.
+        custom_section = QWidget()
+        custom_layout = QVBoxLayout(custom_section)
+        custom_layout.setContentsMargins(0, 12, 0, 10)
+        custom_title = QLabel("Minhas fontes municipais")
+        custom_title.setStyleSheet("font-size:16px;font-weight:800;")
+        custom_layout.addWidget(custom_title)
+        custom_info = QLabel(
+            "Adicione por município e UF, informe um link HTTPS público ou importe "
+            "CSV, Excel, JSON ou GeoJSON de sua prefeitura. Sites sem API ficam "
+            "somente como referência; WFS e ArcGIS são consultados por localidade."
+        )
+        custom_info.setObjectName("muted")
+        custom_info.setWordWrap(True)
+        custom_layout.addWidget(custom_info)
+        add_custom = QPushButton("+ Adicionar fonte municipal")
+        add_custom.setObjectName("primary")
+        add_custom.clicked.connect(self._add_custom_source)
+        custom_layout.addWidget(add_custom)
+        self._custom_list_host = QWidget()
+        self._custom_list_layout = QVBoxLayout(self._custom_list_host)
+        self._custom_list_layout.setContentsMargins(0, 0, 0, 0)
+        self._custom_list_layout.setSpacing(8)
+        custom_layout.addWidget(self._custom_list_host)
+        form.addRow(custom_section)
+        self._refresh_custom_sources()
 
         sinter = registry.get("sinter_cib")
         self.sinter_url = QLineEdit(
@@ -437,6 +469,190 @@ class SourceSettingsDialog(QDialog):
         import webbrowser
         webbrowser.open(url)
 
+    def _refresh_custom_sources(self) -> None:
+        layout = self._custom_list_layout
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget() is not None:
+                item.widget().deleteLater()
+        for key in tuple(self._municipal_probe_buttons):
+            if key.startswith("local_municipal_"):
+                self._municipal_probe_buttons.pop(key, None)
+                self._municipal_probe_labels.pop(key, None)
+        try:
+            entries = self.custom_store.list()
+        except (ValueError, OSError, TypeError) as exc:
+            warning = QLabel(f"Não foi possível ler fontes salvas: {exc}")
+            warning.setWordWrap(True)
+            layout.addWidget(warning)
+            return
+        if not entries:
+            note = QLabel("Nenhuma fonte municipal personalizada adicionada.")
+            note.setObjectName("muted")
+            layout.addWidget(note)
+        for source in entries:
+            container = QWidget()
+            box = QVBoxLayout(container)
+            box.setContentsMargins(3, 6, 3, 6)
+            header = QLabel(f"{source.name} · {source.city}/{source.state}")
+            header.setStyleSheet("font-weight:750;color:#72f59e")
+            box.addWidget(header)
+            endpoint = QLineEdit(
+                source.url or "Fonte local — sem link cadastrado"
+            )
+            endpoint.setReadOnly(True)
+            endpoint.setToolTip(source.url)
+            box.addWidget(endpoint)
+            actions = QHBoxLayout()
+            source_id = source.source_id
+            if source.url:
+                test_button = QPushButton("Testar fonte")
+                details = {
+                    "id": source_id, "url": source.url, "kind": source.kind,
+                    "custom": "true",
+                }
+                test_button.clicked.connect(
+                    lambda checked=False, item=details: self._test_municipal_source(item)
+                )
+                self._municipal_probe_buttons[source_id] = test_button
+                actions.addWidget(test_button)
+            file_button = QPushButton("Importar arquivo")
+            file_button.clicked.connect(
+                lambda checked=False, sid=source_id: self._import_custom_file(sid)
+            )
+            actions.addWidget(file_button)
+            remove_button = QPushButton("Remover fonte")
+            remove_button.clicked.connect(
+                lambda checked=False, sid=source_id: self._remove_custom_source(sid)
+            )
+            actions.addWidget(remove_button)
+            box.addLayout(actions)
+            stored_file = self.custom_store.local_path(source)
+            status = QLabel(
+                f"Arquivo local: {stored_file.name}" if stored_file and stored_file.is_file()
+                else "Sem arquivo municipal importado."
+            )
+            status.setObjectName("muted")
+            status.setWordWrap(True)
+            box.addWidget(status)
+            if source.url:
+                check_status = QLabel(
+                    "Não testada nesta sessão — conexão não confirma SQL/IPTU."
+                )
+                check_status.setObjectName("muted")
+                check_status.setWordWrap(True)
+                self._municipal_probe_labels[source_id] = check_status
+                box.addWidget(check_status)
+            layout.addWidget(container)
+        layout.addStretch(1)
+
+    def _add_custom_source(self) -> None:
+        editor = QDialog(self)
+        editor.setWindowTitle("Adicionar nova fonte municipal")
+        editor.setMinimumWidth(360)
+        edit_layout = QVBoxLayout(editor)
+        form = QFormLayout()
+        name_field = QLineEdit()
+        name_field.setPlaceholderText("Ex.: Geoportal cadastral")
+        city_field = QLineEdit()
+        city_field.setPlaceholderText("Ex.: Bertioga")
+        state_field = QLineEdit()
+        state_field.setPlaceholderText("UF: SP")
+        state_field.setMaxLength(2)
+        url_field = QLineEdit()
+        url_field.setPlaceholderText("https://prefeitura... (opcional para arquivo local)")
+        protocol = QComboBox()
+        protocol.addItem("Detectar pelo link", "auto")
+        protocol.addItem("WFS (serviço de camadas)", "wfs")
+        protocol.addItem("ArcGIS REST (camada /0)", "arcgis")
+        protocol.addItem("Site da prefeitura (somente referência)", "website")
+        form.addRow("Nome da fonte", name_field)
+        form.addRow("Município", city_field)
+        form.addRow("UF", state_field)
+        form.addRow("Link HTTPS", url_field)
+        form.addRow("Tipo de serviço", protocol)
+        edit_layout.addLayout(form)
+        notice = QLabel(
+            "Se o link for apenas um site, ele será salvo e poderá ser testado; "
+            "para consultas automáticas escolha WFS ou ArcGIS com endpoint válido. "
+            "É possível cadastrar sem link e importar arquivos locais depois."
+        )
+        notice.setWordWrap(True)
+        edit_layout.addWidget(notice)
+        commands = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save |
+            QDialogButtonBox.StandardButton.Cancel
+        )
+        commands.button(QDialogButtonBox.StandardButton.Save).setText("Salvar fonte")
+        commands.accepted.connect(editor.accept)
+        commands.rejected.connect(editor.reject)
+        edit_layout.addWidget(commands)
+        fit_window_to_screen(editor, QSize(550, 430), QSize(360, 300))
+        if editor.exec() != QDialog.DialogCode.Accepted:
+            return
+        kind = str(protocol.currentData())
+        url = url_field.text().strip()
+        if kind == "auto":
+            kind = infer_protocol(url)
+        try:
+            source = self.custom_store.add(
+                name_field.text(), city_field.text(), state_field.text(),
+                url=url, kind=kind,
+            )
+            reload_custom_sources(self.registry, self.custom_store)
+        except (ValueError, TypeError, OSError) as exc:
+            QMessageBox.warning(self, "Fonte municipal", str(exc))
+            return
+        self._refresh_custom_sources()
+        QMessageBox.information(
+            self, "Fonte municipal salva",
+            f"{source.name} — {source.city}/{source.state} foi adicionada. "
+            "Use Testar fonte e/ou Importar arquivo para habilitar os dados.",
+        )
+
+    def _import_custom_file(self, source_id: str) -> None:
+        source = self.custom_store.get(source_id)
+        if source is None:
+            QMessageBox.warning(self, "Arquivo municipal", "Fonte não encontrada.")
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, f"Importar dados de {source.city}/{source.state}", "",
+            "Arquivos municipais (*.csv *.xlsx *.json *.geojson)",
+        )
+        if not path:
+            return
+        try:
+            updated, count = self.custom_store.import_file(source_id, Path(path))
+            reload_custom_sources(self.registry, self.custom_store)
+        except (ValueError, OSError, TypeError) as exc:
+            QMessageBox.warning(self, "Importação municipal", str(exc))
+            return
+        self._refresh_custom_sources()
+        QMessageBox.information(
+            self, "Arquivo importado",
+            f"{count} linhas importadas para {updated.city}/{updated.state}. "
+            "Os registros serão filtrados por endereço ou quadra/lote nas próximas pesquisas.",
+        )
+
+    def _remove_custom_source(self, source_id: str) -> None:
+        source = self.custom_store.get(source_id)
+        if source is None:
+            return
+        answer = QMessageBox.question(
+            self, "Remover fonte municipal",
+            f"Remover '{source.name}' de {source.city}/{source.state} e "
+            "sua cópia local do arquivo cadastral? O original não será apagado.",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self.custom_store.remove(source_id)
+            reload_custom_sources(self.registry, self.custom_store)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "Remover fonte", str(exc))
+            return
+        self._refresh_custom_sources()
+
     def _test_municipal_source(self, source: dict[str, str]) -> None:
         source_id = source["id"]
         if source_id in self._municipal_probe_workers:
@@ -647,3 +863,13 @@ def apply_saved_source_settings(registry) -> None:
             wfs.api_token = keyring.get_password("ImobHunter-BR", "municipal_wfs_api_token") or ""
         except Exception:  # noqa: BLE001 - keyring backend errors vary by platform.
             wfs.api_token = ""
+
+    # The per-user catalogue persists independently of QSettings, and each
+    # user-added source is registered only for its own municipality and UF.
+    try:
+        reload_custom_sources(registry, CustomMunicipalStore())
+    except (OSError, ValueError, TypeError):
+        # A damaged user catalogue must never prevent access to built-in
+        # municipal sources or the licence activation window. The settings
+        # dialog will show the catalogue error so the user can repair it.
+        pass

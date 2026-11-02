@@ -12,6 +12,8 @@ on:
       - "imobhunter/ui_responsive.py"
       - "imobhunter/ui_settings.py"
       - "imobhunter/application/source_probe.py"
+      - "imobhunter/application/custom_municipal_sources.py"
+      - "imobhunter/sources/custom_municipal.py"
       - "tests/test_cadastral_map_desktop.py"
       - ".github/workflows/cadastral-map-smoke.yml"
   workflow_dispatch:

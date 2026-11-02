@@ -459,3 +459,75 @@ def test_main_window_and_integrations_keep_controls_inside_screen(tmp_path) -> N
         from PySide6.QtCore import QCoreApplication, QEvent
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         app.processEvents()
+
+
+
+def test_custom_municipal_source_add_file_test_and_remove_from_settings(
+    monkeypatch, tmp_path
+) -> None:
+    pytest.importorskip("PySide6")
+    from PySide6.QtWidgets import QFileDialog, QMessageBox
+    from PySide6.QtCore import QThreadPool
+
+    from imobhunter.application.custom_municipal_sources import CustomMunicipalStore
+    from imobhunter.application.source_probe import EndpointProbe
+    from imobhunter.sources.registry import build_default_registry
+    from imobhunter.ui_settings import SourceSettingsDialog
+    import imobhunter.ui_settings as settings_module
+
+    store = CustomMunicipalStore(tmp_path / "municipal_sources")
+    source = store.add(
+        "Geoportal da prefeitura", "Bertioga", "SP",
+        "https://portal.bertioga.sp.gov.br/geoserver/ows", "wfs",
+    )
+    registry = build_default_registry()
+    file = tmp_path / "lotes.csv"
+    file.write_text("logradouro;numero;quadra;lote\nRua A;100;01;02\n", encoding="utf-8")
+    monkeypatch.setattr(
+        QFileDialog, "getOpenFileName",
+        lambda *args, **kwargs: (str(file), "Arquivos municipais"),
+    )
+    monkeypatch.setattr(
+        QMessageBox, "information",
+        lambda *args, **kwargs: QMessageBox.StandardButton.Ok,
+    )
+    monkeypatch.setattr(
+        QMessageBox, "question",
+        lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
+    )
+    monkeypatch.setattr(
+        settings_module, "probe_endpoint",
+        lambda source: EndpointProbe("responded", "GetCapabilities válido", 12),
+    )
+    app = _app()
+    dialog = SourceSettingsDialog(registry, custom_store=store)
+    dialog.show()
+    app.processEvents()
+    try:
+        key = source.source_id
+        assert key in dialog._municipal_probe_buttons
+        assert any(
+            field.text() == source.url for field in dialog.findChildren(
+                settings_module.QLineEdit
+            )
+        )
+        dialog._test_municipal_source({
+            "id": key, "url": source.url, "kind": "wfs", "custom": "true",
+        })
+        assert QThreadPool.globalInstance().waitForDone(3000)
+        app.processEvents()
+        assert "Metadados acessíveis" in dialog._municipal_probe_labels[key].text()
+        dialog._import_custom_file(key)
+        app.processEvents()
+        assert store.get(key).file_name.endswith(".csv")
+        assert registry.get(key) is not None
+        assert registry.get(key).status().status == "configured"
+        dialog._remove_custom_source(key)
+        app.processEvents()
+        assert registry.get(key) is None
+        assert store.get(key) is None
+        assert file.exists()  # Original municipal export is never removed.
+    finally:
+        dialog.close()
+        dialog.deleteLater()
+        app.processEvents()

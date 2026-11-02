@@ -13,6 +13,8 @@ from xml.etree import ElementTree
 
 import httpx
 
+from imobhunter.application.custom_municipal_sources import safe_public_url
+
 TIMEOUT_SECONDS = 8.0
 
 
@@ -82,6 +84,12 @@ def _probe(client: httpx.Client, source: Mapping[str, str]) -> str:
         if not isinstance(body, dict) or body.get("success") is not True:
             raise ValueError("O portal CKAN não confirmou success=true.")
         return "API do catálogo CKAN respondeu"
+    if kind == "website":
+        response = client.get(url)
+        response.raise_for_status()
+        if response.is_redirect:
+            raise ValueError("Redirecionamento não permitido para fonte personalizada.")
+        return "Site respondeu; não foi verificada API de imóveis"
     raise ValueError(f"Protocolo municipal desconhecido: {kind}")
 
 
@@ -90,14 +98,19 @@ def probe_endpoint(
 ) -> EndpointProbe:
     """Connectivity diagnosis only; TLS verification is never bypassed."""
     url = source.get("url", "")
-    if not is_official_service_url(url):
-        return EndpointProbe("error", "URL precisa ser HTTPS oficial gov.br.", 0)
+    custom = source.get("custom") == "true"
+    if not (safe_public_url(url) if custom else is_official_service_url(url)):
+        return EndpointProbe(
+            "error",
+            "URL precisa ser HTTPS público válido." if custom else "URL precisa ser HTTPS oficial gov.br.",
+            0,
+        )
     start = monotonic()
     try:
         if client is None:
             with httpx.Client(
                 timeout=httpx.Timeout(TIMEOUT_SECONDS, connect=4.0),
-                follow_redirects=True,
+                follow_redirects=False,
             ) as managed:
                 message = _probe(managed, source)
         else:
