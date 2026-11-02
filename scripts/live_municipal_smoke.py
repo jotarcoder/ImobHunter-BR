@@ -18,6 +18,7 @@ from imobhunter.sources.official_municipal_services import OfficialMunicipalServ
 CASES = (
     ("São Paulo", "SP", "Avenida Paulista", "1000", "geosampa"),
     ("Praia Grande", "SP", "Avenida Presidente Costa e Silva", "100", "official"),
+    ("Bertioga", "SP", "Avenida Anchieta", "1000", "official"),
     ("Belo Horizonte", "MG", "Rua da Bahia", "1000", "official"),
     ("Rio de Janeiro", "RJ", "Avenida Rio Branco", "1", "official"),
     ("Goiânia", "GO", "Avenida Goiás", "1", "official"),

@@ -30,7 +30,10 @@ jobs:
           cache: pip
       - name: Install application dependencies
         run: python -m pip install -e ".[dev]"
-      - name: Query real municipal cadastral sources
+      # External municipal portals can be unavailable or publish incomplete TLS
+      # chains. Keep their evidence report, but do not fail code CI for their uptime.
+      - name: Diagnose real municipal cadastral sources (external service)
+        continue-on-error: true
         run: python scripts/live_municipal_cadastral_evidence.py
       - name: Upload municipal evidence report
         if: always()
