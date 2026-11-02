@@ -71,6 +71,28 @@ class SearchService:
                 )
 
             records = source.search(request)
+            # Municipal adapters retain the HTTP/TLS/timeout diagnosis and may
+            # return [] to preserve the rest of the search. Do not misreport a
+            # failed endpoint as "no cadastral result" for this address.
+            if source.source_id == "official_municipal_services" and not records:
+                errors = getattr(source, "last_errors", {})
+                if isinstance(errors, dict) and request.city:
+                    failure = next(
+                        (
+                            str(message) for city, message in errors.items()
+                            if str(city).casefold() == request.city.casefold()
+                        ),
+                        None,
+                    )
+                    if failure:
+                        return (
+                            SourceSearchResult(
+                                source_id=source.source_id, name=source.name,
+                                status="error", records_count=0,
+                                message=f"Falha na fonte municipal: {failure}",
+                            ),
+                            [],
+                        )
             return (
                 SourceSearchResult(
                     source_id=source.source_id,

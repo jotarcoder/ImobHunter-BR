@@ -286,6 +286,64 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             f"{longitude + lon_delta},{latitude + lat_delta},EPSG:4326"
         )
 
+    def _wfs_get_feature_collection(
+        self,
+        endpoint: str,
+        layer: str,
+        latitude: float,
+        longitude: float,
+        preferred_version: str,
+        diagnostics: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        """Recover from per-layer WFS 400/403 or ServiceException without hiding other layers."""
+        versions = (preferred_version,) + tuple(
+            value for value in ("2.0.0", "1.1.0", "1.0.0")
+            if value != preferred_version
+        )
+        for version in versions:
+            modern = version == "2.0.0"
+            params: dict[str, Any] = {
+                "service": "WFS", "version": version, "request": "GetFeature",
+                "outputFormat": "application/json", "srsName": "EPSG:4326",
+                "bbox": self._bbox(latitude, longitude),
+                ("typeNames" if modern else "typeName"): layer,
+                ("count" if modern else "maxFeatures"): MAX_FEATURES,
+            }
+            if modern:
+                params["startIndex"] = 0
+            try:
+                payload = self._get(endpoint, params).json()
+                if isinstance(payload, dict) and isinstance(payload.get("features"), list):
+                    diagnostics.append({
+                        "layer": layer, "version": version,
+                        "feature_count": len(payload["features"]),
+                        "fields": sorted({
+                            str(key) for feature in payload["features"][:1]
+                            for key in (feature.get("properties") or {})
+                        }),
+                    })
+                    return payload
+                diagnostics.append({
+                    "layer": layer, "version": version,
+                    "error": "invalid_feature_collection",
+                })
+            except httpx.HTTPStatusError as exc:
+                status = exc.response.status_code
+                diagnostics.append({
+                    "layer": layer, "version": version,
+                    "error": f"http_{status}",
+                })
+                # Do not amplify a server outage/rate limit with version retries.
+                if status >= 500 or status == 429:
+                    raise
+            except (ValueError, TypeError):
+                # Some WFS deployments return XML ServiceException with HTTP 200.
+                diagnostics.append({
+                    "layer": layer, "version": version,
+                    "error": "non_geojson_response",
+                })
+        return None
+
     def _wfs_records(
         self, city: str, state: str, endpoint: str, latitude: float, longitude: float,
         request: SearchRequest,
@@ -321,27 +379,16 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         }
         self.last_diagnostics[city] = diagnostic
         records: list[PropertyRecord] = []
+        successful_layers = 0
         for layer in layers:
             layer_records: list[PropertyRecord] = []
-            response = self._get(endpoint, {
-                "service": "WFS", "version": wfs_version, "request": "GetFeature",
-                "typeNames": layer["name"], "outputFormat": "application/json",
-                "srsName": "EPSG:4326", "bbox": self._bbox(latitude, longitude),
-                "count": MAX_FEATURES, "startIndex": 0,
-            })
-            payload = response.json()
-            if not isinstance(payload, dict) or not isinstance(payload.get("features"), list):
-                diagnostic["queries"].append({"layer": layer["name"], "error": "invalid_feature_collection"})
+            payload = self._wfs_get_feature_collection(
+                endpoint, layer["name"], latitude, longitude,
+                wfs_version, diagnostic["queries"],
+            )
+            if payload is None:
                 continue
-            diagnostic["queries"].append({
-                "layer": layer["name"],
-                "feature_count": len(payload["features"]),
-                "fields": sorted({
-                    str(key)
-                    for feature in payload["features"][:1]
-                    for key in (feature.get("properties") or {})
-                }),
-            })
+            successful_layers += 1
             for feature in payload["features"]:
                 properties = feature.get("properties") or {}
                 geometry = feature.get("geometry")
@@ -436,6 +483,33 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                     return sql_records[:MAX_FEATURES]
                 if not records:
                     records.extend(layer_records[:MAX_FEATURES])
+        if layers and not successful_layers:
+            diagnostic["result"] = "all_cadastral_layers_failed"
+            raise RuntimeError(
+                f"WFS {city}: nenhuma camada cadastral retornou GeoJSON válido; "
+                "veja o diagnóstico por camada e versão."
+            )
+        failed_layers = {
+            str(entry["layer"]) for entry in diagnostic["queries"]
+            if entry.get("error")
+        } - {
+            str(entry["layer"]) for entry in diagnostic["queries"]
+            if "feature_count" in entry
+        }
+        if not records and failed_layers:
+            # An empty successful *other* layer cannot prove that an
+            # unavailable SQL layer contains no cadastral entry.
+            diagnostic["result"] = "partial_layer_failure_no_records"
+            raise RuntimeError(
+                f"WFS {city}: camada(s) cadastral(is) indisponível(is): "
+                + ", ".join(sorted(failed_layers))
+            )
+        diagnostic["result"] = (
+            "records_returned" if records else
+            "no_cadastral_layers" if not layers else "no_features_in_bbox"
+        )
+        if failed_layers:
+            diagnostic["partial_layer_failures"] = sorted(failed_layers)
         return records
 
     def _arcgis_records(
