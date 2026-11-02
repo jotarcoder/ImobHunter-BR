@@ -1,24 +1,15 @@
 from __future__ import annotations
 
 from html import escape
-from concurrent.futures import ThreadPoolExecutor
-import math
-import httpx
 from pathlib import Path
 import sys
 import uuid
-from urllib.parse import quote
 
-from PySide6.QtCore import QThreadPool, QObject, QRunnable, QUrl, Qt, Signal, Slot, QPointF, QTimer
-from PySide6.QtGui import QBrush, QColor, QCursor, QDesktopServices, QFont, QIcon, QImage, QPainter, QPen, QPixmap, QPolygonF
+from PySide6.QtCore import QThreadPool, QObject, QRunnable, QUrl, Qt, Signal, Slot
+from PySide6.QtGui import QCursor, QDesktopServices, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
-    QGraphicsScene,
-    QGraphicsPixmapItem,
-    QGraphicsView,
-    QGraphicsPolygonItem,
-    QGraphicsEllipseItem,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -35,7 +26,6 @@ from PySide6.QtWidgets import (
 from .application.coverage import DDDCoverageRegistry, load_ddd_coverage
 from .application.search import SearchResult, SearchService
 from .domain.models import SearchRequest
-import json
 from .ui_market import MarketIntelligenceDialog
 from .ui_settings import SourceSettingsDialog
 from .ui_results import SearchResultsWindow
@@ -147,323 +137,6 @@ class MetricCard(QFrame):
 
     def set_value(self, value: str) -> None:
         self.value.setText(value)
-
-
-
-class InteractiveMapView(QGraphicsView):
-    """Graphics map with mouse-wheel zoom and hand-drag panning."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
-        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
-        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
-
-    def wheelEvent(self, event):
-        delta = event.angleDelta().y()
-        if not delta:
-            event.ignore()
-            return
-        self.scale(1.2 if delta > 0 else 1 / 1.2, 1.2 if delta > 0 else 1 / 1.2)
-        event.accept()
-
-
-class CadastralMapDialog(QDialog):
-    """Interactive cadastral map with a clear highlight for the exact matched parcel."""
-
-    def __init__(self, records, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Mapa do imóvel — ruas e cadastro")
-        self.resize(1080, 760)
-        self.setMinimumSize(760, 560)
-        self._records = list(records)
-        self.setStyleSheet(
-            "QDialog { background:#07111b; color:#eaf2f7; } "
-            "QLabel { color:#dce8ef; } "
-            "QPushButton { background:#102131; border:1px solid #2a465b; "
-            "border-radius:9px; padding:8px 13px; color:#eaf2f7; font-weight:650; } "
-            "QPushButton:hover { border-color:#35ff77; background:#153044; } "
-            "QTextBrowser { background:#0c1926; border:1px solid #1b3348; "
-            "border-radius:10px; padding:10px; color:#eaf2f7; }"
-        )
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(12)
-
-        header = QVBoxLayout()
-        title = QLabel("Imóvel localizado")
-        title.setStyleSheet("font-size:22px; font-weight:800; color:#f4f8fb;")
-        header.addWidget(title)
-        self.hint = QLabel(
-            "A parcela confirmada será destacada em verde e circulada em vermelho."
-        )
-        self.hint.setStyleSheet("color:#91a8b8; font-size:12px;")
-        header.addWidget(self.hint)
-        layout.addLayout(header)
-
-        toolbar = QHBoxLayout()
-        self.zoom_out_button = QPushButton("−  Zoom")
-        self.zoom_out_button.setToolTip("Afastar o mapa")
-        self.zoom_out_button.clicked.connect(lambda: self.view.scale(0.8, 0.8))
-        toolbar.addWidget(self.zoom_out_button)
-        self.zoom_in_button = QPushButton("+  Zoom")
-        self.zoom_in_button.setToolTip("Aproximar o mapa")
-        self.zoom_in_button.clicked.connect(lambda: self.view.scale(1.25, 1.25))
-        toolbar.addWidget(self.zoom_in_button)
-        self.fit_button = QPushButton("Enquadrar lotes")
-        self.fit_button.clicked.connect(self._fit_map)
-        toolbar.addWidget(self.fit_button)
-        toolbar.addStretch(1)
-        street_button = QPushButton("Ver ruas no OpenStreetMap ↗")
-        street_button.setToolTip("Abre a busca de endereço no mapa de ruas; não altera os dados cadastrais.")
-        street_button.clicked.connect(self._open_street_map)
-        toolbar.addWidget(street_button)
-        official_button = QPushButton("Abrir novo GeoSampa ↗")
-        official_button.clicked.connect(
-            lambda: QDesktopServices.openUrl(
-                QUrl("https://novogeosampa.prefeitura.sp.gov.br/")
-            )
-        )
-        official_button.setVisible(any(
-            provenance.source_id == "geosampa"
-            for record in self._records
-            for provenance in record.provenance
-        ))
-        toolbar.addWidget(official_button)
-        layout.addLayout(toolbar)
-
-        self.view = InteractiveMapView()
-        self.view.setObjectName("cadastralMapView")
-        self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
-        self.view.setBackgroundBrush(QBrush(QColor("#091722")))
-        self.view.setStyleSheet("QGraphicsView { border:1px solid #1b3348; border-radius:12px; }")
-        self.scene = QGraphicsScene(self)
-        self.view.setScene(self.scene)
-        layout.addWidget(self.view, 1)
-
-        legend = QHBoxLayout()
-        swatch = QLabel("●")
-        swatch.setStyleSheet("color:#35ff77; font-size:18px;")
-        legend.addWidget(swatch)
-        legend.addWidget(QLabel("Lote cadastral"))
-        ring = QLabel("◉")
-        ring.setStyleSheet("color:#ff5d67; font-size:18px;")
-        legend.addWidget(ring)
-        legend.addWidget(QLabel("Imóvel do endereço pesquisado"))
-        legend.addWidget(QLabel("Ruas e mapa base: © OpenStreetMap contributors"))
-        legend.addStretch(1)
-        layout.addLayout(legend)
-
-        self.details = QTextBrowser()
-        self.details.setMaximumHeight(150)
-        layout.addWidget(self.details)
-
-        geometries = []
-        point_records = []
-        all_lon_lat = []
-        for record in records:
-            try:
-                geometry = json.loads(record.attributes.get("geometry_geojson") or "null")
-            except (TypeError, ValueError):
-                geometry = None
-            if geometry and geometry.get("type") in {"Polygon", "MultiPolygon"}:
-                geometries.append((record, geometry))
-                polygons = [geometry["coordinates"]] if geometry["type"] == "Polygon" else geometry["coordinates"]
-                for polygon in polygons:
-                    for ring in polygon:
-                        all_lon_lat.extend(
-                            (float(point[0]), float(point[1]))
-                            for point in ring if isinstance(point, list) and len(point) >= 2
-                        )
-            elif record.latitude is not None and record.longitude is not None:
-                point_records.append(record)
-                all_lon_lat.append((float(record.longitude), float(record.latitude)))
-
-        if not all_lon_lat:
-            self.hint.setText("A fonte não retornou coordenadas nem geometria para mapear.")
-            self.details.setPlainText(
-                "O dossiê continua disponível, mas nenhuma fonte forneceu coordenadas utilizáveis."
-            )
-            for button in (self.zoom_out_button, self.zoom_in_button, self.fit_button):
-                button.setEnabled(False)
-            return
-
-        target = next(
-            (record for record, _geometry in geometries
-             if record.attributes.get("house_number_match") == "exact"),
-            None,
-        )
-        if target is None:
-            target = next(
-                (record for record in point_records
-                 if record.attributes.get("record_kind") == "geocoded_address_only"),
-                None,
-            )
-        if geometries:
-            if target is not None:
-                self.hint.setText("Lotes oficiais recebidos da fonte. O endereço exato está destacado quando confirmado.")
-            else:
-                self.hint.setText("Lotes candidatos retornados pela fonte. Confira os dados de cada polígono.")
-        else:
-            self.hint.setText(
-                "Localização geocodificada. A fonte não forneceu lote oficial, SQL/IPTU ou área cadastral."
-            )
-
-        center_lon = (min(point[0] for point in all_lon_lat) + max(point[0] for point in all_lon_lat)) / 2
-        center_lat = (min(point[1] for point in all_lon_lat) + max(point[1] for point in all_lon_lat)) / 2
-        zoom = 17
-        tile_x, tile_y = self._mercator_tile(center_lon, center_lat, zoom)
-        tile_x0, tile_y0 = math.floor(tile_x) - 1, math.floor(tile_y) - 1
-        self._tile_zoom = zoom
-        self._tile_origin = (tile_x0, tile_y0)
-
-        # Load a small, cached 3x3 street-tile viewport only when the user opens
-        # the map. This is not a bulk download; local cache avoids repeat traffic.
-        tile_cache = Path.home() / ".imobhunter" / "map-tiles"
-        tile_cache.mkdir(parents=True, exist_ok=True)
-        tile_specs = [
-            (x, y, tile_cache / f"{zoom}_{x}_{y}.png")
-            for x in range(tile_x0, tile_x0 + 3)
-            for y in range(tile_y0, tile_y0 + 3)
-        ]
-
-        def load_tile(spec):
-            x, y, path = spec
-            if not path.exists():
-                try:
-                    response = httpx.get(
-                        f"https://tile.openstreetmap.org/{zoom}/{x}/{y}.png",
-                        headers={"User-Agent": "ImobHunter-BR/0.1 (desktop map view)"},
-                        timeout=2.5,
-                    )
-                    response.raise_for_status()
-                    if response.headers.get("content-type", "").startswith("image/"):
-                        path.write_bytes(response.content)
-                except (httpx.HTTPError, OSError):
-                    return x, y, None
-            image = QImage(str(path))
-            return x, y, image if not image.isNull() else None
-
-        basemap = QImage(768, 768, QImage.Format.Format_ARGB32)
-        basemap.fill(QColor("#091722"))
-        painter = QPainter(basemap)
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            for x, y, image in executor.map(load_tile, tile_specs):
-                if image is not None:
-                    painter.drawImage((x - tile_x0) * 256, (y - tile_y0) * 256, image)
-        painter.end()
-        basemap_item = QGraphicsPixmapItem(QPixmap.fromImage(basemap))
-        basemap_item.setZValue(-10)
-        basemap_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
-        self.scene.addItem(basemap_item)
-
-        def to_scene(lon, lat):
-            x, y = self._mercator_tile(float(lon), float(lat), zoom)
-            return ((x - tile_x0) * 256, (y - tile_y0) * 256)
-
-        for record, geometry in geometries:
-            is_target = record is target
-            polygons = [geometry["coordinates"]] if geometry["type"] == "Polygon" else geometry["coordinates"]
-            for polygon in polygons:
-                if not polygon or not polygon[0]:
-                    continue
-                points = [to_scene(point[0], point[1]) for point in polygon[0] if len(point) >= 2]
-                if len(points) < 3:
-                    continue
-                item = QGraphicsPolygonItem(QPolygonF([QPointF(x, y) for x, y in points]))
-                item.setBrush(QBrush(QColor("#35ff77" if is_target else "#174456")))
-                item.setPen(QPen(QColor("#ff5d67" if is_target else "#64869a"), 3.5 if is_target else 1.2))
-                item.setFlag(item.GraphicsItemFlag.ItemIsSelectable, True)
-                item.setData(0, record)
-                item.setData(1, is_target)
-                item.setZValue(2 if is_target else 1)
-                item.setToolTip(
-                    f"Quadra {record.block or '—'} · Lote {record.lot or '—'}"
-                    + (" · ENDEREÇO EXATO" if is_target else "")
-                )
-                self.scene.addItem(item)
-
-        for record in point_records:
-            x, y = to_scene(record.longitude, record.latitude)
-            marker = QGraphicsEllipseItem(x - 7, y - 7, 14, 14)
-            marker.setBrush(QBrush(QColor("#35ff77")))
-            marker.setPen(QPen(QColor("#ff5d67"), 3))
-            marker.setFlag(marker.GraphicsItemFlag.ItemIsSelectable, True)
-            marker.setData(0, record)
-            marker.setData(1, True)
-            marker.setZValue(5)
-            marker.setToolTip("Localização geocodificada — não representa limite cadastral")
-            self.scene.addItem(marker)
-
-        self.scene.setSceneRect(0, 0, 768, 768)
-        self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
-        self.scene.selectionChanged.connect(self._show_selection)
-        if target is not None:
-            for item in self.scene.items():
-                if item.data(0) is target and item.flags() & item.GraphicsItemFlag.ItemIsSelectable:
-                    item.setSelected(True)
-                    break
-        else:
-            for item in self.scene.items():
-                if isinstance(item, QGraphicsPolygonItem):
-                    item.setSelected(True)
-                    break
-
-    @staticmethod
-    def _mercator_tile(longitude, latitude, zoom):
-        latitude = max(-85.05112878, min(85.05112878, float(latitude)))
-        n = 2 ** zoom
-        x = (float(longitude) + 180.0) / 360.0 * n
-        lat_rad = math.radians(latitude)
-        y = (1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n
-        return x, y
-
-    def _open_street_map(self):
-        records = getattr(self, "_records", [])
-        target = next((r for r in records if r.attributes.get("house_number_match") == "exact"), records[0] if records else None)
-        if target is None:
-            QDesktopServices.openUrl(QUrl("https://www.openstreetmap.org/"))
-            return
-        address = ", ".join(str(v) for v in (target.address, target.city, target.state, "Brasil") if v)
-        QDesktopServices.openUrl(QUrl("https://www.openstreetmap.org/search?query=" + quote(address, safe="")))
-
-    def _fit_map(self):
-        self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
-
-    def _show_selection(self):
-        selected = [
-            item for item in self.scene.selectedItems()
-            if isinstance(item, QGraphicsPolygonItem)
-            or (isinstance(item, QGraphicsEllipseItem) and item.data(0) is not None)
-        ]
-        if not selected:
-            return
-        record = selected[0].data(0)
-        attributes = dict(record.attributes)
-        attributes.pop("geometry_geojson", None)
-        attributes.pop("source_attributes", None)
-        attributes.pop("source_attribute_names", None)
-        area = (
-            f"{record.area_m2:g} m²"
-            if record.area_m2 is not None
-            else "Não informada"
-        )
-        lines = [
-            f"<b>Endereço:</b> {escape(record.address or 'Não informado')}",
-            f"<b>SQL/IPTU:</b> {escape(str(record.property_id or 'Não informado'))}",
-            (
-                f"<b>Quadra fiscal:</b> {escape(str(record.block or '—'))} · "
-                f"<b>Lote:</b> {escape(str(record.lot or '—'))}"
-            ),
-            f"<b>Área do terreno:</b> {escape(area)}",
-            "<b>Atributos fornecidos pela fonte:</b><br>"
-            + "<br>".join(
-                f"{escape(str(key))}: {escape(str(value))}"
-                for key, value in attributes.items()
-                if value not in (None, "")
-            ),
-        ]
-        self.details.setHtml("<br>".join(lines))
 
 
 
@@ -968,7 +641,7 @@ class MainWindow(QMainWindow):
                 "Duas pesquisas estão em andamento. Acompanhe os dossiês abertos."
             )
             return
-        result_window = SearchResultsWindow(request, map_factory=CadastralMapDialog)
+        result_window = SearchResultsWindow(request)
         self._result_windows.append(result_window)
         result_window.show()
         result_window.raise_()
