@@ -91,8 +91,10 @@ def test_desktop_dossier_workflow_is_nonmodal_and_copyable() -> None:
     assert "QTabWidget()" in source
     assert "QSplitter(Qt.Orientation.Horizontal)" in source
     assert "QKeySequence.StandardKey.Copy" in source
-    assert "window.setWindowModality(Qt.WindowModality.NonModal)" in source
-    assert "window.show()" in source
-    assert "SearchResultsWindow(request, map_factory=CadastralMapDialog)" in main
+    assert 'self.tabs.addTab(self.map_tab, "Mapa cadastral")' in source
+    assert "self.tabs.setCurrentWidget(self.map_tab)" in source
+    assert "CadastralMapWidget(" in source
+    assert "SearchResultsWindow(request)" in main
+    assert "class CadastralMapDialog" not in main
     assert "_search_watchdog" not in main
     assert "dialog = MarketIntelligenceDialog(self)\n        dialog.exec()" not in main

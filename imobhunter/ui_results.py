@@ -39,6 +39,8 @@ from .application.result_presentation import (
     summary_text,
 )
 from .application.search import SearchResult
+from .application.cadastral_map import prepare_features
+from .ui_cadastral_map import CadastralMapWidget
 from .domain.models import SearchRequest
 
 
@@ -101,12 +103,12 @@ class CopyableTable(QTableWidget):
 class SearchResultsWindow(QMainWindow):
     """Each search has its own independent window and its own timeout timer."""
 
-    def __init__(self, request: SearchRequest, map_factory=None) -> None:
+    def __init__(self, request: SearchRequest) -> None:
         super().__init__(None, Qt.WindowType.Window)
-        self._map_factory = map_factory
+        self._request = request
         self._result: SearchResult | None = None
         self._map_records = []
-        self._open_maps = []
+        self._map_widget: CadastralMapWidget | None = None
         self._completed = False
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
         query = " ".join(p for p in (request.address, request.number) if p)
@@ -152,7 +154,7 @@ class SearchResultsWindow(QMainWindow):
         self.export_json_button.setEnabled(False)
         self.export_json_button.clicked.connect(self._export_json)
         actions.addWidget(self.export_json_button)
-        self.map_button = QPushButton("Ver localização / lotes")
+        self.map_button = QPushButton("Mapa cadastral / lotes")
         self.map_button.setEnabled(False)
         self.map_button.clicked.connect(self._open_cadastral_map)
         actions.addWidget(self.map_button)
@@ -192,6 +194,21 @@ class SearchResultsWindow(QMainWindow):
         splitter.setStretchFactor(1, 2)
         overview_layout.addWidget(splitter)
         self.tabs.addTab(overview, "Resumo cadastral")
+
+        # Native map shares the dossier tabs and never blocks other windows.
+        # It is populated lazily, once the search returns usable GeoJSON.
+        self.map_tab = QWidget()
+        self.map_layout = QVBoxLayout(self.map_tab)
+        self.map_layout.setContentsMargins(8, 8, 8, 8)
+        self._map_placeholder = QLabel(
+            "O mapa mostrará ruas e os limites que a fonte cadastral oficial retornar. "
+            "Lotes não identificados permanecerão como candidatos ou vizinhos."
+        )
+        self._map_placeholder.setWordWrap(True)
+        self._map_placeholder.setObjectName("muted")
+        self.map_layout.addWidget(self._map_placeholder)
+        self.tabs.addTab(self.map_tab, "Mapa cadastral")
+        self.tabs.setTabEnabled(self.tabs.indexOf(self.map_tab), False)
 
         facts_page = QWidget()
         facts_layout = QVBoxLayout(facts_page)
@@ -363,12 +380,11 @@ class SearchResultsWindow(QMainWindow):
         self.copy_summary_button.setEnabled(True)
         self.export_csv_button.setEnabled(True)
         self.export_json_button.setEnabled(True)
-        self._map_records = [
-            record for record in result.records
-            if record.attributes.get("geometry_geojson")
-            or (record.latitude is not None and record.longitude is not None)
-        ]
-        self.map_button.setEnabled(bool(self._map_records) and self._map_factory is not None)
+        self._map_features = prepare_features(result.records, self._request)
+        self._map_records = [feature.record for feature in self._map_features]
+        has_map = bool(self._map_records)
+        self.map_button.setEnabled(has_map)
+        self.tabs.setTabEnabled(self.tabs.indexOf(self.map_tab), has_map)
         answered = sum(source.status in {"ok", "no_results"} for source in result.sources)
         self.summary.setText(
             f"{len(result.records)} registro(s) retornado(s) · "
@@ -378,6 +394,10 @@ class SearchResultsWindow(QMainWindow):
         self._render_overview(result)
         self._render_facts(result)
         self._render_sources(result)
+        # When the municipal source returns actual polygons, reveal them
+        # immediately; street tiles still load off the Qt UI thread.
+        if any(feature.has_official_polygon for feature in self._map_features):
+            self._open_cadastral_map()
 
     def set_error(self, message: str) -> None:
         self._completed = True
@@ -386,16 +406,15 @@ class SearchResultsWindow(QMainWindow):
         self.source_brief.setPlainText(message)
 
     def _open_cadastral_map(self) -> None:
-        if not self._map_records or self._map_factory is None:
+        if not self._map_records:
             return
-        # This is still the existing map widget; a fully integrated GIS is Stage 2.
-        # It must not block the dossier or the main application in the meantime.
-        window = self._map_factory(self._map_records, self)
-        window.setWindowModality(Qt.WindowModality.NonModal)
-        window.setWindowFlag(Qt.WindowType.Window, True)
-        self._open_maps.append(window)
-        window.show()
-        window.raise_()
+        if self._map_widget is None:
+            self._map_placeholder.hide()
+            self._map_widget = CadastralMapWidget(
+                self._map_records, parent=self.map_tab, request=self._request
+            )
+            self.map_layout.addWidget(self._map_widget, 1)
+        self.tabs.setCurrentWidget(self.map_tab)
 
     def _export_csv(self) -> None:
         if self._result is None:
