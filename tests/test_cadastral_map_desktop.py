@@ -24,8 +24,6 @@ def _app():
 
 def test_map_has_selectable_parcels_and_changes_real_zoom(monkeypatch) -> None:
     pytest.importorskip("PySide6")
-    from PySide6.QtWidgets import QApplication
-
     from imobhunter.domain.models import PropertyRecord, Provenance
     from imobhunter.ui_cadastral_map import CadastralMapWidget
 
@@ -180,7 +178,7 @@ def test_real_dossier_map_is_offline_copyable_and_keeps_neighbor_separate(monkey
 
 def test_map_offline_with_only_geocoded_point_never_draws_fiscal_polygon(monkeypatch):
     pytest.importorskip("PySide6")
-    from PySide6.QtWidgets import QApplication, QGraphicsPathItem
+    from PySide6.QtWidgets import QGraphicsPathItem
 
     from imobhunter.domain.models import PropertyRecord
     from imobhunter.ui_cadastral_map import CadastralMapWidget

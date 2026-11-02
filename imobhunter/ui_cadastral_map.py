@@ -50,6 +50,25 @@ MAX_CONCURRENT_TILES = 3
 TILE_URL = "https://tile.openstreetmap.org/{zoom}/{x}/{y}.png"
 CACHE_DIR = Path.home() / ".imobhunter" / "map-tiles"
 
+_MAP_TILE_POOL: QThreadPool | None = None
+
+
+def _map_tile_pool() -> QThreadPool:
+    """A single QApplication-owned pool lives longer than individual map tabs.
+
+    Do not hold a Python reference to QThreadPool.globalInstance(): some Qt
+    bindings can destruct that shared QObject during interpreter shutdown.
+    """
+    global _MAP_TILE_POOL
+    if _MAP_TILE_POOL is None:
+        app = QApplication.instance()
+        if app is None:
+            raise RuntimeError("A QApplication deve existir antes do mapa.")
+        _MAP_TILE_POOL = QThreadPool(app)
+        _MAP_TILE_POOL.setMaxThreadCount(MAX_CONCURRENT_TILES)
+    return _MAP_TILE_POOL
+
+
 COLORS = {
     "exact": ("#35ff77", "#deffea"),
     "parcel_query_match": ("#43ed82", "#dbffe9"),
@@ -176,9 +195,9 @@ class CadastralMapWidget(QWidget):
         self._pending_tiles: dict[tuple[int, int, int], TileWorker] = {}
         self._failed_tiles: set[tuple[int, int, int]] = set()
         self._displayed_record: PropertyRecord | None = None
-        # Global pool survives a closed results window. A per-widget pool's
-        # destructor can block the GUI waiting for queued network requests.
-        self._workers = QThreadPool.globalInstance()
+        # QApplication owns this pool: closing a map cannot synchronously
+        # destroy a worker thread pool while an HTTP tile request is active.
+        self._workers = _map_tile_pool()
         self._refresh = QTimer(self)
         self._refresh.setSingleShot(True)
         self._refresh.setInterval(200)
