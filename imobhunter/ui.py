@@ -20,7 +20,6 @@ from PySide6.QtWidgets import (
     QGraphicsPolygonItem,
     QGraphicsEllipseItem,
     QFrame,
-    QFileDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -35,11 +34,11 @@ from PySide6.QtWidgets import (
 
 from .application.coverage import DDDCoverageRegistry, load_ddd_coverage
 from .application.search import SearchResult, SearchService
-from .application.export import export_search_result_csv, export_search_result_json
 from .domain.models import SearchRequest
 import json
 from .ui_market import MarketIntelligenceDialog
 from .ui_settings import SourceSettingsDialog
+from .ui_results import SearchResultsWindow
 
 
 APP_STYLE = """
@@ -468,167 +467,6 @@ class CadastralMapDialog(QDialog):
 
 
 
-class SearchResultsWindow(QMainWindow):
-    """Independent, minimizable results window for one property search."""
-
-    def __init__(self, request: SearchRequest) -> None:
-        super().__init__(None, Qt.WindowType.Window)
-        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
-        address = " ".join(part for part in (request.address, request.number) if part)
-        location = ", ".join(part for part in (request.city, request.state) if part)
-        query = address or f"Quadra {request.block}, lote {request.lot}" if request.block else (request.cib or address)
-        self.setWindowTitle(f"ImobHunter-BR • {query} • {location}".strip(" •"))
-        self.resize(1120, 820)
-        self.setMinimumSize(760, 560)
-        root = QWidget()
-        layout = QVBoxLayout(root)
-        layout.setContentsMargins(22, 20, 22, 20)
-        layout.setSpacing(14)
-        header = QLabel("Dossiê da pesquisa")
-        header.setObjectName("title")
-        subtitle = QLabel(f"{query}  ·  {location}\nEsta janela é independente. Você pode minimizá-la e continuar pesquisando na tela principal.")
-        subtitle.setObjectName("muted")
-        subtitle.setWordWrap(True)
-        layout.addWidget(header)
-        layout.addWidget(subtitle)
-        self.summary = QLabel("Consultando fontes…")
-        self.summary.setObjectName("section")
-        self.summary.setWordWrap(True)
-        layout.addWidget(self.summary)
-        self._completed = False
-        self._watchdog = QTimer(self)
-        self._watchdog.setSingleShot(True)
-        self._watchdog.timeout.connect(self._show_timeout)
-        self._watchdog.start(90000)
-        self.details = QTextBrowser()
-        self.details.setOpenExternalLinks(True)
-        self.details.setStyleSheet(
-            "QTextBrowser { background:#0c1926; border:1px solid #1b3348; "
-            "border-radius:12px; padding:16px; color:#eaf2f7; font-size:13px; }"
-        )
-        layout.addWidget(self.details, 1)
-        actions = QHBoxLayout()
-        self._result: SearchResult | None = None
-        self.export_csv_button = QPushButton("Exportar CSV")
-        self.export_csv_button.setEnabled(False)
-        self.export_csv_button.clicked.connect(self._export_csv)
-        actions.addWidget(self.export_csv_button)
-        self.export_json_button = QPushButton("Exportar JSON")
-        self.export_json_button.setEnabled(False)
-        self.export_json_button.clicked.connect(self._export_json)
-        actions.addWidget(self.export_json_button)
-        self.map_button = QPushButton("Mapa cadastral dos lotes")
-        self.map_button.setEnabled(False)
-        self.map_button.clicked.connect(self._open_cadastral_map)
-        actions.addWidget(self.map_button)
-        map_button = QPushButton("Abrir GeoSampa oficial ↗")
-        map_button.clicked.connect(
-            lambda: QDesktopServices.openUrl(QUrl("https://geosampa.prefeitura.sp.gov.br/"))
-        )
-        actions.addWidget(map_button)
-        actions.addStretch(1)
-        layout.addLayout(actions)
-        self.setCentralWidget(root)
-
-    def _show_timeout(self) -> None:
-        if self._completed:
-            return
-        self._completed = True
-        self.summary.setText("Tempo limite excedido. Uma ou mais fontes não finalizaram a consulta.")
-        self.details.setPlainText(
-            "A consulta ultrapassou 90 segundos. Feche esta janela ou continue usando a tela principal. "
-            "Confira as integrações e tente novamente; esta mensagem não significa que o imóvel não exista."
-        )
-
-    def _export_csv(self) -> None:
-        if self._result is None:
-            return
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Exportar dossiê em CSV", "imobhunter-dossie.csv", "CSV (*.csv)"
-        )
-        if not path:
-            return
-        try:
-            export_search_result_csv(self._result, Path(path))
-        except (OSError, ValueError, TypeError) as exc:
-            QMessageBox.warning(self, "Exportação CSV", f"Não foi possível exportar o arquivo: {exc}")
-            return
-        self.summary.setText(f"Exportação CSV concluída: {path}")
-
-    def _export_json(self) -> None:
-        if self._result is None:
-            return
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Exportar dossiê em JSON", "imobhunter-dossie.json", "JSON (*.json)"
-        )
-        if not path:
-            return
-        try:
-            export_search_result_json(self._result, Path(path))
-        except (OSError, ValueError, TypeError) as exc:
-            QMessageBox.warning(self, "Exportação JSON", f"Não foi possível exportar o arquivo: {exc}")
-            return
-        self.summary.setText(f"Exportação JSON concluída: {path}")
-
-    def _open_cadastral_map(self) -> None:
-        records = getattr(self, "_map_records", [])
-        dialog = CadastralMapDialog(records, self)
-        dialog.exec()
-
-    def set_result(self, result: SearchResult) -> None:
-        self._result = result
-        self.export_csv_button.setEnabled(True)
-        self.export_json_button.setEnabled(True)
-        self._completed = True
-        self._watchdog.stop()
-        self._map_records = [r for r in result.records if r.attributes.get("geometry_geojson")]
-        self.map_button.setEnabled(bool(self._map_records))
-        sources = result.sources
-        found = len(result.records)
-        self.summary.setText(
-            f"{found} registro(s) · {len(result.dossiers)} dossiê(s) consolidado(s) · "
-            f"{sum(s.status in {'ok', 'no_results'} for s in sources)} fonte(s) responderam"
-        )
-        parts = []
-        for i, dossier in enumerate(result.dossiers, 1):
-            parts.append(f"<h2>Imóvel {i} — confiança {dossier.score:.0f}/100</h2>")
-            parts.append("<p>" + escape(" • ".join(dossier.score_reasons) or "Sem indicadores suficientes.") + "</p>")
-            parts.append("<table width='100%' cellspacing='0' cellpadding='8'>")
-            for fact in dossier.facts:
-                parts.append(
-                    "<tr><td width='34%' bgcolor='#122536'><b>" + escape(str(fact.field).replace("attribute:", "").replace("_", " ").capitalize()) +
-                    "</b></td><td>" + escape(str(fact.value)) +
-                    "<br><small>Fonte: " + escape(str(fact.provenance.source_id)) +
-                    " · Confiança: " + f"{fact.provenance.confidence:.0%}" + "</small></td></tr>"
-                )
-            parts.append("</table>")
-            if dossier.conflicts:
-                parts.append("<h3 style='color:#ffcc66'>Divergências entre fontes</h3><ul>")
-                for conflict in dossier.conflicts:
-                    parts.append("<li>" + escape(str(conflict.field)) + ": " + escape(" ↔ ".join(str(v) for v in conflict.values)) + "</li>")
-                parts.append("</ul>")
-        if not result.dossiers:
-            parts.append(
-                "<p><b>Nenhum dossiê consolidado.</b> Isso não confirma que o imóvel não exista. "
-                "Confira cobertura, endereço e mensagens das fontes.</p>"
-            )
-        parts.append("<h2>Diagnóstico das fontes</h2><table width='100%' cellspacing='0' cellpadding='8'>")
-        for source in sources:
-            parts.append(
-                "<tr><td width='30%'><b>" + escape(str(source.name)) + "</b></td><td>" +
-                escape(str(source.status)) + " · " + escape(str(source.records_count)) +
-                " registro(s)<br>" + escape(str(source.message or "Sem mensagem adicional.")) + "</td></tr>"
-            )
-        parts.append("</table>")
-        self.details.setHtml("".join(parts))
-
-    def set_error(self, message: str) -> None:
-        self._completed = True
-        self._watchdog.stop()
-        self.summary.setText("A pesquisa não pôde ser concluída.")
-        self.details.setPlainText(message)
-
-
 class MainWindow(QMainWindow):
     def __init__(self, service: SearchService, coverage: DDDCoverageRegistry) -> None:
         super().__init__()
@@ -636,6 +474,8 @@ class MainWindow(QMainWindow):
         self.coverage = coverage
         self.thread_pool = QThreadPool.globalInstance()
         self._result_windows: list[SearchResultsWindow] = []
+        self._search_workers: dict[SearchResultsWindow, SearchWorker] = {}
+        self._utility_dialogs: list[QDialog] = []
         self.setWindowTitle("ImobHunter-BR")
         logo_path = Path(__file__).resolve().parent / "assets" / "logo.svg"
         self.setWindowIcon(QIcon(str(logo_path)))
@@ -843,40 +683,20 @@ class MainWindow(QMainWindow):
             metrics.addWidget(card)
         layout.addLayout(metrics)
 
-        results = QFrame()
-        results.setObjectName("card")
-        results_layout = QVBoxLayout(results)
-        results_layout.setContentsMargins(18, 16, 18, 16)
-        results_title = QLabel("Resultado da pesquisa")
-        results_title.setObjectName("resultTitle")
-        results_layout.addWidget(results_title)
-        self.dossier_scroll = QScrollArea()
-        self.dossier_scroll.setWidgetResizable(True)
-        self.dossier_host = QWidget()
-        self.dossier_layout = QVBoxLayout(self.dossier_host)
-        self.dossier_layout.setContentsMargins(0, 4, 0, 0)
-        self.dossier_layout.setSpacing(10)
-        self.dossier_scroll.setWidget(self.dossier_host)
-        self.dossier_scroll.setMinimumHeight(240)
-        self.dossier_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.dossier_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        results_layout.addWidget(self.dossier_scroll, 1)
-        self.result_text = QLabel(
-            "Pronto para pesquisar. O ImobHunter consulta as fontes configuradas "
-            "e consolida os registros sem enviar os dados pesados para o servidor."
-        )
-        self.result_text.setObjectName("muted")
-        self.result_text.setWordWrap(True)
-        results_layout.addWidget(self.result_text)
-        results.hide()  # Os resultados completos ficam em janelas independentes.
-
         root.setLayout(shell)
         shell.addWidget(content, 1)
         self.setCentralWidget(root)
 
     def _show_market_intelligence(self) -> None:
-        dialog = MarketIntelligenceDialog(self)
-        dialog.exec()
+        dialog = getattr(self, "_market_window", None)
+        if dialog is None:
+            dialog = MarketIntelligenceDialog(self)
+            dialog.setWindowFlag(Qt.WindowType.Window, True)
+            dialog.setWindowModality(Qt.WindowModality.NonModal)
+            self._market_window = dialog
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
 
     def _focus_coverage(self) -> None:
         # Bring the actual DDD controls into keyboard focus and provide visible feedback.
@@ -969,7 +789,10 @@ class MainWindow(QMainWindow):
         close_button.setObjectName("primary")
         close_button.clicked.connect(dialog.accept)
         root.addWidget(close_button, alignment=Qt.AlignmentFlag.AlignRight)
-        dialog.exec()
+        dialog.setWindowFlag(Qt.WindowType.Window, True)
+        dialog.setWindowModality(Qt.WindowModality.NonModal)
+        self._utility_dialogs.append(dialog)
+        dialog.show()
 
     def _test_integration(self, source, label: QLabel, button: QPushButton, dialog: QDialog) -> None:
         address = self.address.text().strip() or None
@@ -1073,15 +896,22 @@ class MainWindow(QMainWindow):
         dialog.setIcon(QMessageBox.Icon.Information)
         dialog.setText("\n".join(lines))
         dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
-        dialog.exec()
+        dialog.setWindowFlag(Qt.WindowType.Window, True)
+        dialog.setWindowModality(Qt.WindowModality.NonModal)
+        self._utility_dialogs.append(dialog)
+        dialog.show()
 
     def _show_settings(self) -> None:
         dialog = SourceSettingsDialog(self.service.registry, self)
-        if dialog.exec():
-            self.search_status.setText(
+        dialog.setWindowFlag(Qt.WindowType.Window, True)
+        dialog.setWindowModality(Qt.WindowModality.NonModal)
+        dialog.finished.connect(
+            lambda result: self.search_status.setText(
                 "Configurações aplicadas. As próximas pesquisas usarão as fontes atualizadas."
-            )
-            self._show_sources()
+            ) if result == QDialog.DialogCode.Accepted else None
+        )
+        self._utility_dialogs.append(dialog)
+        dialog.show()
 
     def _populate_coverage(self) -> None:
         for project in self.coverage.all():
@@ -1132,261 +962,62 @@ class MainWindow(QMainWindow):
             lot=lot,
             cib=cib,
         )
-        result_window = SearchResultsWindow(request)
+        # Allow navigation and a second search, but bound concurrent fan-out.
+        if len(self._search_workers) >= 2:
+            self.search_status.setText(
+                "Duas pesquisas estão em andamento. Acompanhe os dossiês abertos."
+            )
+            return
+        result_window = SearchResultsWindow(request, map_factory=CadastralMapDialog)
         self._result_windows.append(result_window)
         result_window.show()
         result_window.raise_()
         result_window.activateWindow()
-        self.search_button.setEnabled(False)
-        self._active_search_window = result_window
-        self._search_watchdog = QTimer(self)
-        self._search_watchdog.setSingleShot(True)
-        self._search_watchdog.timeout.connect(self._search_timeout)
-        self._search_watchdog.start(90000)
-        self.search_status.setText("Consultando fontes configuradas… A tela principal continua disponível.")
         worker = SearchWorker(self.service, request)
-        worker.signals.finished.connect(lambda result, w=result_window: self._search_finished_in_window(w, result))
-        worker.signals.failed.connect(lambda message, w=result_window: self._search_failed_in_window(w, message))
+        self._search_workers[result_window] = worker
+        self.search_button.setEnabled(len(self._search_workers) < 2)
+        self.search_status.setText(
+            "Consultando fontes… O restante do aplicativo continua disponível."
+        )
+        worker.signals.finished.connect(
+            lambda result, w=result_window: self._search_finished_in_window(w, result)
+        )
+        worker.signals.failed.connect(
+            lambda message, w=result_window: self._search_failed_in_window(w, message)
+        )
         self.thread_pool.start(worker)
 
+    def _update_search_controls(self) -> None:
+        self.search_button.setEnabled(len(self._search_workers) < 2)
+        if self._search_workers:
+            self.search_status.setText(
+                f"{len(self._search_workers)} pesquisa(s) ainda em andamento."
+            )
+        else:
+            self.search_status.setText("Pronto para outra pesquisa.")
 
-    def _search_timeout(self) -> None:
-        self.search_button.setEnabled(True)
-        self.search_status.setText("Tempo limite da pesquisa excedido. Você já pode iniciar outra consulta.")
-        window = getattr(self, "_active_search_window", None)
-        if window is not None:
-            window._show_timeout()
-
-    def _search_finished_in_window(self, window: SearchResultsWindow, result: SearchResult) -> None:
-        if hasattr(self, "_search_watchdog"):
-            self._search_watchdog.stop()
-        self.search_button.setEnabled(True)
-        self.search_status.setText("Pesquisa concluída. Você pode iniciar outra pesquisa sem fechar esta janela.")
+    def _search_finished_in_window(
+        self, window: SearchResultsWindow, result: SearchResult
+    ) -> None:
+        self._search_workers.pop(window, None)
         window.set_result(result)
-
-    def _search_failed_in_window(self, window: SearchResultsWindow, message: str) -> None:
-        if hasattr(self, "_search_watchdog"):
-            self._search_watchdog.stop()
-        self.search_button.setEnabled(True)
-        self.search_status.setText("A pesquisa falhou. Os detalhes estão na janela desta pesquisa.")
-        window.set_error(message)
-
-    def _search_finished(self, result: SearchResult) -> None:
-        self.search_button.setEnabled(True)
         sources = result.sources
-        self._last_search_sources = sources
-        found = len(result.records)
         active = sum(source.status in {"ok", "no_results"} for source in sources)
-        self.metric_properties.set_value(str(found))
-        self.metric_sources.set_value(str(active))
+        self.metric_properties.set_value(str(len(result.dossiers)))
+        self.metric_sources.set_value(f"{active}/{len(sources)}")
         if result.dossiers:
             score = sum(dossier.score for dossier in result.dossiers) / len(result.dossiers)
             self.metric_confidence.set_value(f"{score:.0f}/100")
         else:
             self.metric_confidence.set_value("—")
-        self.search_status.setText("Pesquisa concluída sem bloquear a interface.")
-        self.result_text.setText(
-            f"{found} registro(s) encontrado(s) em {active} fonte(s). "
-            f"{len(result.dossiers)} imóvel(is) consolidado(s) após reconciliação."
-        )
-        self._render_dossiers(result.dossiers)
+        self._update_search_controls()
 
-
-    def _render_dossiers(self, dossiers) -> None:
-        while self.dossier_layout.count():
-            item = self.dossier_layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
-        if not dossiers:
-            message = QLabel(
-                "Nenhum dossiê foi consolidado. Isso não significa necessariamente que o endereço "
-                "não exista: as fontes podem não cobrir a cidade, não ter dados para esse número "
-                "ou ter falhado durante a consulta."
-            )
-            message.setWordWrap(True)
-            self.dossier_layout.addWidget(message)
-            for source in getattr(self, "_last_search_sources", ()):
-                detail = QLabel(
-                    f"{source.name} — {source.status}: "
-                    f"{source.message or (str(source.records_count) + ' registro(s)')}"
-                )
-                detail.setWordWrap(True)
-                detail.setObjectName("muted")
-                self.dossier_layout.addWidget(detail)
-            return
-        for index, dossier in enumerate(dossiers, 1):
-            card = QFrame()
-            card.setObjectName("card")
-            box = QVBoxLayout(card)
-            title = QLabel(f"Imóvel {index}  •  confiança {dossier.score:.0f}/100")
-            title.setObjectName("resultTitle")
-            box.addWidget(title)
-            reasons = QLabel(" • ".join(dossier.score_reasons) or "Sem indicadores suficientes.")
-            reasons.setObjectName("muted")
-            reasons.setWordWrap(True)
-            box.addWidget(reasons)
-            preview = QLabel(self._dossier_preview(dossier))
-            preview.setWordWrap(True)
-            box.addWidget(preview)
-            details = QPushButton("Abrir dossiê completo  →")
-            details.clicked.connect(lambda checked=False, d=dossier: self._show_dossier(d))
-            box.addWidget(details)
-            for fact in dossier.facts:
-                label = QLabel(
-                    f"<b>{fact.field}</b>: {fact.value}  ·  "
-                    f"fonte: {fact.provenance.source_id}  · "
-                    f"confiança: {fact.provenance.confidence:.0%}"
-                )
-                label.setTextFormat(Qt.TextFormat.RichText)
-                label.setWordWrap(True)
-                box.addWidget(label)
-            if dossier.conflicts:
-                conflict = QLabel("Conflitos: " + " | ".join(
-                    f"{item.field}: " + " ↔ ".join(str(value) for value in item.values)
-                    for item in dossier.conflicts
-                ))
-                conflict.setWordWrap(True)
-                conflict.setStyleSheet("color:#ffcc66;")
-                box.addWidget(conflict)
-            self.dossier_layout.addWidget(card)
-        self.dossier_layout.addStretch()
-
-
-    @staticmethod
-    def _dossier_preview(dossier) -> str:
-        important = {"address", "area_m2", "cib", "property_id", "block", "lot"}
-        values = [
-            f"{fact.field}: {fact.value}"
-            for fact in dossier.facts
-            if fact.field in important
-        ]
-        return "  •  ".join(values) or "Identificação detalhada disponível no dossiê."
-
-    def _show_dossier(self, dossier) -> None:
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Dossiê do imóvel")
-        dialog.resize(820, 680)
-        dialog.setMinimumSize(620, 480)
-        root = QVBoxLayout(dialog)
-        root.setContentsMargins(20, 18, 20, 18)
-        root.setSpacing(14)
-        header = QFrame()
-        header.setObjectName("hero")
-        header_layout = QVBoxLayout(header)
-        title = QLabel("Dossiê do imóvel")
-        title.setObjectName("title")
-        subtitle = QLabel(f"Confiabilidade dos dados: {dossier.score:.0f}/100 · {len(dossier.facts)} informações consolidadas")
-        subtitle.setObjectName("muted")
-        header_layout.addWidget(title)
-        header_layout.addWidget(subtitle)
-        root.addWidget(header)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        content = QWidget()
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(2, 2, 8, 2)
-        content_layout.setSpacing(12)
-        registry_fact = next((fact for fact in dossier.facts if fact.field == "registry_number"), None)
-        registry_value = escape(str(registry_fact.value)) if registry_fact else "Não localizada nas fontes consultadas — isso não significa que não exista."
-        registry = QLabel("<b>Matrícula:</b> " + registry_value)
-        registry.setWordWrap(True)
-        registry.setObjectName("muted")
-        content_layout.addWidget(registry)
-        labels = {
-            "address": "Endereço", "area_m2": "Área do terreno (m²)", "cib": "CIB",
-            "property_id": "Identificador cadastral", "block": "Quadra fiscal", "lot": "Lote fiscal",
-            "attribute:sql": "Número de inscrição IPTU / SQL",
-            "attribute:iptu_registration_number": "Número de inscrição IPTU / SQL",
-            "attribute:iptu_contributor": "Nome do contribuinte IPTU",
-            "attribute:taxpayer_name": "Nome do contribuinte IPTU",
-            "attribute:iptu_reference_year": "Ano de referência do IPTU",
-            "attribute:iptu_data_scope": "Período da base IPTU",
-            "attribute:iptu_current_debt_status": "Situação dos débitos atuais",
-            "attribute:built_area_m2": "Área construída (m²)", "attribute:door_number": "Número predial",
-            "attribute:sector": "Setor fiscal", "attribute:condominium": "Condomínio",
-            "attribute:lot_status": "Situação do lote", "attribute:lot_type": "Tipo de lote",
-        }
-        shown_iptu_registration = False
-        shown_taxpayer_name = False
-        for fact in dossier.facts:
-            if fact.field == "registry_number":
-                continue
-            if fact.field in {"attribute:sql", "attribute:iptu_registration_number"}:
-                if shown_iptu_registration:
-                    continue
-                shown_iptu_registration = True
-            if fact.field in {"attribute:iptu_contributor", "attribute:taxpayer_name"}:
-                if shown_taxpayer_name:
-                    continue
-                shown_taxpayer_name = True
-            card = QFrame()
-            card.setObjectName("card")
-            card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(14, 12, 14, 12)
-            if fact.field.startswith("source_attribute:"):
-                _, source_id, source_field = fact.field.split(":", 2)
-                raw_label = (
-                    f"{source_id.replace('_', ' ').title()} · "
-                    f"{source_field.replace('_', ' ')}"
-                )
-            else:
-                raw_label = labels.get(
-                    fact.field,
-                    fact.field.replace("attribute:", "").replace("_", " ").capitalize(),
-                )
-            label = QLabel(escape(raw_label))
-            label.setObjectName("muted")
-            value = QLabel(escape(str(fact.value)))
-            value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-            value.setWordWrap(True)
-            value.setStyleSheet("font-size:16px;font-weight:700;color:#f4f8fb;")
-            source = QLabel(f"Fonte: {escape(fact.provenance.source_id)} · Confiança: {fact.provenance.confidence:.0%}")
-            source.setObjectName("muted")
-            card_layout.addWidget(label)
-            card_layout.addWidget(value)
-            card_layout.addWidget(source)
-            content_layout.addWidget(card)
-        if not shown_taxpayer_name:
-            note = QLabel(
-                "Nome do contribuinte IPTU não foi fornecido pela fonte consultada. "
-                "O SQL identifica o cadastro fiscal, mas não é o nome do contribuinte. "
-                "A base histórica disponível pode não refletir a situação atual."
-            )
-            note.setWordWrap(True)
-            note.setStyleSheet("color:#ffcc66;")
-            content_layout.addWidget(note)
-        if dossier.conflicts:
-            conflict_card = QFrame()
-            conflict_card.setObjectName("card")
-            conflict_layout = QVBoxLayout(conflict_card)
-            conflict_title = QLabel("Divergências entre fontes")
-            conflict_title.setObjectName("section")
-            conflict_layout.addWidget(conflict_title)
-            for conflict in dossier.conflicts:
-                label = QLabel(f"{escape(str(conflict.field))}: " + " ↔ ".join(escape(str(value)) for value in conflict.values))
-                label.setWordWrap(True)
-                conflict_layout.addWidget(label)
-            content_layout.addWidget(conflict_card)
-        content_layout.addStretch()
-        scroll.setWidget(content)
-        root.addWidget(scroll, 1)
-        actions = QHBoxLayout()
-        actions.addStretch()
-        lookup_button = QPushButton("Consultar RI Digital")
-        lookup_button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://ridigital.org.br/")))
-        close_button = QPushButton("Fechar")
-        close_button.setObjectName("primary")
-        close_button.clicked.connect(dialog.accept)
-        actions.addWidget(lookup_button)
-        actions.addWidget(close_button)
-        root.addLayout(actions)
-        dialog.exec()
-
-    def _search_failed(self, message: str) -> None:
-        self.search_button.setEnabled(True)
-        self.search_status.setText("A pesquisa não pôde ser concluída.")
-        QMessageBox.warning(self, "Pesquisa", message)
+    def _search_failed_in_window(
+        self, window: SearchResultsWindow, message: str
+    ) -> None:
+        self._search_workers.pop(window, None)
+        window.set_error(message)
+        self._update_search_controls()
 
 
 def build_window(service: SearchService, coverage: DDDCoverageRegistry) -> MainWindow:

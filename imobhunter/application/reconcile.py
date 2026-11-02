@@ -45,8 +45,11 @@ def reconcile(
         groups.setdefault(find(index), []).append(record)
 
     clusters = []
-    for group in groups.values():
+    for root_index, group in groups.items():
         keys = frozenset(key for record in group for key in identity_keys(record))
-        identity = hashlib.sha256("|".join(sorted(keys)).encode()).hexdigest()
+        # No identifier is evidence of an unknown parcel, not a reason to
+        # assign the exact same dossier ID to every unidentified record.
+        identity_parts = sorted(keys) if keys else [f"unidentified:{root_index}"]
+        identity = hashlib.sha256("|".join(identity_parts).encode()).hexdigest()
         clusters.append(PropertyCluster(identity, tuple(group), keys))
     return tuple(clusters)
