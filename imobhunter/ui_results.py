@@ -7,7 +7,7 @@ from __future__ import annotations
 from html import escape
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QSize
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
@@ -41,6 +41,7 @@ from .application.result_presentation import (
 from .application.search import SearchResult
 from .application.cadastral_map import prepare_features
 from .ui_cadastral_map import CadastralMapWidget
+from .ui_responsive import fit_window_to_screen
 from .domain.models import SearchRequest
 
 
@@ -119,7 +120,7 @@ class SearchResultsWindow(QMainWindow):
         location = ", ".join(p for p in (request.city, request.state) if p)
         self.setWindowTitle(f"ImobHunter-BR • {query} • {location}".strip(" •"))
         self.resize(1240, 800)
-        self.setMinimumSize(850, 550)
+        self.setMinimumSize(560, 420)
 
         root = QWidget()
         layout = QVBoxLayout(root)
@@ -243,6 +244,7 @@ class SearchResultsWindow(QMainWindow):
         sources_layout.addWidget(self.sources_table, 1)
         self.tabs.addTab(sources_page, "Fontes e diagnósticos")
         self.setCentralWidget(root)
+        fit_window_to_screen(self, QSize(1240, 800), QSize(560, 420))
 
         self._watchdog = QTimer(self)
         self._watchdog.setSingleShot(True)

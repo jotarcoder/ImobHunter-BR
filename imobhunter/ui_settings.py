@@ -4,10 +4,11 @@ from pathlib import Path
 
 from urllib.parse import urlparse
 
-from PySide6.QtCore import QSettings, QObject, QRunnable, QThreadPool, Signal
+from PySide6.QtCore import QSettings, QObject, QRunnable, QThreadPool, Signal, QSize, Qt
 from .application.municipal_endpoints import settings_endpoint_rows
 from .application.source_probe import EndpointProbe, is_official_service_url, probe_endpoint
 from .sources.geosampa import DEFAULT_WFS_URL
+from .ui_responsive import fit_window_to_screen
 
 from PySide6.QtWidgets import (
     QDialog, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
@@ -64,7 +65,7 @@ class SourceSettingsDialog(QDialog):
         self._municipal_probe_labels: dict[str, QLabel] = {}
         self.setWindowTitle("Configurações de fontes e acessos")
         self.resize(820, 720)
-        self.setMinimumSize(700, 560)
+        self.setMinimumSize(480, 360)
         self.setStyleSheet("""
             QDialog { background:#08120b; color:#eaf2ed; }
             QLabel { color:#eaf2ed; }
@@ -89,10 +90,13 @@ class SourceSettingsDialog(QDialog):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setMinimumSize(0, 0)
         host = QWidget()
         form = QFormLayout(host)
         form.setSpacing(10)
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
 
         for source_id, label, attr, file_types in SOURCE_FILES:
             source = registry.get(source_id)
@@ -299,6 +303,9 @@ class SourceSettingsDialog(QDialog):
         root.addLayout(buttons)
 
         self._load_saved_token()
+        # Keep action buttons above the Windows taskbar. The source catalogue
+        # scrolls independently; the save/close row always remains accessible.
+        fit_window_to_screen(self, QSize(820, 720), QSize(480, 360))
 
     def _search_inde_online(self) -> None:
         query = self.inde_query.text().strip()

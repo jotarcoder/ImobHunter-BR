@@ -7,6 +7,9 @@ on:
     paths:
       - "imobhunter/ui_cadastral_map.py"
       - "imobhunter/ui_results.py"
+      - "imobhunter/ui_market.py"
+      - "imobhunter/ui.py"
+      - "imobhunter/ui_responsive.py"
       - "imobhunter/ui_settings.py"
       - "imobhunter/application/source_probe.py"
       - "tests/test_cadastral_map_desktop.py"
