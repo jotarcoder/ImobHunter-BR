@@ -3,25 +3,33 @@ name: Release installers
 on:
   pull_request:
     branches: [main]
-  push:
-    branches: [main]
     paths:
       - ".github/workflows/release.yml"
-      - ".github/workflows/publish-r2-installers.yml"
+      - "packaging/**"
+      - "pyproject.toml"
+      - "imobhunter/assets/**"
+      - "imobhunter/__init__.py"
       - "imobhunter/licensing.py"
-      - "tests/test_licensing.py"
-  workflow_run:
-    workflows: ["Tag version release"]
-    types: [completed]
-    branches: [main]
+      - "data/coverage/ddd.json"
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Publicar release no GitHub somente apos validacao dos quatro instaladores"
+        required: true
+        type: boolean
+        default: false
 
+# Only the explicitly authorized publish job may write releases.
 permissions:
-  contents: write
+  contents: read
+
+# Older PR attempts cannot occupy runners while a newer version is validated.
+concurrency:
+  group: installers-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   meta:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.event_name == 'pull_request' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -30,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.sha || github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           fetch-tags: true
       - name: Read project version
@@ -48,33 +56,22 @@ jobs:
           PY
           )"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-      - name: Confirm version tag exists and release is not already published
+      - name: Validate release intent (no automatic publishing)
         id: ref
         shell: bash
         env:
+          PUBLISH_RELEASE: ${{ inputs.publish_release }}
           VERSION: ${{ steps.version.outputs.version }}
-          EVENT_NAME: ${{ github.event_name }}
-          GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           SHOULD_RELEASE=false
           REF="$(git rev-parse HEAD)"
-          if [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$EVENT_NAME" = "push" ]; then
-            # Explicit rebuild from the current main commit, including replacing assets on an existing tag.
-            SHOULD_RELEASE=true
-          elif [ "$EVENT_NAME" = "pull_request" ]; then
-            # Pull requests may validate packaging, but must never publish a release.
-            SHOULD_RELEASE=false
-          else
-            git fetch --force origin "refs/tags/v$VERSION:refs/tags/v$VERSION" || true
-            TAG_SHA="$(git rev-parse "refs/tags/v$VERSION^{commit}" 2>/dev/null || true)"
-            if [ -n "$TAG_SHA" ]; then
-              # Build from the triggering commit, not the tag's historical target.
-              # This prevents a prematurely-created tag from building stale metadata.
-              REF="$GITHUB_SHA"
-              if ! gh release view "v$VERSION" >/dev/null 2>&1; then
-                SHOULD_RELEASE=true
-              fi
+          if [ "$PUBLISH_RELEASE" = "true" ]; then
+            if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ] || [ "$GITHUB_REF" != "refs/heads/main" ]; then
+              echo "::error::GitHub release publishing is only allowed by manual dispatch on main."
+              exit 1
             fi
+            SHOULD_RELEASE=true
           fi
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
           echo "should_release=$SHOULD_RELEASE" >> "$GITHUB_OUTPUT"
@@ -82,7 +79,6 @@ jobs:
 
   icon:
     needs: meta
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_run' || needs.meta.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -115,7 +111,6 @@ jobs:
 
   windows:
     needs: [meta, icon]
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_run' || needs.meta.outputs.should_release == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -175,7 +170,6 @@ jobs:
 
   linux:
     needs: meta
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_run' || needs.meta.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -212,7 +206,6 @@ jobs:
 
   macos-intel:
     needs: meta
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_run' || needs.meta.outputs.should_release == 'true'
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
@@ -254,8 +247,8 @@ jobs:
 
   macos-arm:
     needs: meta
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_run' || needs.meta.outputs.should_release == 'true'
-    runs-on: macos-15
+    runs-on: macos-26
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -263,6 +256,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Confirm native Apple Silicon ARM64
+        run: |
+          test "$(uname -m)" = "arm64"
+          python -c "import platform; assert platform.machine() == 'arm64', platform.machine()"
       - run: python -m pip install -e ".[desktop]" pyinstaller
       - run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets:imobhunter/assets" --add-data "data/coverage/ddd.json:data/coverage" packaging/entrypoint.py
       - name: Verify bundled HTTPS certificate authorities
@@ -270,7 +267,20 @@ jobs:
           CA_BUNDLE="$(find dist/ImobHunter-BR.app -type f -name cacert.pem -print -quit)"
           test -n "$CA_BUNDLE" || { echo "::error::PyInstaller did not bundle certifi cacert.pem on macOS Apple Silicon"; exit 1; }
           echo "HTTPS CA bundle included: $CA_BUNDLE"
-      - run: hdiutil create -volname ImobHunter-BR -srcfolder dist/ImobHunter-BR.app -ov -format UDZO ImobHunter-BR-macOS-AppleSilicon.dmg
+      - name: Package Apple Silicon DMG with bounded retries
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if hdiutil create -volname ImobHunter-BR -srcfolder dist/ImobHunter-BR.app -ov -format UDZO ImobHunter-BR-macOS-AppleSilicon.tmp.dmg; then
+              mv ImobHunter-BR-macOS-AppleSilicon.tmp.dmg ImobHunter-BR-macOS-AppleSilicon.dmg
+              exit 0
+            fi
+            rm -f ImobHunter-BR-macOS-AppleSilicon.tmp.dmg
+            if [ "$attempt" -lt 3 ]; then sleep 5; fi
+          done
+          echo "::error::Failed to build Apple Silicon DMG after 3 attempts."
+          exit 1
       - uses: actions/upload-artifact@v4
         with:
           name: ImobHunter-BR-macOS-AppleSilicon
@@ -281,6 +291,8 @@ jobs:
     needs: [meta, windows, linux, macos-intel, macos-arm]
     if: success() && needs.meta.outputs.should_release == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
