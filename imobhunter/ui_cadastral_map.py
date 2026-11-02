@@ -40,7 +40,7 @@ from .application.cadastral_map import (
     preferred_target,
     sql_from_source,
 )
-from .domain.models import PropertyRecord
+from .domain.models import PropertyRecord, SearchRequest
 
 TILE_SIZE = 256
 MIN_ZOOM = 11
@@ -51,6 +51,7 @@ CACHE_DIR = Path.home() / ".imobhunter" / "map-tiles"
 
 COLORS = {
     "exact": ("#35ff77", "#deffea"),
+    "parcel_query_match": ("#43ed82", "#dbffe9"),
     "spatial_match": ("#92ed6e", "#f7edb5"),
     "candidate": ("#eda944", "#fff2d0"),
     "neighbor": ("#48564e", "#b3bfb5"),
@@ -163,9 +164,11 @@ class TileWorker(QRunnable):
 class CadastralMapWidget(QWidget):
     """Scrollable native map, with selectable official lots and source-aware details."""
 
-    def __init__(self, records: list[PropertyRecord], parent=None) -> None:
+    def __init__(
+        self, records: list[PropertyRecord], parent=None, request: SearchRequest | None = None
+    ) -> None:
         super().__init__(parent)
-        self.features = prepare_features(records)
+        self.features = prepare_features(records, request)
         self._target = preferred_target(self.features)
         self._zoom = 17
         self._loaded_tiles: dict[tuple[int, int, int], QGraphicsPixmapItem] = {}
@@ -210,7 +213,7 @@ class CadastralMapWidget(QWidget):
         self.status = status
         outer.addWidget(status)
         legend = QLabel(
-            "<span style='color:#35ff77'>■</span> Confirmado pelo número  ·  "
+            "<span style='color:#35ff77'>■</span> Confirmado pelo número/quadra/lote  ·  "
             "<span style='color:#92ed6e'>■</span> Correspondência espacial  ·  "
             "<span style='color:#eda944'>■</span> Candidato  ·  "
             "<span style='color:#a0aaa2'>■</span> Vizinho / não confirmado"

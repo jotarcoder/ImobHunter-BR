@@ -12,7 +12,7 @@ from imobhunter.application.cadastral_map import (
     sql_from_source,
     valid_lon_lat,
 )
-from imobhunter.domain.models import PropertyRecord, Provenance
+from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest
 
 RING = [
     [-46.651, -23.551],
@@ -142,3 +142,24 @@ def test_polygon_with_unusable_ring_must_not_appear() -> None:
     invalid = {"type": "Polygon", "coordinates": [[[-46.6, -23.5], [-46.6, -23.5], [-46.6, -23.5]]]}
     assert parse_geometry(invalid) == ((), None)
     assert parse_geometry({"type": "GeometryCollection", "geometries": [polygon()]}) == ((), None)
+
+
+def test_explicit_block_and_lot_search_highlights_official_parcel() -> None:
+    """A block/lot search has no house_number_match='exact', yet must find its lot."""
+    query = SearchRequest(block="20", lot="30", city="São Paulo", state="SP")
+    neighboring = record("", polygon(), block="020", lot="0031")
+    cadastral_lot = record("", polygon(), block="020", lot="0030")
+    features = prepare_features((neighboring, cadastral_lot), query)
+    assert preferred_target(features).record is cadastral_lot
+    assert features[1].classification == "parcel_query_match"
+    assert features[0].classification == "unverified"
+    assert "quadra e lote" in CLASSIFICATION_LABELS["parcel_query_match"].casefold()
+
+
+def test_block_lot_match_respects_city_and_state() -> None:
+    cadastral_lot = record("", polygon(), block="020", lot="0030")
+    another_city = SearchRequest(block="20", lot="30", city="Bertioga", state="SP")
+    another_state = SearchRequest(block="20", lot="30", city="São Paulo", state="RJ")
+    assert classification(cadastral_lot, another_city) == "unverified"
+    assert classification(cadastral_lot, another_state) == "unverified"
+    assert preferred_target(prepare_features((cadastral_lot,), another_city)) is None

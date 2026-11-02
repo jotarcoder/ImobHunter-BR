@@ -24,6 +24,9 @@ municipais; o mapa **não altera os retornos das consultas nem os cadastros**.
 ### Confiança da correspondência
 
 - Verde: campo \`house_number_match=exact\` recebido da fonte.
+- Verde: correspondência de **quadra e lote pedidos na busca** com os mesmos
+  identificadores da fonte oficial, respeitando cidade e UF. Isso confirma
+  apenas a igualdade cadastral, não o número predial nem titularidade.
 - Verde-claro: \`geocoded_spatial_match\`, correspondência espacial a
   confirmar; **não significa confirmação do número predial**.
 - Âmbar: \`geocoded_spatial_candidate\` / \`spatial_candidate_only\`.

@@ -10,7 +10,8 @@ import json
 import math
 from typing import Any
 
-from imobhunter.domain.models import PropertyRecord
+from imobhunter.domain.identity import canonical_text
+from imobhunter.domain.models import PropertyRecord, SearchRequest
 
 Point = tuple[float, float]
 Ring = tuple[Point, ...]
@@ -87,13 +88,40 @@ def parse_geometry(raw: Any) -> tuple[tuple[Polygon, ...], Point | None]:
     return (), None
 
 
-def classification(record: PropertyRecord) -> str:
+def _same_fiscal_value(left: str | None, right: str | None) -> bool:
+    """Match fiscal codes without losing their leading-zero representation."""
+    if not left or not right:
+        return False
+    a, b = canonical_text(left), canonical_text(right)
+    if a.isdecimal() and b.isdecimal():
+        return (a.lstrip("0") or "0") == (b.lstrip("0") or "0")
+    return a == b
+
+
+def _request_matches_parcel(record: PropertyRecord, request: SearchRequest | None) -> bool:
+    if request is None or not request.block or not request.lot:
+        return False
+    if request.state and canonical_text(record.state) != canonical_text(request.state):
+        return False
+    if request.city and canonical_text(record.city) != canonical_text(request.city):
+        return False
+    return (
+        _same_fiscal_value(request.block, record.block)
+        and _same_fiscal_value(request.lot, record.lot)
+    )
+
+
+def classification(
+    record: PropertyRecord, request: SearchRequest | None = None
+) -> str:
     match = str(record.attributes.get("house_number_match") or "").casefold()
     relation = str(record.attributes.get("parcel_relation") or "").casefold()
     if match == "neighboring_parcel" or relation in {"neighbor_candidate", "neighbor"}:
         return "neighbor"
     if match == "exact":
         return "exact"
+    if _request_matches_parcel(record, request):
+        return "parcel_query_match"
     if match == "geocoded_spatial_match":
         return "spatial_match"
     if match in {"geocoded_spatial_candidate", "candidate_only"}:
@@ -105,6 +133,7 @@ def classification(record: PropertyRecord) -> str:
 
 CLASSIFICATION_LABELS = {
     "exact": "Número predial confirmado pela fonte",
+    "parcel_query_match": "Quadra e lote correspondem à pesquisa no cadastro oficial",
     "spatial_match": "Correspondência espacial geocodificada — conferir número",
     "candidate": "Lote candidato — identificação ainda não confirmada",
     "neighbor": "Lote vizinho — não identificado como imóvel pesquisado",
@@ -112,7 +141,10 @@ CLASSIFICATION_LABELS = {
 }
 
 
-def prepare_features(records: list[PropertyRecord] | tuple[PropertyRecord, ...]) -> tuple[CadastralFeature, ...]:
+def prepare_features(
+    records: list[PropertyRecord] | tuple[PropertyRecord, ...],
+    request: SearchRequest | None = None,
+) -> tuple[CadastralFeature, ...]:
     """Return usable map features only; no invented geometry or coordinates."""
     features = []
     for record in records:
@@ -120,13 +152,13 @@ def prepare_features(records: list[PropertyRecord] | tuple[PropertyRecord, ...])
         if point is None and not polygons:
             point = valid_lon_lat(record.longitude, record.latitude)
         if polygons or point:
-            features.append(CadastralFeature(record, polygons, point, classification(record)))
+            features.append(CadastralFeature(record, polygons, point, classification(record, request)))
     return tuple(features)
 
 
 def preferred_target(features: tuple[CadastralFeature, ...]) -> CadastralFeature | None:
     """Never prefer a neighboring lot or an unverified polygon as the target."""
-    ranks = {"exact": 3, "spatial_match": 2, "candidate": 1}
+    ranks = {"exact": 4, "parcel_query_match": 3, "spatial_match": 2, "candidate": 1}
     ranked = sorted(
         (f for f in features if f.classification in ranks),
         key=lambda f: (ranks[f.classification], f.has_official_polygon),

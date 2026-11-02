@@ -105,6 +105,7 @@ class SearchResultsWindow(QMainWindow):
 
     def __init__(self, request: SearchRequest) -> None:
         super().__init__(None, Qt.WindowType.Window)
+        self._request = request
         self._result: SearchResult | None = None
         self._map_records = []
         self._map_widget: CadastralMapWidget | None = None
@@ -379,7 +380,7 @@ class SearchResultsWindow(QMainWindow):
         self.copy_summary_button.setEnabled(True)
         self.export_csv_button.setEnabled(True)
         self.export_json_button.setEnabled(True)
-        self._map_features = prepare_features(result.records)
+        self._map_features = prepare_features(result.records, self._request)
         self._map_records = [feature.record for feature in self._map_features]
         has_map = bool(self._map_records)
         self.map_button.setEnabled(has_map)
@@ -410,7 +411,7 @@ class SearchResultsWindow(QMainWindow):
         if self._map_widget is None:
             self._map_placeholder.hide()
             self._map_widget = CadastralMapWidget(
-                self._map_records, parent=self.map_tab
+                self._map_records, parent=self.map_tab, request=self._request
             )
             self.map_layout.addWidget(self._map_widget, 1)
         self.tabs.setCurrentWidget(self.map_tab)
