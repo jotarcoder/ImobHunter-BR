@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
+from imobhunter import __version__
 from imobhunter.licensing import DEFAULT_LICENSE_API, LicenseError, activate, get_user_id
 
 
@@ -71,7 +72,7 @@ def test_activation_sends_normalized_user_id_and_hex_key() -> None:
         assert request.full_url == "https://license.example/api/license/activate"
         assert request.get_method() == "POST"
         assert request.get_header("Content-type") == "application/json"
-        assert request.get_header("User-agent") == "ImobHunter-BR/2.0.0 (desktop-license-client)"
+        assert request.get_header("User-agent") == f"ImobHunter-BR/{__version__} (desktop-license-client)"
         assert timeout == 8
         assert isinstance(context, ssl.SSLContext)
         assert json.loads(request.data) == {
