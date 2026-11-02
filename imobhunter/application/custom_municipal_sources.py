@@ -141,7 +141,7 @@ def _json_rows(path: Path) -> list[dict[str, Any]]:
         else:
             payload = payload.get("data", payload.get("items", payload.get("records")))
     if not isinstance(payload, list):
-        raise ValueError("JSON precisa conter lista, data/items/records ou GeoJSON FeatureCollection.")
+        raise TypeError("JSON precisa conter lista, data/items/records ou GeoJSON FeatureCollection.")
     if len(payload) > MAX_ROWS:
         raise ValueError("Arquivo excede o limite de 50 mil registros.")
     return [row for row in payload if isinstance(row, dict)]
@@ -201,7 +201,7 @@ class CustomMunicipalStore:
                 return ()
             payload = json.loads(self.config_path.read_text(encoding="utf-8"))
             if not isinstance(payload, dict) or not isinstance(payload.get("sources"), list):
-                raise ValueError("Catálogo de fontes municipais inválido.")
+                raise TypeError("Catálogo de fontes municipais inválido.")
             items = tuple(_validated(CustomMunicipalSource(**row)) for row in payload["sources"])
             if len(items) > MAX_SOURCES or len({x.id for x in items}) != len(items):
                 raise ValueError("Catálogo de fontes municipais inconsistente.")
