@@ -13,6 +13,17 @@ on:
       - "data/coverage/ddd.json"
   workflow_dispatch:
     inputs:
+      build_target:
+        description: "Escolha uma plataforma; PRs nao compilam instaladores"
+        required: true
+        type: choice
+        options:
+          - macos-arm
+          - windows
+          - linux
+          - macos-intel
+          - all
+        default: macos-arm
       publish_release:
         description: "Publicar release no GitHub somente apos validacao dos quatro instaladores"
         required: true
@@ -29,7 +40,36 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Pull requests validate metadata only. The four platform builds require
+  # an explicit manual run, avoiding repeated builds and stuck runner queues.
+  validate-packaging:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Validate packaging inputs without compiling installers
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re
+          import tomllib
+          from pathlib import Path
+
+          version = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+          pkg = Path("imobhunter/__init__.py").read_text(encoding="utf-8")
+          win = Path("packaging/windows/version_info.txt").read_text(encoding="utf-8")
+          assert re.search(r'^__version__ = "' + re.escape(version) + r'"$', pkg, re.MULTILINE), "Package version differs"
+          assert "StringStruct('ProductVersion', '" + version + "')" in win, "Windows version differs"
+          for file in ("packaging/entrypoint.py", "packaging/windows/ImobHunter-BR.iss", "packaging/linux/AppRun", "packaging/linux/imobhunter.desktop", "imobhunter/assets/logo.svg", "data/coverage/ddd.json"):
+              assert Path(file).is_file(), f"Missing packaging input: {file}"
+          print(f"Packaging metadata validated for {version}. Native builds require manual dispatch.")
+          PY
+
   meta:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -61,14 +101,15 @@ jobs:
         shell: bash
         env:
           PUBLISH_RELEASE: ${{ inputs.publish_release }}
+          BUILD_TARGET: ${{ inputs.build_target }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
           SHOULD_RELEASE=false
           REF="$(git rev-parse HEAD)"
           if [ "$PUBLISH_RELEASE" = "true" ]; then
-            if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ] || [ "$GITHUB_REF" != "refs/heads/main" ]; then
-              echo "::error::GitHub release publishing is only allowed by manual dispatch on main."
+            if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ] || [ "$GITHUB_REF" != "refs/heads/main" ] || [ "$BUILD_TARGET" != "all" ]; then
+              echo "::error::Publishing requires a manually dispatched 'all' build on main."
               exit 1
             fi
             SHOULD_RELEASE=true
@@ -79,6 +120,7 @@ jobs:
 
   icon:
     needs: meta
+    if: github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'windows')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -111,6 +153,7 @@ jobs:
 
   windows:
     needs: [meta, icon]
+    if: github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'windows')
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -170,6 +213,7 @@ jobs:
 
   linux:
     needs: meta
+    if: github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'linux')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -206,6 +250,7 @@ jobs:
 
   macos-intel:
     needs: meta
+    if: github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'macos-intel')
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
@@ -247,6 +292,7 @@ jobs:
 
   macos-arm:
     needs: meta
+    if: github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'macos-arm')
     runs-on: macos-26
     timeout-minutes: 60
     steps:
