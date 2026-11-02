@@ -1,7 +1,8 @@
 name: Rebuild Apple Silicon v2.1.0 (standalone)
 
-# Independent of the failed macos-26 job. This workflow runs only once,
-# after the dedicated recovery PR has merged and main CI has passed.
+# Build the ARM64 executable using the available Intel macOS runner and a
+# universal2 toolchain. This never schedules an Apple Silicon GitHub runner.
+# One-time execution after approved main CI; no R2 upload.
 on:
   workflow_run:
     workflows: ["CI"]
@@ -54,7 +55,9 @@ jobs:
 
   build-apple-silicon:
     needs: validate-existing-files
-    runs-on: macos-15
+    # The former macos-15 ARM runner was cancelled twice before executing.
+    # Cross-build with the same Intel runner family used by the successful DMG.
+    runs-on: macos-15-intel
     timeout-minutes: 60
     steps:
       - name: Checkout exact v2.1.0 source used by the other three installers
@@ -65,42 +68,78 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Verify real Apple Silicon hardware and source version
+      - name: Verify Intel build host, universal2 Python, and exact release commit
         shell: bash
         run: |
           set -euo pipefail
-          test "$(uname -m)" = "arm64"
+          test "$(uname -m)" = "x86_64"
           test "$(git rev-parse HEAD)" = "b26ebfaf439db046fddf7fa91c5fc3956a207b98"
           python - <<'PY'
-          import platform
           import pathlib
+          import platform
           import tomllib
-          assert platform.machine() == "arm64", platform.machine()
+          assert platform.machine() == "x86_64", platform.machine()
           data = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
           assert data["project"]["version"] == "2.1.0"
-          print("Verified: native ARM64, exact release source, v2.1.0.")
+          print("Verified: Intel build host, exact release source, v2.1.0.")
           PY
-      - name: Install the same verified desktop dependencies as macOS Intel
+          python_bin="$(python -c 'import sys; print(sys.executable)')"
+          echo "Python interpreter: $python_bin"
+          lipo -archs "$python_bin" | tr ' ' '\n' | grep -qx arm64 || {
+            echo "::error::Python must be universal2, with an arm64 slice."
+            exit 1
+          }
+      - name: Install desktop universal2 dependencies and PyInstaller
         run: python -m pip install -e ".[desktop]" "pyinstaller==6.22.3" "pyinstaller-hooks-contrib==2026.9"
-      - name: Create a clean macOS ARM64 application
+      - name: Verify the installed Qt extension supports arm64
         shell: bash
         run: |
           set -euo pipefail
-          python -m PyInstaller --clean --noconfirm --windowed --name ImobHunter-BR \
+          qt_extension="$(python -c 'import PySide6.QtCore; print(PySide6.QtCore.__file__)')"
+          lipo -archs "$qt_extension" | tr ' ' '\n' | grep -qx arm64 || {
+            echo "::error::PySide6 is missing ARM64 binaries; cannot cross-build."
+            exit 1
+          }
+      - name: Cross-build a fresh ARM64 app from the Intel macOS runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m PyInstaller --clean --noconfirm --windowed --target-arch arm64 --name ImobHunter-BR \
             --add-data "imobhunter/assets:imobhunter/assets" \
             --add-data "data/coverage/ddd.json:data/coverage" packaging/entrypoint.py
-      - name: Inspect native binary and bundled HTTPS certificates
+      - name: Verify ARM64 entrypoint, all bundled Mach-O slices, and HTTPS certificates
         shell: bash
         run: |
           set -euo pipefail
-          binary="dist/ImobHunter-BR.app/Contents/MacOS/ImobHunter-BR"
+          app="dist/ImobHunter-BR.app"
+          binary="$app/Contents/MacOS/ImobHunter-BR"
           test -s "$binary"
           file "$binary"
-          lipo -archs "$binary" | tr ' ' '\n' | grep -qx arm64
-          ca_bundle="$(find dist/ImobHunter-BR.app -type f -name cacert.pem -print -quit)"
+          archs="$(lipo -archs "$binary")"
+          test "$archs" = "arm64" || {
+            echo "::error::Entry point is not ARM64-only: $archs"
+            exit 1
+          }
+          # A valid arm64 launcher is not enough: Qt plugins, Python libraries,
+          # and every other bundled native Mach-O must contain an ARM64 slice.
+          count=0
+          while IFS= read -r -d '' candidate; do
+            if file -b "$candidate" | grep -q 'Mach-O'; then
+              if ! lipo -archs "$candidate" | tr ' ' '\n' | grep -qx arm64; then
+                echo "::error::Bundled Mach-O lacks arm64 slice: $candidate"
+                exit 1
+              fi
+              count=$((count + 1))
+            fi
+          done < <(find "$app" -type f -print0)
+          test "$count" -gt 5 || {
+            echo "::error::Expected multiple ARM64 binaries, found only $count"
+            exit 1
+          }
+          ca_bundle="$(find "$app" -type f -name cacert.pem -print -quit)"
           test -n "$ca_bundle" || { echo "::error::HTTPS CA certificate bundle missing"; exit 1; }
-          echo "Native ARM64 executable and HTTPS CA certificates present."
-      - name: Create and validate a new Apple Silicon DMG
+          echo "Validated $count ARM64-compatible native binaries and HTTPS certificates."
+      - name: Package and verify a cross-built Apple Silicon DMG
         shell: bash
         run: |
           set -euo pipefail
