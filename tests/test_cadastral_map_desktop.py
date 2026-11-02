@@ -22,6 +22,42 @@ def _app():
     return _QT_APP
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _release_qt_before_python_interpreter_shutdown():
+    """Qt widgets must be freed while QApplication and Qt modules are alive.
+
+    Without an explicit teardown, interpreter-wide garbage collection may
+    destroy QObject wrappers after Qt's shared objects have gone away.
+    """
+    global _QT_APP
+    yield
+    if _QT_APP is None:
+        return
+
+    import gc
+
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QApplication
+
+    from imobhunter import ui_cadastral_map
+
+    app = _QT_APP
+    QApplication.closeAllWindows()
+    app.processEvents()
+    pool = ui_cadastral_map._MAP_TILE_POOL
+    if pool is not None:
+        pool.waitForDone(5000)
+        ui_cadastral_map._MAP_TILE_POOL = None
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    app.processEvents()
+    app.quit()
+    _QT_APP = None
+    del pool
+    del app
+    gc.collect()
+
+
+
 def test_map_has_selectable_parcels_and_changes_real_zoom(monkeypatch) -> None:
     pytest.importorskip("PySide6")
     from imobhunter.domain.models import PropertyRecord, Provenance
