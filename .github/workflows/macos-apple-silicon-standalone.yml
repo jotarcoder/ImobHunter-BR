@@ -1,0 +1,183 @@
+name: Rebuild Apple Silicon v2.1.0 (standalone)
+
+# Independent of the failed macos-26 job. This workflow runs only once,
+# after the dedicated recovery PR has merged and main CI has passed.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: imobhunter-apple-silicon-v2.1.0-standalone
+  cancel-in-progress: false
+
+jobs:
+  validate-existing-files:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      contains(github.event.workflow_run.head_commit.message, 'standalone v2.1.0 Apple Silicon installer')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify this is the approved one-time recovery commit
+        run: |
+          set -euo pipefail
+          git diff --name-only HEAD^1 HEAD -- .github/workflows/macos-apple-silicon-standalone.yml | grep -Fxq .github/workflows/macos-apple-silicon-standalone.yml
+          python -c "import tomllib, pathlib; assert tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'] == '2.1.0'"
+      - name: Verify three previous installers are still stored, without rebuilding
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repository="$GITHUB_REPOSITORY"
+          original_run=41527699227
+          original_sha="$(gh api "repos/$repository/actions/runs/$original_run" --jq .head_sha)"
+          test "$original_sha" = "b26ebfaf439db046fddf7fa91c5fc3956a207b98"
+          artifacts="$(gh api "repos/$repository/actions/runs/$original_run/artifacts?per_page=100")"
+          for name in ImobHunter-BR-Windows ImobHunter-BR-Linux ImobHunter-BR-macOS-Intel; do
+            count="$(jq --arg n "$name" '[.artifacts[] | select(.name == $n and .expired == false and .size_in_bytes > 0)] | length' <<< "$artifacts")"
+            test "$count" = 1 || { echo "::error::Missing previous artifact $name"; exit 1; }
+            echo "Preserving existing $name."
+          done
+
+  build-apple-silicon:
+    needs: validate-existing-files
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact v2.1.0 source used by the other three installers
+        uses: actions/checkout@v4
+        with:
+          ref: b26ebfaf439db046fddf7fa91c5fc3956a207b98
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify real Apple Silicon hardware and source version
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "arm64"
+          test "$(git rev-parse HEAD)" = "b26ebfaf439db046fddf7fa91c5fc3956a207b98"
+          python - <<'PY'
+          import platform
+          import pathlib
+          import tomllib
+          assert platform.machine() == "arm64", platform.machine()
+          data = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+          assert data["project"]["version"] == "2.1.0"
+          print("Verified: native ARM64, exact release source, v2.1.0.")
+          PY
+      - name: Install the same verified desktop dependencies as macOS Intel
+        run: python -m pip install -e ".[desktop]" "pyinstaller==6.22.3" "pyinstaller-hooks-contrib==2026.9"
+      - name: Create a clean macOS ARM64 application
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m PyInstaller --clean --noconfirm --windowed --name ImobHunter-BR \
+            --add-data "imobhunter/assets:imobhunter/assets" \
+            --add-data "data/coverage/ddd.json:data/coverage" packaging/entrypoint.py
+      - name: Inspect native binary and bundled HTTPS certificates
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary="dist/ImobHunter-BR.app/Contents/MacOS/ImobHunter-BR"
+          test -s "$binary"
+          file "$binary"
+          lipo -archs "$binary" | tr ' ' '\n' | grep -qx arm64
+          ca_bundle="$(find dist/ImobHunter-BR.app -type f -name cacert.pem -print -quit)"
+          test -n "$ca_bundle" || { echo "::error::HTTPS CA certificate bundle missing"; exit 1; }
+          echo "Native ARM64 executable and HTTPS CA certificates present."
+      - name: Create and validate a new Apple Silicon DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          dmg="ImobHunter-BR-macOS-AppleSilicon.dmg"
+          rm -f "$dmg"
+          hdiutil create -volname ImobHunter-BR -srcfolder dist/ImobHunter-BR.app -format UDZO "$dmg"
+          test -s "$dmg"
+          hdiutil verify -quiet "$dmg"
+          shasum -a 256 "$dmg" | tee "ImobHunter-BR-macOS-AppleSilicon.sha256"
+      - name: Preserve ARM64 DMG in Actions artifacts only
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-macOS-AppleSilicon-v2.1.0
+          path: |
+            ImobHunter-BR-macOS-AppleSilicon.dmg
+            ImobHunter-BR-macOS-AppleSilicon.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+  verify-four-candidates:
+    needs: build-apple-silicon
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download previous Windows candidate (no rebuild)
+        uses: actions/download-artifact@v4
+        with:
+          name: ImobHunter-BR-Windows
+          run-id: 41527699227
+          github-token: ${{ github.token }}
+          path: candidates
+      - name: Download previous Linux candidate (no rebuild)
+        uses: actions/download-artifact@v4
+        with:
+          name: ImobHunter-BR-Linux
+          run-id: 41527699227
+          github-token: ${{ github.token }}
+          path: candidates
+      - name: Download previous macOS Intel candidate (no rebuild)
+        uses: actions/download-artifact@v4
+        with:
+          name: ImobHunter-BR-macOS-Intel
+          run-id: 41527699227
+          github-token: ${{ github.token }}
+          path: candidates
+      - name: Download newly built Apple Silicon candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: ImobHunter-BR-macOS-AppleSilicon-v2.1.0
+          path: candidates
+      - name: Check all four installers and write traceable hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd candidates
+          for file in \
+            ImobHunter-BR-Setup-Windows.exe \
+            ImobHunter-BR-Linux.AppImage \
+            ImobHunter-BR-macOS-Intel.dmg \
+            ImobHunter-BR-macOS-AppleSilicon.dmg; do
+            test -s "$file" || { echo "::error::Missing installer $file"; exit 1; }
+          done
+          sha256sum -c ImobHunter-BR-macOS-AppleSilicon.sha256
+          {
+            echo "ImobHunter-BR v2.1.0 — candidate binaries, NOT R2 releases"
+            echo "Source: b26ebfaf439db046fddf7fa91c5fc3956a207b98"
+            echo "Windows/Linux/macOS Intel: Actions run 41527699227"
+            echo "macOS ARM64: this standalone workflow run"
+            sha256sum \
+              ImobHunter-BR-Setup-Windows.exe \
+              ImobHunter-BR-Linux.AppImage \
+              ImobHunter-BR-macOS-Intel.dmg \
+              ImobHunter-BR-macOS-AppleSilicon.dmg
+          } > ../ImobHunter-BR-v2.1.0-candidate-SHA256.txt
+          cat ../ImobHunter-BR-v2.1.0-candidate-SHA256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-v2.1.0-four-platform-checksums
+          path: ImobHunter-BR-v2.1.0-candidate-SHA256.txt
+          if-no-files-found: error
