@@ -9,14 +9,20 @@ SOURCE_SHA = "b26ebfaf439db046fddf7fa91c5fc3956a207b98"
 OLD_RUN = "41527699227"
 
 
-def test_recovery_uses_one_arm64_runner_not_the_old_macos_26_queue() -> None:
+def test_recovery_cross_builds_arm64_without_requiring_arm_runner() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     assert "name: Rebuild Apple Silicon v2.1.0 (standalone)" in workflow
-    assert "runs-on: macos-15" in workflow
-    assert workflow.count("runs-on: macos-15") == 1
+    assert "runs-on: macos-15-intel" in workflow
+    assert workflow.count("runs-on: macos-15-intel") == 1
     assert "runs-on: macos-26" not in workflow
-    assert "test \"$(uname -m)\" = \"arm64\"" in workflow
-    assert "platform.machine() == \"arm64\"" in workflow
+    assert "runs-on: macos-15\n" not in workflow
+    assert 'test "$(uname -m)" = "x86_64"' in workflow
+    assert 'platform.machine() == "x86_64"' in workflow
+    assert "python_bin=" in workflow
+    assert "PySide6.QtCore.__file__" in workflow
+    assert "--target-arch arm64" in workflow
+    assert 'test "$archs" = "arm64"' in workflow
+    assert "Bundled Mach-O lacks arm64 slice" in workflow
     assert "lipo -archs" in workflow
 
 
