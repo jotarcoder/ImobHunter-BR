@@ -240,3 +240,55 @@ def test_map_offline_with_only_geocoded_point_never_draws_fiscal_polygon(monkeyp
     finally:
         widget.close()
         app.processEvents()
+
+
+
+def test_municipal_settings_show_actual_urls_and_test_without_blocking(monkeypatch):
+    """The user sees the exact adapter endpoint; a probe runs asynchronously."""
+    pytest.importorskip("PySide6")
+    from PySide6.QtCore import QThreadPool
+
+    from imobhunter.application.municipal_endpoints import settings_endpoint_rows
+    from imobhunter.application.source_probe import EndpointProbe
+    from imobhunter.sources.registry import build_default_registry
+    from imobhunter.ui_settings import SourceSettingsDialog
+    import imobhunter.ui_settings as settings_module
+
+    # Deterministic fake probe; clicking the button never performs HTTP.
+    calls = []
+    def fake_probe(item):
+        calls.append(item["id"])
+        return EndpointProbe(
+            "responded", "GetCapabilities WFS respondeu com XML válido", 18
+        )
+    monkeypatch.setattr(settings_module, "probe_endpoint", fake_probe)
+
+    app = _app()
+    dialog = SourceSettingsDialog(build_default_registry())
+    dialog.show()
+    app.processEvents()
+    try:
+        expected = {item["id"]: item for item in settings_endpoint_rows()}
+        for id_, field in dialog.municipal_endpoint_rows.items():
+            assert field.isReadOnly()
+            assert field.text() == expected[id_]["url"]
+        assert dialog.geosampa_url.text().startswith("https://")
+        assert "Indisponibilidade" in (
+            dialog._municipal_probe_labels["bertioga"].text()
+        )
+        button = dialog._municipal_probe_buttons["santos"]
+        button.click()
+        # Complete the small simulated QRunnable, then deliver the Qt signal.
+        assert QThreadPool.globalInstance().waitForDone(3000)
+        app.processEvents()
+        assert calls == ["santos"]
+        assert button.isEnabled()
+        assert "Metadados acessíveis" in (
+            dialog._municipal_probe_labels["santos"].text()
+        )
+        assert "Não confirma SQL/IPTU" in (
+            dialog._municipal_probe_labels["santos"].text()
+        )
+    finally:
+        dialog.close()
+        app.processEvents()

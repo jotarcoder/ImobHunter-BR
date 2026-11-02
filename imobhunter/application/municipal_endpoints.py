@@ -1,0 +1,110 @@
+"""Single read-only municipal endpoint catalogue for the desktop settings UI.
+
+URLs are taken directly from the actual search adapters. The catalogue does
+not create new integrations or promise SQL/IPTU/geometry for every address.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from imobhunter.sources.geosampa import DEFAULT_WFS_URL
+from imobhunter.sources.official_municipal_services import (
+    BLUMENAU_ARCGIS_LAYER,
+    DF_ARCGIS_LAYER,
+    GOIANIA_ARCGIS_LAYER,
+    MUNICIPAL_WFS,
+    PORTO_ALEGRE_ARCGIS_LAYER,
+    RECIFE_CKAN_API,
+    RECIFE_IPTU_DATASET_ID,
+    RIO_ARCGIS_LAYER,
+    RIO_GEOPAL_LAYER,
+)
+
+
+@dataclass(frozen=True)
+class MunicipalEndpoint:
+    id: str
+    city: str
+    state: str
+    label: str
+    url: str
+    kind: str
+    layer: str
+    limits: str
+    role: str = "primary"
+
+    def as_settings_item(self) -> dict[str, str]:
+        return {
+            "id": self.id, "city": self.city, "state": self.state,
+            "label": self.label, "url": self.url, "kind": self.kind,
+            "layer": self.layer, "limits": self.limits, "role": self.role,
+        }
+
+
+def municipal_endpoints() -> tuple[MunicipalEndpoint, ...]:
+    """Describe ONLY endpoints reached by the current official adapters."""
+    wfs = (
+        ("praia_grande", "Praia Grande", "SP", "Cadastro de lotes: atributos dependem da camada"),
+        ("santos", "Santos", "SP", "Cadastro municipal: SQL não garantido"),
+        ("bertioga", "Bertioga", "SP", "Serviço indisponível em teste manual; não desativar TLS"),
+        ("belo_horizonte", "Belo Horizonte", "MG", "Atributos fiscais dependem da camada"),
+    )
+    result: list[MunicipalEndpoint] = [
+        MunicipalEndpoint(
+            id="sao_paulo", city="São Paulo", state="SP", label="São Paulo capital — SP (GeoSampa)",
+            url=DEFAULT_WFS_URL, kind="wfs", layer="geoportal:lote_cidadao",
+            limits="Exclusivo do município de São Paulo. O número predial nem sempre coincide com o lote.",
+        )
+    ]
+    for id_, city, state, limits in wfs:
+        source = MUNICIPAL_WFS[(city.casefold(), state.casefold())]
+        result.append(MunicipalEndpoint(
+            id_, city, state, f"{city} — {state}", source["url"], "wfs",
+            "Descoberta por GetCapabilities", limits,
+        ))
+    result.extend((
+        MunicipalEndpoint(
+            "rio_territorial", "Rio de Janeiro", "RJ",
+            "Rio de Janeiro — RJ (imóveis territoriais)", RIO_ARCGIS_LAYER,
+            "arcgis", "FeatureServer/0", "SQL/IPTU depende dos atributos oficiais.",
+        ),
+        MunicipalEndpoint(
+            "rio_geopal", "Rio de Janeiro", "RJ",
+            "Rio de Janeiro — RJ (GeoPAL)", RIO_GEOPAL_LAYER,
+            "arcgis", "FeatureServer/0", "Fonte alternativa quando a territorial não retorna registros.",
+            "fallback",
+        ),
+        MunicipalEndpoint(
+            "df", "Brasília", "DF", "Brasília — DF (IDE-DF)",
+            DF_ARCGIS_LAYER, "arcgis", "FeatureServer/0",
+            "Apenas campos devolvidos pela camada são exibidos.",
+        ),
+        MunicipalEndpoint(
+            "goiania", "Goiânia", "GO", "Goiânia — GO",
+            GOIANIA_ARCGIS_LAYER, "arcgis", "MapServer/3",
+            "Inscrição municipal não é automaticamente um SQL/IPTU.",
+        ),
+        MunicipalEndpoint(
+            "blumenau", "Blumenau", "SC", "Blumenau — SC",
+            BLUMENAU_ARCGIS_LAYER, "arcgis", "FeatureServer/0",
+            "IQ é identificador cadastral, não SQL/IPTU.",
+        ),
+        MunicipalEndpoint(
+            "recife", "Recife", "PE", "Recife — PE (IPTU dados abertos)",
+            f"{RECIFE_CKAN_API}/package_show?id={RECIFE_IPTU_DATASET_ID}",
+            "ckan", "Conjunto público CKAN",
+            "O dataset não garante API de pesquisa por endereço nem geometria.",
+        ),
+        MunicipalEndpoint(
+            "porto_alegre", "Porto Alegre", "RS",
+            "Porto Alegre — RS (lotes fiscais)",
+            PORTO_ALEGRE_ARCGIS_LAYER, "arcgis", "MapServer/0",
+            "Lotes fiscais não garantem SQL/IPTU individual.",
+        ),
+    ))
+    return tuple(result)
+
+
+def settings_endpoint_rows() -> tuple[dict[str, str], ...]:
+    """Make the GUI entries from constants used by the actual adapters."""
+    return tuple(item.as_settings_item() for item in municipal_endpoints())
