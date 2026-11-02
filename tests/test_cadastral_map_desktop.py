@@ -459,3 +459,56 @@ def test_main_window_and_integrations_keep_controls_inside_screen(tmp_path) -> N
         from PySide6.QtCore import QCoreApplication, QEvent
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         app.processEvents()
+
+
+def test_custom_municipal_source_renders_and_updates_in_settings(tmp_path) -> None:
+    """UI smoke without monkeypatching C++ Qt methods or spawning a second worker."""
+    pytest.importorskip("PySide6")
+
+    from imobhunter.application.custom_municipal_sources import CustomMunicipalStore
+    from imobhunter.sources.custom_municipal import reload_custom_sources
+    from imobhunter.sources.registry import build_default_registry
+    from imobhunter.ui_settings import SourceSettingsDialog
+
+    store = CustomMunicipalStore(tmp_path / "municipal_sources")
+    source = store.add(
+        "Geoportal da prefeitura", "Bertioga", "SP",
+        "https://portal.bertioga.sp.gov.br/geoserver/ows", "wfs",
+    )
+    registry = build_default_registry()
+    source_id = source.source_id
+    app = _app()
+    dialog = SourceSettingsDialog(registry, custom_store=store)
+    dialog.show()
+    app.processEvents()
+    try:
+        assert source_id in dialog._municipal_probe_buttons
+        assert source_id in dialog._municipal_probe_labels
+        assert "Não testada" in dialog._municipal_probe_labels[source_id].text()
+        assert any(
+            field.text() == source.url
+            for field in dialog.findChildren(type(dialog.geosampa_url))
+        )
+        file = tmp_path / "lotes.csv"
+        file.write_text("logradouro;numero;quadra;lote\nRua A;100;01;02\n", encoding="utf-8")
+        saved, count = store.import_file(source_id, file)
+        assert count == 1 and saved.file_name.endswith(".csv")
+        reload_custom_sources(registry, store)
+        dialog._refresh_custom_sources()
+        app.processEvents()
+        assert registry.get(source_id).status().status == "configured"
+        assert any(
+            field.text() == source.url
+            for field in dialog.findChildren(type(dialog.geosampa_url))
+        )
+        assert store.remove(source_id)
+        reload_custom_sources(registry, store)
+        dialog._refresh_custom_sources()
+        app.processEvents()
+        assert registry.get(source_id) is None
+        assert source_id not in dialog._municipal_probe_buttons
+        assert file.exists()
+    finally:
+        dialog.close()
+        dialog.deleteLater()
+        app.processEvents()
