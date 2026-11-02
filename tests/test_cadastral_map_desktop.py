@@ -439,6 +439,8 @@ def test_main_window_and_integrations_keep_controls_inside_screen(tmp_path) -> N
     app.processEvents()
     try:
         assert window.screen().availableGeometry().contains(window.geometry())
+        # Ownership: never release a wrapper for Qt's global QThreadPool.
+        assert window.thread_pool.parent() is app
         assert window.content_scroll.widget() is not None
         window._show_integrations()
         app.processEvents()
