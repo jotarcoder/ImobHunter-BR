@@ -46,8 +46,8 @@ def test_r2_requires_explicit_manual_approval_and_no_workflow_run() -> None:
     workflow = (ROOT / ".github/workflows/publish-r2-installers.yml").read_text(
         encoding="utf-8"
     )
-    assert re.search(r"^  workflow_dispatch:", workflow, flags=re.M)
-    assert not re.search(r"^  workflow_run:", workflow, flags=re.M)
+    assert re.search(r"^  workflow_dispatch:", workflow, flags=re.MULTILINE)
+    assert not re.search(r"^  workflow_run:", workflow, flags=re.MULTILINE)
     assert "confirm_publish:" in workflow
     assert "if: inputs.confirm_publish == true" in workflow
     assert "default: v2.0.0" not in workflow
