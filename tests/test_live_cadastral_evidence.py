@@ -1,8 +1,15 @@
 """The live evidence report must preserve source and geometry uncertainty."""
 import json
+from pathlib import Path
+from runpy import run_path
 
 from imobhunter.domain.models import PropertyRecord, Provenance
-from scripts.live_municipal_cadastral_evidence import safe_record
+
+# scripts/ is a CLI directory, not an installed Python package. Load its
+# entrypoint by file path without modifying the distribution or sys.path.
+safe_record = run_path(
+    str(Path(__file__).resolve().parents[1] / "scripts" / "live_municipal_cadastral_evidence.py")
+)["safe_record"]
 
 
 def test_evidence_reports_official_polygon_and_iptu_only_when_returned():
