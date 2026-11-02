@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from time import monotonic
-from typing import Mapping
+from collections.abc import Mapping
 from urllib.parse import urlparse
 from xml.etree import ElementTree
 
