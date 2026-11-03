@@ -1,14 +1,22 @@
 """Public GIS discovery must not turn network errors into cadastral claims."""
+import importlib.util
+from pathlib import Path
+
 import httpx
 
-from scripts.probe_sp_next_municipal import (
-    RIBEIRAO_PORTAL_SEARCH,
-    RIBEIRAO_REST,
-    SJC_PUBLIC_PORTAL,
-    SJC_WFS_CANDIDATES,
-    list_arcgis,
-    list_geosanja,
-)
+# Script is a standalone QA utility, not an installed Python package.
+probe_path = Path(__file__).resolve().parents[1] / "scripts" / "probe_sp_next_municipal.py"
+spec = importlib.util.spec_from_file_location("sp_next_probe", probe_path)
+assert spec is not None and spec.loader is not None
+probe = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(probe)
+
+RIBEIRAO_PORTAL_SEARCH = probe.RIBEIRAO_PORTAL_SEARCH
+RIBEIRAO_REST = probe.RIBEIRAO_REST
+SJC_PUBLIC_PORTAL = probe.SJC_PUBLIC_PORTAL
+SJC_WFS_CANDIDATES = probe.SJC_WFS_CANDIDATES
+list_arcgis = probe.list_arcgis
+list_geosanja = probe.list_geosanja
 
 
 def test_ribeirao_public_catalogue_inspects_metadata_only():
