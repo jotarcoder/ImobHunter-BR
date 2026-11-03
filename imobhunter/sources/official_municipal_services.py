@@ -14,6 +14,7 @@ import httpx
 from imobhunter.application.address_geocoding import CachedAddressGeocoder, GeocodingError
 from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest, SourceStatus
 from imobhunter.sources.base import SourceAdapter
+from imobhunter.sources.sp_bertioga_local import BertiogaLocalStore
 from imobhunter.sources.sp_mogi_cadastre import mogi_catalogue as query_mogi_catalogue
 from imobhunter.sources.sp_fiscal_lookup_portals import campinas as query_campinas
 from imobhunter.sources.sp_fiscal_lookup_portals import (
@@ -223,6 +224,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         client: httpx.Client | None = None,
         geocoder: Any | None = None,
         timeout: float = 18.0,
+        bertioga_store: BertiogaLocalStore | None = None,
     ) -> None:
         self.cache_dir = Path(
             cache_dir or (Path.home() / ".imobhunter" / "cache" / "official_municipal")
@@ -231,6 +233,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         self._client = client
         self._geocoder = geocoder
         self.timeout = timeout
+        self._bertioga_store = bertioga_store
         self.last_errors: dict[str, str] = {}
         self.last_diagnostics: dict[str, dict[str, Any]] = {}
         self.last_geocoded: dict[str, dict[str, Any]] = {}
@@ -241,6 +244,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             "Rio de Janeiro/RJ, Distrito Federal, Goiânia/GO, Blumenau/SC, Recife/PE, Porto Alegre/RS, "
             "Joinville/SC, São Bento do Sul/SC, Juiz de Fora/MG, Caxias do Sul/RS e Recife/PE; "
             "São Paulo capital usa GeoSampa. "
+            "Bertioga pode usar o pacote local oficial GeoJSON quando instalado. "
             "Cobertura, atributos e disponibilidade dependem da camada oficial."
         )
         if self.last_errors:
@@ -1092,6 +1096,13 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             city, state = configured["city"], configured["state"]
 
         try:
+            if city_key == "bertioga" and state_key in {"sp", "sao paulo"}:
+                local = self._bertioga_store or BertiogaLocalStore()
+                if local.installed():
+                    records, diagnostic = local.search(request, self.source_id)
+                    self.last_diagnostics[city] = diagnostic
+                    self.last_errors.pop(city, None)
+                    return records
             if service_key == "mogi":
                 records, diagnostic = query_mogi_catalogue(
                     request, self._get, self.source_id
