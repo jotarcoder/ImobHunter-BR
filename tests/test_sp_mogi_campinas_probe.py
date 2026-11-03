@@ -131,3 +131,14 @@ def test_pipe_separated_iptu_header_does_not_get_misread_as_one_column():
     assert metadata["has_cadastro_id"] is True
     assert "RUA EXEMPLO" not in str(metadata)
     assert metadata["explicit_fiscal_parcel_fields"] == []
+
+
+def test_municipal_scripts_are_preferred_over_vendor_libraries():
+    values = [
+        f"/plugins/vendor-{index}/generic.js" for index in range(20)
+    ] + ["/js/mapa_publico.js"]
+    selected = probe.safe_source_scripts(probe.MOGI_MAP, values)
+    assert len(selected) == probe.MAX_SCRIPTS
+    assert any(path.endswith("/js/mapa_publico.js") for path in selected)
+    assert all(path.startswith("https://geomogi.mogidascruzes.sp.gov.br/")
+               for path in selected)

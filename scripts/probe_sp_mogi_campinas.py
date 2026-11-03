@@ -51,7 +51,21 @@ def safe_source_scripts(base_url: str, sources: list[str]) -> list[str]:
         if (parsed.scheme == "https" and parsed.hostname == host
                 and parsed.path.lower().endswith((".js", ".mjs"))):
             selected.append(url)
-    return list(dict.fromkeys(selected))[:MAX_SCRIPTS]
+    unique = list(dict.fromkeys(selected))
+    # Portal GeoMogi loads vendor libraries first and municipal application
+    # scripts later. Inspect municipal scripts ahead of generic dependencies.
+    def priority(url: str) -> int:
+        path = urlparse(url).path.casefold()
+        return int(any(part in path for part in (
+            "/plugins/", "/vendor/", "/bower_components/", "/jquery",
+            "/bootstrap", "/fontawesome", "/polyfills.",
+        )))
+    return sorted(unique, key=priority)[:MAX_SCRIPTS]
+
+
+def _official_site_script_url(base_url: str, script: str) -> bool:
+    parsed = urlparse(urljoin(base_url, script))
+    return parsed.scheme == "https" and parsed.hostname == urlparse(base_url).hostname
 
 
 def script_metadata(content: str) -> dict:
@@ -81,9 +95,15 @@ def probe_site(client: httpx.Client, city: str, url: str) -> list[dict]:
         parser = HTMLAssets()
         parser.feed(html)
         scripts = safe_source_scripts(url, parser.scripts)
+        public_script_paths = [
+            urlparse(src).path for src in parser.scripts
+            if _official_site_script_url(url, src)
+        ]
         output.append({
             "city": city, "source": "public_html", "url": url,
             "script_paths": [urlparse(s).path for s in scripts],
+            "total_public_scripts": len(public_script_paths),
+            "official_script_paths": public_script_paths[:75],
             "link_count": len(parser.links),
             "mentions_fiscal_search": any(
                 token in html.casefold() for token in ("pesquisa de lote", "inscri", "quadras")
