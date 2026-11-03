@@ -103,7 +103,8 @@ def test_santo_andre_public_wfs_capabilities_are_not_sql_address_join(tmp_path):
     assert diag["result"] == "no_public_fiscal_address_layer_in_wfs"
     assert diag["registration_verified"] is False
     assert diag["official_portal_url"] == SANTO_ANDRE_PORTAL
-    assert "Santo André" not in adapter.last_errors
+    assert "Santo André" in adapter.last_errors
+    assert "não disponibilizada" in adapter.last_errors["Santo André"]
 
 
 def test_santo_andre_malformed_wfs_is_not_silent_no_property(tmp_path):

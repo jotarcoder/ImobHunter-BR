@@ -1084,7 +1084,16 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             if service_key == "santo_andre":
                 records, diagnostic = query_santo_andre(request, self._get, self.source_id)
                 self.last_diagnostics[city] = diagnostic
-                self.last_errors.pop(city, None)
+                if diagnostic.get("result") in {
+                    "no_public_fiscal_address_layer_in_wfs",
+                    "fiscal_schema_requires_explicit_address_join_validation",
+                }:
+                    self.last_errors[city] = (
+                        "Consulta fiscal por endereço não disponibilizada pelo "
+                        "WFS público do SIGA. Utilize o portal oficial."
+                    )
+                else:
+                    self.last_errors.pop(city, None)
                 return records
             if service_key == "jundiai":
                 records, diagnostic = query_jundiai(
