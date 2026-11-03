@@ -61,6 +61,7 @@ def _official_block(
     }
     errors = []
     payload = None
+    original_error: Exception | None = None
     for block_url in (CAXIAS_BLOCKS, CAXIAS_MAP_BLOCKS):
         try:
             response = fetch(block_url + "/query", params)
@@ -69,9 +70,15 @@ def _official_block(
                 payload = candidate
                 break
         except (httpx.HTTPError, ValueError, TypeError, RuntimeError) as exc:
+            if original_error is None:
+                original_error = exc
             errors.append(type(exc).__name__)
     if payload is None:
-        raise TypeError(f"ArcGIS quadras indisponível: {errors!r}")
+        # Keep the underlying transport exception visible to diagnostics,
+        # rather than hiding SSL, network timeouts or HTTP errors as TypeError.
+        if original_error is not None:
+            raise original_error
+        raise TypeError(f"ArcGIS quadras retornou JSON inválido: {errors!r}")
     if not isinstance(payload, dict) or not isinstance(payload.get("features"), list):
         error = payload.get("error") if isinstance(payload, dict) else type(payload).__name__
         raise TypeError(f"ArcGIS quadras retornou JSON inválido: {error!r}")

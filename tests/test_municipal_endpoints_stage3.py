@@ -120,10 +120,18 @@ def test_rio_geopal_is_only_called_if_main_layer_is_empty(monkeypatch, tmp_path)
 def test_recife_catalog_lookup_bypasses_other_city_adapters(monkeypatch, tmp_path):
     adapter = OfficialMunicipalServicesAdapter(cache_dir=tmp_path)
     called = []
-    monkeypatch.setattr(adapter, "_recife_records", lambda request: called.append(request.city) or [])
-    monkeypatch.setattr(adapter, "_geocode", lambda request: pytest.fail("Recife must use CKAN"))
+
+    def official_esig(request, _fetch, _source_id):
+        called.append(request.city)
+        return [], {"result": "street_and_numeric_number_required"}
+
+    monkeypatch.setattr(
+        "imobhunter.sources.official_municipal_services.query_recife_esig", official_esig
+    )
+    monkeypatch.setattr(adapter, "_geocode", lambda request: pytest.fail("Recife uses ESIG"))
     assert adapter.search(SearchRequest(address="Av. Boa Vista", city="Recife", state="PE")) == []
     assert called == ["Recife"]
+    assert adapter.last_diagnostics["Recife"]["result"] == "street_and_numeric_number_required"
 
 
 def test_other_city_never_invokes_geosampa_or_wrong_official_source(tmp_path):
