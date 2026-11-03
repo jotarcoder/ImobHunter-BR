@@ -103,7 +103,7 @@ def _read_collection(path: Path, expected: str) -> list[dict]:
     with path.open(encoding="utf-8-sig") as reader:
         data = json.load(reader)
     features = data.get("features") if isinstance(data, dict) else None
-    if data.get("type") != "FeatureCollection" or not isinstance(features, list):
+    if not isinstance(data, dict) or data.get("type") != "FeatureCollection" or not isinstance(features, list):
         raise ValueError(f"{expected}: esperado FeatureCollection GeoJSON.")
     if not 1 <= len(features) <= MAX_FEATURES:
         raise ValueError(f"{expected}: quantidade de feições fora do limite seguro.")

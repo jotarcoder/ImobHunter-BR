@@ -18,7 +18,7 @@ def polygon(lon=-46.10, lat=-23.82):
             [lon + .0001, lat + .0001],
             [lon - .0001, lat + .0001],
             [lon - .0001, lat - .0001],
-        ]]],
+        ]]]],
     }
 
 
@@ -77,7 +77,7 @@ def write(path, name, features):
 
 def setup_store(tmp_path, lots=None):
     folder = tmp_path / "input"
-    folder.mkdir()
+    folder.mkdir(parents=True)
     lots_path = write(folder / "lotes.geojson", "lotes", lots or [
         lot(extra={"nome_proprietario": "PRIVATE", "valor_iptu": 999}),
         lot(number="178", inscription="03.016.002.###", lon=-46.1002),
