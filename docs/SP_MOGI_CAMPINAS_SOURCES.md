@@ -44,3 +44,15 @@ Os primeiros CSVs da base são arquivos de IPTU/ITBI de **2016–2018**, com `ca
 O registro específico de **CADASTRO IMOBILIÁRIO** não declara licença própria no CKAN (`license_id` vazio), embora o portal apresente uma orientação genérica de reutilização. É necessário verificar a licença aplicável antes de incorporar automaticamente os arquivos ao produto comercial. A descoberta não baixa nem persiste dados de contribuinte.
 
 A próxima sondagem seleciona os **cabeçalhos mais recentes das famílias `pmmc_imobiliario_*`, `pmmc_iptu_*` e `iptu_itbi_*`** para confirmar se há endereçamento, quadra/lote e inscrição individual.
+
+## Descoberta confirmada nos arquivos oficiais de Mogi — 2024
+
+Sondagem real do CKAN: https://github.com/jotarcoder/ImobHunter-BR/actions/runs/41710064028
+
+O conjunto `CADASTRO IMOBILIÁRIO` possui **169 recursos CSV**, mas os arquivos observados abrangem os exercícios **2016–2024**, não 2025/2026. O arquivo `pmmc_imobiliario_2024_part1.csv` publicou cabeçalho com **69 colunas**, incluindo:
+- `cadastro_id`, `nro_local`, `logradouro`, `area_terreno`, `situacao(2024)`, `zona_fiscal`, `id_local`, `loteamento`.
+- Não constaram **campos explicitamente chamados** `setor`, `quadra`, `lote` ou `inscricao` nessa amostra. `cadastro_id` não deve ser automaticamente transformado em SQL municipal.
+- Outro arquivo `pmmc_iptu_2024_part1.csv` usa delimitador `|`, não vírgula ou ponto e vírgula. Adicionado suporte de leitura de **cabeçalho apenas**, sem leitura de linhas de contribuintes.
+- A base `LISTA DE LOGRADOUROS - VISÃO FINANÇAS` (2023) expõe colunas `Setor`, `Codlogr`, `Logr`, `Bairro/Loteamento` e `CEP`, mas ainda não há relação unívoca comprovada com os códigos de imóveis dos arquivos 2024.
+
+**Portanto, a pesquisa por endereço é tecnicamente promissora, mas ainda não está homologada para SQL/quadra/lote atual por endereço.** Antes de qualquer uso comercial automático, confirmar autorização de reutilização do conjunto específico (marcado no CKAN como **sem licença informada**), sem acessar ou divulgar valores fiscais nem dados pessoais. Nenhum CSV completo foi baixado nesta investigação.

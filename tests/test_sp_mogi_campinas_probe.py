@@ -110,3 +110,24 @@ def test_ckan_header_probe_never_follows_untrusted_redirect():
         )
     assert data["status"] == "redirect_not_followed"
     assert probe._official_resource_url("https://evil.example/files.csv") is False
+
+
+def test_pipe_separated_iptu_header_does_not_get_misread_as_one_column():
+    source = (
+        b"cadastro_id|exercicio|tributo|id_local|nro_local|complemento|logradouro"
+        b"|cod_lote\n123|2024|IPTU|2|150||RUA EXEMPLO|5\n"
+    )
+    def handler(request):
+        assert request.headers["range"] == "bytes=0-4095"
+        return httpx.Response(206, content=source)
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        metadata = probe._csv_header_only(
+            client, "https://dados.mogidascruzes.sp.gov.br/resource/iptu_2024.csv"
+        )
+    assert metadata["status"] == "public_csv_header"
+    assert metadata["delimiter"] == "|"
+    assert metadata["column_count"] == 8
+    assert metadata["has_candidate_address_columns"] is True
+    assert metadata["has_cadastro_id"] is True
+    assert "RUA EXEMPLO" not in str(metadata)
+    assert metadata["explicit_fiscal_parcel_fields"] == []

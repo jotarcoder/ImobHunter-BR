@@ -176,12 +176,23 @@ def _csv_header_only(client: httpx.Client, url: str) -> dict:
         line = bytes(chunks).split(b"\n", 1)[0].decode("utf-8-sig", errors="replace")
         if len(line) > 3500:
             return {"status": "header_exceeds_safe_limit"}
-        sep = ";" if line.count(";") > line.count(",") else ","
-        columns = next(csv.reader(io.StringIO(line), delimiter=sep), [])
+        separator = max((";", ",", "|"), key=line.count)
+        columns = next(csv.reader(io.StringIO(line), delimiter=separator), [])
+        names = [c.strip()[:80] for c in columns[:75] if c.strip()]
+        norm = {field.casefold() for field in names}
         return {
             "status": "public_csv_header",
-            "column_count": len(columns),
-            "column_names_only": [c.strip()[:80] for c in columns[:75]],
+            "column_count": len(names),
+            "column_names_only": names,
+            "delimiter": separator,
+            "has_cadastro_id": "cadastro_id" in norm,
+            "has_candidate_address_columns": (
+                "logradouro" in norm and "nro_local" in norm
+            ),
+            "explicit_fiscal_parcel_fields": [
+                field for field in ("setor", "quadra", "lote", "inscricao")
+                if field in norm
+            ],
         }
     except (httpx.HTTPError, ValueError, TypeError, csv.Error) as exc:
         return {"status": "source_error", "error_type": type(exc).__name__}
