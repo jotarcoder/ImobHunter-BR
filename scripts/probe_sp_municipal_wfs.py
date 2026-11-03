@@ -6,7 +6,6 @@ This script logs *schema names only*, never private field values.
 from __future__ import annotations
 
 import json
-import re
 import xml.etree.ElementTree as ET
 
 import httpx
@@ -29,8 +28,8 @@ MAX_SCHEMA_LAYERS = 5
 def get_xml(client: httpx.Client, url: str, params: dict[str, str]):
     response = client.get(url, params=params)
     response.raise_for_status()
-    if len(response.content) > 3_000_000:
-        raise ValueError("Capabilities exceeded 3 MB; skipped")
+    if len(response.content) > 8_000_000:
+        raise ValueError("Capabilities exceeded 8 MB; skipped")
     return ET.fromstring(response.content)
 
 
@@ -104,6 +103,34 @@ def inspect(client: httpx.Client, city: str, endpoint: str) -> dict:
     except (httpx.HTTPError, ET.ParseError, ValueError) as exc:
         result["error"] = type(exc).__name__
         result["detail"] = str(exc).split("\n", 1)[0][:180]
+    # WMS map services can expose layers omitted by anonymous WFS.
+    # Record layer metadata only; never query identities via GetFeatureInfo.
+    try:
+        root = get_xml(client, endpoint, {
+            "service": "WMS", "version": "1.3.0", "request": "GetCapabilities",
+        })
+        layers = []
+        for layer in root.iter():
+            if layer.tag.rsplit("}", 1)[-1] != "Layer":
+                continue
+            name = next((
+                (c.text or "").strip()
+                for c in layer if c.tag.rsplit("}", 1)[-1] == "Name"
+            ), "")
+            title = next((
+                (c.text or "").strip()
+                for c in layer if c.tag.rsplit("}", 1)[-1] == "Title"
+            ), "")
+            if name and any(
+                part in (name + " " + title).casefold() for part in INTERESTING
+            ):
+                layers.append({
+                    "name": name, "title": title[:130],
+                    "queryable": layer.attrib.get("queryable", "inherited"),
+                })
+        result["wms_cadastral_layers"] = layers[:40]
+    except (httpx.HTTPError, ET.ParseError, ValueError) as exc:
+        result["wms_error"] = type(exc).__name__
     return result
 
 
