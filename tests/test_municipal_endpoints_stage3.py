@@ -15,6 +15,9 @@ from imobhunter.application.municipal_endpoints import (
 from imobhunter.application.source_probe import probe_endpoint
 from imobhunter.domain.models import PropertyRecord, SearchRequest
 from imobhunter.sources.geosampa import DEFAULT_WFS_URL, GeoSampaAdapter
+from imobhunter.sources.sc_municipal_cadastre import (
+    JOINVILLE_LAYER, JOINVILLE_POLYGON_LAYER, SAO_BENTO_SERVICE,
+)
 from imobhunter.sources.official_municipal_services import (
     BLUMENAU_ARCGIS_LAYER,
     DF_ARCGIS_LAYER,
@@ -31,7 +34,8 @@ from imobhunter.sources.official_municipal_services import (
 def test_settings_list_is_built_from_real_adapter_endpoints() -> None:
     rows = settings_endpoint_rows()
     ids = [row["id"] for row in rows]
-    assert len(ids) == len(set(ids)) == 12
+    assert len(ids) == len(set(ids))
+    assert len(ids) >= 12
     assert rows[0]["url"] == DEFAULT_WFS_URL
     assert rows[0]["city"] == "São Paulo"
     assert rows[0]["state"] == "SP"
@@ -51,6 +55,11 @@ def test_settings_list_is_built_from_real_adapter_endpoints() -> None:
     assert urls["goiania"] == GOIANIA_ARCGIS_LAYER
     assert urls["blumenau"] == BLUMENAU_ARCGIS_LAYER
     assert urls["porto_alegre"] == PORTO_ALEGRE_ARCGIS_LAYER
+    assert urls["joinville"] == JOINVILLE_LAYER
+    assert urls["joinville_polygons"] == JOINVILLE_POLYGON_LAYER
+    assert urls["sao_bento_enderecos"] == SAO_BENTO_SERVICE + "/11"
+    assert urls["sao_bento_lotes"] == SAO_BENTO_SERVICE + "/0"
+    assert urls["sao_bento_inscricao"] == SAO_BENTO_SERVICE + "/14"
     assert urls["recife"].startswith(f"{RECIFE_CKAN_API}/package_show?id=")
     assert next(row for row in rows if row["id"] == "rio_geopal")["role"] == "fallback"
     assert all(row["url"].startswith("https://") for row in rows)
@@ -172,7 +181,7 @@ def test_probe_arcgis_ckan_and_errors_are_not_property_availability():
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
         for kind, url in (
             ("arcgis", RIO_ARCGIS_LAYER),
-            ("ckan", settings_endpoint_rows()[-2]["url"]),
+            ("ckan", next(row["url"] for row in settings_endpoint_rows() if row["id"] == "recife")),
         ):
             assert probe_endpoint({"url": url, "kind": kind}, client).state == "responded"
     invalid = probe_endpoint({"url": "http://example.com/wfs", "kind": "wfs"})

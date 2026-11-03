@@ -87,6 +87,30 @@ CASES = [
         "adapter": "official_municipal",
     },
     {
+        "municipality": "Joinville/SC — Condeixa 2550",
+        "address": "Avenida Aluísio Pires Condeixa",
+        "number": "2550",
+        "city": "Joinville",
+        "state": "SC",
+        "adapter": "official_municipal",
+    },
+    {
+        "municipality": "São Bento do Sul/SC — Benjamin Constant 118",
+        "address": "Rua Benjamin Constant",
+        "number": "118",
+        "city": "São Bento do Sul",
+        "state": "SC",
+        "adapter": "official_municipal",
+    },
+    {
+        "municipality": "São Bento do Sul/SC — Jorge Lacerda 75",
+        "address": "Rua Jorge Lacerda",
+        "number": "75",
+        "city": "São Bento do Sul",
+        "state": "SC",
+        "adapter": "official_municipal",
+    },
+    {
         "municipality": "Recife/PE",
         "address": "Avenida Conde da Boa Vista",
         "number": "100",
@@ -234,6 +258,11 @@ def main() -> None:
                 )
             if item["errors"]:
                 print(f'  errors={json.dumps(item["errors"], ensure_ascii=False)}')
+            if case["city"] in {"Joinville", "São Bento do Sul"}:
+                print(
+                    "  sc_diagnostics="
+                    + json.dumps(item["diagnostics"], ensure_ascii=False, default=str)[:3000]
+                )
             if case["city"] == "Porto Alegre":
                 print(
                     "  porto_alegre_diagnostics="

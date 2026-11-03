@@ -8,6 +8,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from imobhunter.sources.geosampa import DEFAULT_WFS_URL
+from imobhunter.sources.sc_municipal_cadastre import (
+    JOINVILLE_LAYER, JOINVILLE_POLYGON_LAYER, SAO_BENTO_SERVICE,
+)
 from imobhunter.sources.official_municipal_services import (
     BLUMENAU_ARCGIS_LAYER,
     DF_ARCGIS_LAYER,
@@ -94,6 +97,36 @@ def municipal_endpoints() -> tuple[MunicipalEndpoint, ...]:
             f"{RECIFE_CKAN_API}/package_show?id={RECIFE_IPTU_DATASET_ID}",
             "ckan", "Conjunto público CKAN",
             "O dataset não garante API de pesquisa por endereço nem geometria.",
+        ),
+        MunicipalEndpoint(
+            "joinville", "Joinville", "SC", "Joinville — SC (inscrição por endereço)",
+            JOINVILLE_LAYER, "arcgis", "SEFAZ MapServer/0",
+            "Confere logradouro e número exatos; IQ é inscrição imobiliária, não SQL de SP.",
+        ),
+        MunicipalEndpoint(
+            "joinville_polygons", "Joinville", "SC", "Joinville — SC (polígonos de lotes)",
+            JOINVILLE_POLYGON_LAYER, "arcgis", "Hosted FeatureServer/0",
+            "Somente geometria ligada à inscrição IQ; não consultar valores fiscais.",
+            "fallback",
+        ),
+        MunicipalEndpoint(
+            "sao_bento_enderecos", "São Bento do Sul", "SC",
+            "São Bento do Sul — SC (endereços cadastrais)",
+            SAO_BENTO_SERVICE + "/11", "arcgis", "MapServer/11",
+            "Exige número e logradouro exatos; indisponibilidade não significa lote inexistente.",
+        ),
+        MunicipalEndpoint(
+            "sao_bento_lotes", "São Bento do Sul", "SC",
+            "São Bento do Sul — SC (lotes e geometrias)",
+            SAO_BENTO_SERVICE + "/0", "arcgis", "MapServer/0",
+            "Vinculado à tabela de endereços pelo código geolot.", "related",
+        ),
+        MunicipalEndpoint(
+            "sao_bento_inscricao", "São Bento do Sul", "SC",
+            "São Bento do Sul — SC (inscrição imobiliária)",
+            SAO_BENTO_SERVICE + "/14", "arcgis", "MapServer/14",
+            "Só cadastro de terreno vinculado por geolot; inscrições ambíguas não são assumidas.",
+            "related",
         ),
         MunicipalEndpoint(
             "porto_alegre", "Porto Alegre", "RS",
