@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from imobhunter.sources.geosampa import DEFAULT_WFS_URL
+from imobhunter.sources.rs_caxias_cadastre import CAXIAS_LOTS, CAXIAS_BLOCKS
 from imobhunter.sources.mg_juiz_cadastre import JUIZ_INSCRIPTIONS, JUIZ_PARCELS, JUIZ_PARCELS_LEGACY
 from imobhunter.sources.sc_municipal_cadastre import (
     JOINVILLE_LAYER, JOINVILLE_POLYGON_LAYER, SAO_BENTO_SERVICE,
@@ -127,6 +128,19 @@ def municipal_endpoints() -> tuple[MunicipalEndpoint, ...]:
             "São Bento do Sul — SC (inscrição imobiliária)",
             SAO_BENTO_SERVICE + "/14", "arcgis", "MapServer/14",
             "Só cadastro de terreno vinculado por geolot; inscrições ambíguas não são assumidas.",
+            "related",
+        ),
+        MunicipalEndpoint(
+            "caxias_lotes", "Caxias do Sul", "RS",
+            "Caxias do Sul — RS (lotes por endereço)",
+            CAXIAS_LOTS, "arcgis", "FeatureServer/3",
+            "Confere rua/número. Inscrição do lote não equivale a SQL/IPTU.",
+        ),
+        MunicipalEndpoint(
+            "caxias_quadras", "Caxias do Sul", "RS",
+            "Caxias do Sul — RS (quadras oficiais)",
+            CAXIAS_BLOCKS, "arcgis", "FeatureServer/4",
+            "Quadra vinculada ao lote por interseção espacial não ambígua.",
             "related",
         ),
         MunicipalEndpoint(
