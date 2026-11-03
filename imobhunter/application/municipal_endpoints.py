@@ -8,7 +8,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from imobhunter.sources.geosampa import DEFAULT_WFS_URL
-from imobhunter.sources.rs_caxias_cadastre import CAXIAS_LOTS, CAXIAS_BLOCKS
+from imobhunter.sources.rs_caxias_cadastre import CAXIAS_LOTS, CAXIAS_BLOCKS, CAXIAS_MAP_LOTS, CAXIAS_MAP_BLOCKS
+from imobhunter.sources.pe_recife_cadastre import RECIFE_LOTS, RECIFE_LOTS_FEATURE
 from imobhunter.sources.mg_juiz_cadastre import JUIZ_INSCRIPTIONS, JUIZ_PARCELS, JUIZ_PARCELS_LEGACY
 from imobhunter.sources.sc_municipal_cadastre import (
     JOINVILLE_LAYER, JOINVILLE_POLYGON_LAYER, SAO_BENTO_SERVICE,
@@ -131,6 +132,19 @@ def municipal_endpoints() -> tuple[MunicipalEndpoint, ...]:
             "related",
         ),
         MunicipalEndpoint(
+            "recife_esig_lotes", "Recife", "PE",
+            "Recife — PE (ESIG lotes por endereço)",
+            RECIFE_LOTS, "arcgis", "MapServer/3",
+            "Quadra, lote e sequencial do imóvel somente com rua/número oficiais.",
+        ),
+        MunicipalEndpoint(
+            "recife_esig_lotes_alternative", "Recife", "PE",
+            "Recife — PE (ESIG lotes alternativo)",
+            RECIFE_LOTS_FEATURE, "arcgis", "FeatureServer/3",
+            "Fonte alternativa oficial se ESIG MapServer estiver indisponível.",
+            "fallback",
+        ),
+        MunicipalEndpoint(
             "caxias_lotes", "Caxias do Sul", "RS",
             "Caxias do Sul — RS (lotes por endereço)",
             CAXIAS_LOTS, "arcgis", "FeatureServer/3",
@@ -142,6 +156,20 @@ def municipal_endpoints() -> tuple[MunicipalEndpoint, ...]:
             CAXIAS_BLOCKS, "arcgis", "FeatureServer/4",
             "Quadra vinculada ao lote por interseção espacial não ambígua.",
             "related",
+        ),
+        MunicipalEndpoint(
+            "caxias_lotes_map", "Caxias do Sul", "RS",
+            "Caxias do Sul — RS (lotes MapServer)",
+            CAXIAS_MAP_LOTS, "arcgis", "MapServer/3",
+            "Tentativa alternativa com a mesma base municipal; SQL/IPTU não homologado.",
+            "fallback",
+        ),
+        MunicipalEndpoint(
+            "caxias_quadras_map", "Caxias do Sul", "RS",
+            "Caxias do Sul — RS (quadras MapServer)",
+            CAXIAS_MAP_BLOCKS, "arcgis", "MapServer/4",
+            "Camada alternativa de quadras oficiais, por interseção de polígonos.",
+            "fallback",
         ),
         MunicipalEndpoint(
             "juiz_inscricao", "Juiz de Fora", "MG",

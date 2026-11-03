@@ -15,6 +15,7 @@ from imobhunter.application.address_geocoding import CachedAddressGeocoder, Geoc
 from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest, SourceStatus
 from imobhunter.sources.base import SourceAdapter
 from imobhunter.sources.rs_caxias_cadastre import caxias_do_sul as query_caxias
+from imobhunter.sources.pe_recife_cadastre import recife_parcels as query_recife_esig
 from imobhunter.sources.mg_juiz_cadastre import juiz_de_fora as query_juiz
 from imobhunter.sources.sc_municipal_cadastre import joinville as query_joinville
 from imobhunter.sources.sc_municipal_cadastre import sao_bento as query_sao_bento
@@ -231,7 +232,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         detail = (
             "Integrações diretas configuradas para Praia Grande/SP, Belo Horizonte/MG, "
             "Rio de Janeiro/RJ, Distrito Federal, Goiânia/GO, Blumenau/SC, Recife/PE, Porto Alegre/RS, "
-            "Joinville/SC, São Bento do Sul/SC, Juiz de Fora/MG e Caxias do Sul/RS; "
+            "Joinville/SC, São Bento do Sul/SC, Juiz de Fora/MG, Caxias do Sul/RS e Recife/PE; "
             "São Paulo capital usa GeoSampa. "
             "Cobertura, atributos e disponibilidade dependem da camada oficial."
         )
@@ -1089,7 +1090,8 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 self.last_errors.pop(city, None)
                 return records
             if service_key == "recife":
-                records = self._recife_records(request)
+                records, diagnostic = query_recife_esig(request, self._get, self.source_id)
+                self.last_diagnostics[city] = diagnostic
                 self.last_errors.pop(city, None)
                 return records
             if request.address:

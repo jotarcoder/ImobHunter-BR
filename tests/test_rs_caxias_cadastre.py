@@ -5,7 +5,7 @@ import httpx
 
 from imobhunter.domain.models import SearchRequest
 from imobhunter.sources.official_municipal_services import OfficialMunicipalServicesAdapter
-from imobhunter.sources.rs_caxias_cadastre import CAXIAS_BLOCKS, CAXIAS_LOTS
+from imobhunter.sources.rs_caxias_cadastre import CAXIAS_BLOCKS, CAXIAS_LOTS, CAXIAS_MAP_LOTS
 
 
 def polygon():
@@ -195,6 +195,57 @@ def test_caxias_isolated_from_other_municipalities(tmp_path):
         address="Rua Alfredo Chaves", number="1333", city="Caxias do Sul", state="MG",
     )) == []
     client.close()
+
+
+def test_caxias_feature_server_timeout_uses_official_mapserver_only(tmp_path):
+    paths = []
+
+    def handler(request):
+        paths.append(request.url.path)
+        if "/FeatureServer/3/query" in request.url.path:
+            raise httpx.ConnectTimeout("primary source timeout")
+        if "/MapServer/3/query" in request.url.path:
+            return httpx.Response(200, json={"features": [{
+                "attributes": {
+                    "nm_logradouro": "ALFREDO CHAVES", "nr_imovel": "1333",
+                    "inscricaoloteponto": "12.345.67",
+                }, "geometry": polygon(),
+            }]})
+        return httpx.Response(200, json={"features": [{
+            "attributes": {"inscricaonrquadra": 8},
+        }]})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = OfficialMunicipalServicesAdapter(cache_dir=tmp_path, client=client)
+    records = adapter.search(SearchRequest(
+        address="Rua Alfredo Chaves", number="1333",
+        city="Caxias do Sul", state="RS",
+    ))
+    client.close()
+    assert len(records) == 1
+    assert "/MapServer/3/query" in paths[1]
+    assert records[0].block == "8"
+    assert records[0].attributes["service_url"] == CAXIAS_MAP_LOTS
+    assert records[0].attributes["sql"] is None
+
+
+def test_caxias_both_official_endpoints_timeout_does_not_fabricate_records(tmp_path):
+    paths = []
+
+    def handler(request):
+        paths.append(request.url.path)
+        raise httpx.ConnectTimeout("origin unavailable")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = OfficialMunicipalServicesAdapter(cache_dir=tmp_path, client=client)
+    records = adapter.search(SearchRequest(
+        address="Rua Alfredo Chaves", number="1333",
+        city="Caxias do Sul", state="RS",
+    ))
+    client.close()
+    assert records == []
+    assert len(paths) == 2
+    assert adapter.last_diagnostics["Caxias do Sul"]["result"] == "both_official_lot_services_unavailable"
 
 
 def test_caxias_endpoints_are_official_https():
