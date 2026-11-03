@@ -111,6 +111,14 @@ CASES = [
         "adapter": "official_municipal",
     },
     {
+        "municipality": "Caxias do Sul/RS — Alfredo Chaves 1333",
+        "address": "Rua Alfredo Chaves",
+        "number": "1333",
+        "city": "Caxias do Sul",
+        "state": "RS",
+        "adapter": "official_municipal",
+    },
+    {
         "municipality": "Juiz de Fora/MG — Avenida Brasil 2680",
         "address": "Avenida Brasil",
         "number": "2680",
@@ -174,6 +182,8 @@ def safe_record(record: Any) -> dict[str, Any]:
         "valid_cadastral_polygon": bool(geometry and geometry.has_official_polygon),
         "map_classification": geometry.classification if geometry else None,
         "cadastre_match": attributes.get("cadastre_match"),
+        "parcel_identifier": attributes.get("parcel_identifier"),
+        "lot_registration_number": attributes.get("lot_registration_number"),
         "sql_status": attributes.get("sql_status"),
         "iptu_status": attributes.get("iptu_status"),
         "official_source": attributes.get("official_source", attributes.get("source")),
@@ -274,6 +284,11 @@ def main() -> None:
                 )
             if item["errors"]:
                 print(f'  errors={json.dumps(item["errors"], ensure_ascii=False)}')
+            if case["city"] == "Caxias do Sul":
+                print(
+                    "  caxias_diagnostics="
+                    + json.dumps(item["diagnostics"], ensure_ascii=False, default=str)[:3000]
+                )
             if case["city"] == "Juiz de Fora":
                 if not item["record_count"] and not item["errors"]:
                     # Evidence-only: inspect a few safe public address fields;
