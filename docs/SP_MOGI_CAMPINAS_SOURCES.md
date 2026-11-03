@@ -26,3 +26,14 @@ Investigar fonte oficial que permita relacionar **logradouro + número** com **i
 - [x] Não gerar instaladores ou publicar no R2.
 
 **Observação:** consultar uma inscrição já conhecida não é o mesmo que descobrir SQL pelo endereço pesquisado.
+
+## Resultado inicial da busca pública do CKAN
+
+A descoberta real em 03/11/2026 encontrou no CKAN municipal:
+- **CADASTRO IMOBILIÁRIO**: conjunto público com 6 recursos CSV, localizado tanto por pesquisa de cadastro quanto de quadras.
+- **LISTA DE LOGRADOUROS - VISÃO FINANÇAS**: conjunto público em CSV.
+- **LOGRADOUROS MOGI DAS CRUZES - SP - DNE CORREIOS**: cadastro separado de logradouros.
+
+A presença dos conjuntos não comprova os campos. A próxima execução inspeciona somente **metadados de publicação e cabeçalhos de até três CSVs por conjunto**, com leitura parcial, sem capturar linhas ou dados de cidadãos. Verificar qualidade e autorização antes de qualquer vínculo fiscal.
+
+Evidência da descoberta inicial: https://github.com/jotarcoder/ImobHunter-BR/actions/runs/41709239199

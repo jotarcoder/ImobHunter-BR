@@ -65,3 +65,48 @@ def test_js_metadata_never_reports_secret_url_parameters():
     )
     assert any("/api/" in path for path in result["public_route_hints"])
     assert all("token" not in path for path in result["public_route_hints"])
+
+
+def test_cadastral_resource_probe_reads_only_bounded_csv_column_header():
+    requests = []
+    def handler(request):
+        requests.append((request.url.path, dict(request.headers)))
+        if request.url.path.endswith("/package_show"):
+            assert request.url.params["id"] in (
+                "cadastro-imobiliario", "lista-de-logradouros-visao-financas"
+            )
+            return httpx.Response(200, json={"success": True, "result": {
+                "title": "CADASTRO IMOBILIÁRIO", "license_id": "cc-by",
+                "metadata_modified": "2026-10-30",
+                "resources": [
+                    {"name": "2026", "format": "CSV", "size": 9000,
+                     "url": "https://dados.mogidascruzes.sp.gov.br/dataset/cadastro.csv"},
+                    {"name": "untrusted", "format": "CSV",
+                     "url": "https://other.example.org/untrusted.csv"},
+                ],
+            }})
+        assert request.url.path == "/dataset/cadastro.csv"
+        assert request.headers["range"] == "bytes=0-4095"
+        return httpx.Response(206, content=(
+            b"LOGRADOURO;NUMERO;SETOR;QUADRA;LOTE;INSCRICAO\n"
+            b"Rua Teste;100;01;02;003;123\n"
+        ))
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        records = probe.probe_mogi_cadastre_metadata(client)
+    assert len(records) == 2
+    assert len(requests) == 4
+    assert records[0]["csv_public_schemas"][0]["column_count"] == 6
+    assert "INSCRICAO" in records[0]["csv_public_schemas"][0]["column_names_only"]
+    assert "Rua Teste" not in str(records)
+
+
+def test_ckan_header_probe_never_follows_untrusted_redirect():
+    def handler(request):
+        assert request.headers["range"] == "bytes=0-4095"
+        return httpx.Response(302, headers={"location": "https://private.example/collect"})
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        data = probe._csv_header_only(
+            client, "https://dados.mogidascruzes.sp.gov.br/files/2026.csv"
+        )
+    assert data["status"] == "redirect_not_followed"
+    assert probe._official_resource_url("https://evil.example/files.csv") is False

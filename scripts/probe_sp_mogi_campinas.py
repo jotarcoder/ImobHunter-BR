@@ -1,6 +1,8 @@
 """Discover official public GIS metadata without querying personal property records."""
 from __future__ import annotations
 
+import csv
+import io
 import json
 import re
 from html.parser import HTMLParser
@@ -46,9 +48,9 @@ def safe_source_scripts(base_url: str, sources: list[str]) -> list[str]:
     for source in sources:
         url = urljoin(base_url, source)
         parsed = urlparse(url)
-        if parsed.scheme == "https" and parsed.hostname == host:
-            if parsed.path.lower().endswith((".js", ".mjs")):
-                selected.append(url)
+        if (parsed.scheme == "https" and parsed.hostname == host
+                and parsed.path.lower().endswith((".js", ".mjs"))):
+            selected.append(url)
     return list(dict.fromkeys(selected))[:MAX_SCRIPTS]
 
 
@@ -64,7 +66,7 @@ def script_metadata(content: str) -> dict:
             paths.extend(
                 match.split("?", 1)[0] for match in re.findall(
                     r"[\w./:-]{3,120}(?:/wfs|/wms|/ows|/api/|/query|\.php|\.jsp)[\w./:-]{0,80}",
-                    line, flags=re.I,
+                    line, flags=re.IGNORECASE,
                 )
             )
         if len(paths) >= 25:
@@ -136,6 +138,107 @@ def probe_ckan(client: httpx.Client) -> list[dict]:
     return output
 
 
+
+MOGI_CKAN_SHOW = "https://dados.mogidascruzes.sp.gov.br/api/3/action/package_show"
+
+
+def _official_resource_url(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    url = urlparse(value)
+    host = url.hostname or ""
+    return (
+        url.scheme == "https" and url.username is None and url.password is None
+        and (host == "mogidascruzes.sp.gov.br"
+             or host.endswith(".mogidascruzes.sp.gov.br"))
+    )
+
+
+def _csv_header_only(client: httpx.Client, url: str) -> dict:
+    """Read up to 4096 bytes of a public CSV: log column names, not records."""
+    if not _official_resource_url(url):
+        return {"status": "untrusted_external_resource_host"}
+    try:
+        with client.stream("GET", url, headers={"Range": "bytes=0-4095"},
+                           follow_redirects=False) as response:
+            if response.status_code in (301, 302, 303, 307, 308):
+                return {"status": "redirect_not_followed"}
+            response.raise_for_status()
+            chunks = bytearray()
+            for chunk in response.iter_bytes(chunk_size=1024):
+                chunks.extend(chunk[:4096 - len(chunks)])
+                if len(chunks) >= 4096 or b"\n" in chunks:
+                    break
+        if chunks[:2] == b"PK":
+            return {"status": "compressed_file_not_scanned"}
+        if b"\n" not in chunks:
+            return {"status": "header_exceeds_bounded_read"}
+        line = bytes(chunks).split(b"\n", 1)[0].decode("utf-8-sig", errors="replace")
+        if len(line) > 3500:
+            return {"status": "header_exceeds_safe_limit"}
+        sep = ";" if line.count(";") > line.count(",") else ","
+        columns = next(csv.reader(io.StringIO(line), delimiter=sep), [])
+        return {
+            "status": "public_csv_header",
+            "column_count": len(columns),
+            "column_names_only": [c.strip()[:80] for c in columns[:75]],
+        }
+    except (httpx.HTTPError, ValueError, TypeError, csv.Error) as exc:
+        return {"status": "source_error", "error_type": type(exc).__name__}
+
+
+def probe_mogi_cadastre_metadata(client: httpx.Client) -> list[dict]:
+    """CKAN package metadata and at most three public CSV headers, no rows."""
+    output = []
+    for slug in ("cadastro-imobiliario", "lista-de-logradouros-visao-financas"):
+        try:
+            payload = json.loads(request_text(client, MOGI_CKAN_SHOW, {"id": slug}))
+            if not isinstance(payload, dict) or not payload.get("success"):
+                raise ValueError("No public dataset metadata")
+            dataset = payload.get("result") or {}
+            resources = dataset.get("resources") or []
+            entry = {
+                "city": "Mogi das Cruzes", "source": "ckan_dataset_resources",
+                "slug": slug, "title": dataset.get("title"),
+                "modified": dataset.get("metadata_modified"),
+                "license_id": dataset.get("license_id"),
+                "resource_count": len(resources),
+                "resources": [],
+            }
+            for resource in resources[:16]:
+                if not isinstance(resource, dict):
+                    continue
+                description = {
+                    "name": resource.get("name"),
+                    "format": resource.get("format"),
+                    "size": resource.get("size"),
+                    "last_modified": resource.get("last_modified"),
+                    "created": resource.get("created"),
+                    "official_host": _official_resource_url(resource.get("url")),
+                }
+                entry["resources"].append(description)
+            csv_resources = [
+                resource for resource in resources
+                if isinstance(resource, dict)
+                and str(resource.get("format") or "").casefold() == "csv"
+                and _official_resource_url(resource.get("url"))
+            ][:3]
+            entry["csv_public_schemas"] = [
+                {
+                    "resource_name": resource.get("name"),
+                    **_csv_header_only(client, resource["url"]),
+                }
+                for resource in csv_resources
+            ]
+            output.append(entry)
+        except (httpx.HTTPError, ValueError, TypeError) as exc:
+            output.append({
+                "city": "Mogi das Cruzes", "source": "ckan_dataset_resources",
+                "slug": slug, "error_type": type(exc).__name__,
+            })
+    return output
+
+
 def main() -> None:
     with httpx.Client(
         timeout=httpx.Timeout(8.0), follow_redirects=True,
@@ -144,6 +247,7 @@ def main() -> None:
         results = (
             probe_site(client, "Mogi das Cruzes", MOGI_MAP)
             + probe_ckan(client)
+            + probe_mogi_cadastre_metadata(client)
             + probe_site(client, "Campinas", CAMPINAS_METADATA)
             + probe_site(client, "Campinas", CAMPINAS_INFO)
         )
