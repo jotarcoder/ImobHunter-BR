@@ -111,9 +111,9 @@ CASES = [
         "adapter": "official_municipal",
     },
     {
-        "municipality": "Juiz de Fora/MG — Avenida Brasil 2001",
+        "municipality": "Juiz de Fora/MG — Avenida Brasil 2680",
         "address": "Avenida Brasil",
-        "number": "2001",
+        "number": "2680",
         "city": "Juiz de Fora",
         "state": "MG",
         "adapter": "official_municipal",
