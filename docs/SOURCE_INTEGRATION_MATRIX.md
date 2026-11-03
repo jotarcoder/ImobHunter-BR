@@ -51,6 +51,7 @@ A lista abaixo é de **conectores municipais/territoriais no código**, não de 
 | São Bento do Sul — SC | Geobensul ArcGIS REST: Enderecos (11), Lotes (0), Cadastros Imobiliarios (14) | Relacionamento por geolot, logradouro e número, quadra/lote e inscrição cadastral de terreno quando retornada. | Consulta por endereço exato ainda pendente de homologação real; não atribuir inscrição ambígua. |
 | Caxias do Sul — RS | MapViewerPublico FeatureServer/3 (lotes) e /4 (quadras) | Logradouro/número, inscrição de lote, área e geometria quando retornadas; quadra por interseção com camada de quadras. | Inscrição do lote não é SQL/IPTU individual; número do lote não é campo exposto na camada. Exigir endereço exato e quadra única. Consulta externa ainda pendente por timeout (03/11/2026). |
 | Juiz de Fora — MG | SISURB Cadastro — inscricoes_imobiliarias_geocentro/MapServer/27, Cadastro_Recadastramento_2026_08_10/MapServer/0 e Cadastro_lotes_s2000/FeatureServer/0 | INSCID, logradouro, número, loteid, área, quadra/numero_lot e polígono quando associados pelo mesmo loteid. | Só atribuir inscrição após endereço exato; sem inferência a partir de geometria próxima. Não exibir dados pessoais, processos ou proprietários. |
+| Recife — PE | ESIG Planejamento/BASES_BAIRRO_FACEQUADRA_LOGRADOURO_LOTE MapServer/3 e FeatureServer/3, com CKAN histórico | Lotes municipais: ENDNUMERO, NMENDCOMP, QUADRA, LOTE, AREALOTE, SEQIMOVEL e geometria. | Consultar por rua+número oficiais exatos; SEQIMOVEL é sequencial do Recife, não SQL/SP. Alternativa ESIG ainda precisa confirmação real de consulta. |
 | Recife — PE | Portal municipal de dados abertos / API CKAN — dataset de IPTU | Recursos de cadastro fiscal publicados no portal, quando o recurso é consultável e retorna registros. | A existência do dataset não garante datastore/API consultável nem geometria. Não inferir proprietário, débitos ou SQL não retornado. |
 | Porto Alegre — RS | ArcGIS REST municipal — lotes fiscais | Campos publicados incluem `id_lotes`, `setor`, `qtd` (quarteirão), bairro e geometria, conforme a camada. | A camada identificada não inclui SQL/IPTU individual nem área nos atributos documentados; lote próximo não confirma endereço exato. |
 
@@ -75,6 +76,9 @@ A lista abaixo é de **conectores municipais/territoriais no código**, não de 
 - Juiz de Fora — inscrição por endereço: https://sisurb.pjf.mg.gov.br/server/rest/services/SISURB_cadastro/inscricoes_imobiliarias_geocentro/MapServer/27
 - Juiz de Fora — lote/quadra por loteid: https://sisurb.pjf.mg.gov.br/server/rest/services/SISURB_cadastro/Cadastro_Recadastramento_2026_08_10/MapServer/0
 - Juiz de Fora — quadra/lote complementar por loteid: https://sisurb.pjf.mg.gov.br/server/rest/services/Cadastro_lotes_s2000/FeatureServer/0
+- Recife — ESIG lotes por endereço: https://esigportal2.recife.pe.gov.br/arcgis/rest/services/Planejamento/BASES_BAIRRO_FACEQUADRA_LOGRADOURO_LOTE/MapServer/3
+- Recife — ESIG lotes alternativo: https://esigportal2.recife.pe.gov.br/arcgis/rest/services/Planejamento/BASES_BAIRRO_FACEQUADRA_LOGRADOURO_LOTE/FeatureServer/3
+- Caxias do Sul — alternativa MapServer: https://gis.caxias.rs.gov.br/server/rest/services/MapViewerPublico/MapServer/3
 - Recife — conjunto IPTU: https://dados.recife.pe.gov.br/dataset/imposto-predial-e-territorial-urbano-iptu
 - Recife — API CKAN: https://dados.recife.pe.gov.br/api/3/action/package_show?id=imposto-predial-e-territorial-urbano-iptu
 - Porto Alegre: https://gis-smamus.portoalegre.rs.gov.br/server/rest/services/01_PUBLICACOES/dmweb_lotes_fiscais/MapServer/0

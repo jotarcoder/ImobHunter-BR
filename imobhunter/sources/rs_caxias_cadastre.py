@@ -32,6 +32,8 @@ CAXIAS_BLOCKS = (
     "https://gis.caxias.rs.gov.br/server/rest/services/"
     "MapViewerPublico/FeatureServer/4"
 )
+CAXIAS_MAP_LOTS = CAXIAS_LOTS.replace("/FeatureServer/", "/MapServer/")
+CAXIAS_MAP_BLOCKS = CAXIAS_BLOCKS.replace("/FeatureServer/", "/MapServer/")
 Fetch = Callable[[str, dict[str, Any]], Any]
 MAX_BLOCKS = 6
 
@@ -43,7 +45,7 @@ def _official_block(
     if not lot_geometry:
         return None, {"result": "no_usable_lot_polygon"}
     coordinates = json.loads(lot_geometry)["coordinates"]
-    response = fetch(CAXIAS_BLOCKS + "/query", {
+    params = {
         "where": "1=1",
         "geometry": json.dumps({
             "rings": coordinates,
@@ -56,8 +58,27 @@ def _official_block(
         "returnGeometry": "false",
         "f": "json",
         "resultRecordCount": MAX_BLOCKS,
-    })
-    payload = response.json()
+    }
+    errors = []
+    payload = None
+    original_error: Exception | None = None
+    for block_url in (CAXIAS_BLOCKS, CAXIAS_MAP_BLOCKS):
+        try:
+            response = fetch(block_url + "/query", params)
+            candidate = response.json()
+            if isinstance(candidate, dict) and isinstance(candidate.get("features"), list):
+                payload = candidate
+                break
+        except (httpx.HTTPError, ValueError, TypeError, RuntimeError) as exc:
+            if original_error is None:
+                original_error = exc
+            errors.append(type(exc).__name__)
+    if payload is None:
+        # Keep the underlying transport exception visible to diagnostics,
+        # rather than hiding SSL, network timeouts or HTTP errors as TypeError.
+        if original_error is not None:
+            raise original_error
+        raise TypeError(f"ArcGIS quadras retornou JSON inválido: {errors!r}")
     if not isinstance(payload, dict) or not isinstance(payload.get("features"), list):
         error = payload.get("error") if isinstance(payload, dict) else type(payload).__name__
         raise TypeError(f"ArcGIS quadras retornou JSON inválido: {error!r}")
@@ -94,8 +115,23 @@ def caxias_do_sul(
 
     # Numeric number and sanitized street token only; no arbitrary user SQL.
     where = f"nm_logradouro LIKE '%{token}%' AND nr_imovel = '{number}'"
-    features = _query(fetch, CAXIAS_LOTS, where, geometry=True)
+    errors: list[str] = []
+    features = []
+    lot_source = CAXIAS_LOTS
+    for lot_url in (CAXIAS_LOTS, CAXIAS_MAP_LOTS):
+        try:
+            features = _query(fetch, lot_url, where, geometry=True)
+            lot_source = lot_url
+            if features:
+                break
+        except (httpx.HTTPError, ValueError, TypeError, RuntimeError) as exc:
+            errors.append(f"{lot_url.rsplit('/', 2)[-2]}: {type(exc).__name__}")
+    diagnostic["endpoint_attempt_errors"] = errors
+    diagnostic["selected_lot_endpoint"] = lot_source
     diagnostic["candidate_count"] = len(features)
+    if not features and len(errors) == 2:
+        diagnostic["result"] = "both_official_lot_services_unavailable"
+        return [], diagnostic
     results: list[PropertyRecord] = []
     for feature in features:
         attrs = feature.get("attributes") or {}
@@ -141,7 +177,7 @@ def caxias_do_sul(
             attributes={
                 "source": source_id,
                 "official_source": "Prefeitura de Caxias do Sul — MapViewer Público",
-                "service_url": CAXIAS_LOTS,
+                "service_url": lot_source,
                 "quadra_source_url": CAXIAS_BLOCKS,
                 "service_type": "ArcGIS REST",
                 "source_properties": source_fields,

@@ -549,7 +549,7 @@ def test_recife_ckan_iptu_api_maps_only_fields_returned_by_dataset(tmp_path):
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
     adapter = OfficialMunicipalServicesAdapter(cache_dir=tmp_path / "cache", client=client)
-    records = adapter.search(SearchRequest(
+    records = adapter._recife_records(SearchRequest(
         address="Avenida Conde da Boa Vista", number="100", city="Recife", state="PE"
     ))
     client.close()
@@ -585,7 +585,7 @@ def test_recife_reports_public_dataset_without_row_level_api(tmp_path):
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
     adapter = OfficialMunicipalServicesAdapter(cache_dir=tmp_path / "cache", client=client)
-    records = adapter.search(SearchRequest(
+    records = adapter._recife_records(SearchRequest(
         address="Rua do Sol", number="10", city="Recife", state="PE"
     ))
     client.close()
