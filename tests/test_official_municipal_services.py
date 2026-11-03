@@ -655,6 +655,76 @@ def test_porto_alegre_arcgis_returns_official_fiscal_lot_geometry_without_invent
 
 
 
+
+def test_porto_alegre_retries_exact_point_when_buffer_returns_no_features(tmp_path):
+    calls = []
+
+    class PortoAlegreGeocoder:
+        def geocode(self, _query):
+            return {"latitude": -30.0346, "longitude": -51.2177}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/dmweb_lotes_fiscais/MapServer/0/query")
+        params = dict(request.url.params)
+        calls.append(params)
+        assert params["inSR"] == "4326"
+        assert params["outSR"] == "4326"
+        if len(calls) == 1:
+            assert params["distance"] == "800"
+            return httpx.Response(200, json={"features": []})
+        assert "distance" not in params
+        assert "units" not in params
+        return httpx.Response(200, json={"features": [{
+            "attributes": {"OBJECTID": 51, "id_lotes": 80123, "setor": 12, "qtd": 34},
+            "geometry": {"rings": [[
+                [-51.2180, -30.0350], [-51.2175, -30.0350],
+                [-51.2175, -30.0345], [-51.2180, -30.0350],
+            ]]},
+        }]})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = OfficialMunicipalServicesAdapter(
+        cache_dir=tmp_path / "cache", client=client, geocoder=PortoAlegreGeocoder()
+    )
+    records = adapter.search(SearchRequest(
+        address="Rua dos Andradas", number="100", city="Porto Alegre", state="RS"
+    ))
+    client.close()
+
+    assert len(calls) == 2
+    assert len(records) == 1
+    assert records[0].attributes["parcel_identifier"] == "80123"
+    assert records[0].attributes["sql"] is None
+    assert adapter.last_diagnostics["Porto Alegre"]["empty_buffer_fallback"] == "point_intersection"
+
+
+def test_porto_alegre_reports_zero_when_both_spatial_queries_are_empty(tmp_path):
+    calls = []
+
+    class PortoAlegreGeocoder:
+        def geocode(self, _query):
+            return {"latitude": -30.0346, "longitude": -51.2177}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(dict(request.url.params))
+        return httpx.Response(200, json={"features": []})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = OfficialMunicipalServicesAdapter(
+        cache_dir=tmp_path / "cache", client=client, geocoder=PortoAlegreGeocoder()
+    )
+    records = adapter.search(SearchRequest(
+        address="Rua dos Andradas", number="100", city="Porto Alegre", state="RS"
+    ))
+    client.close()
+
+    assert records == []
+    assert len(calls) == 2
+    assert "distance" not in calls[1]
+    assert adapter.last_diagnostics["Porto Alegre"]["feature_count"] == 0
+    assert adapter.last_diagnostics["Porto Alegre"]["empty_buffer_fallback"] == "point_intersection"
+
+
 def test_bhmap_wfs_retries_older_versions_after_forbidden(tmp_path):
     requested_versions = []
 
