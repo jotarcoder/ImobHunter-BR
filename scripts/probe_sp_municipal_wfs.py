@@ -172,6 +172,11 @@ def main() -> None:
                 }
             except httpx.HTTPError as exc:
                 item = {"city": city, "public_html_page": page, "error": type(exc).__name__}
+            if city == "Santo Andre":
+                item["all_local_scripts"] = [
+                    src for src in item.get("static_script_paths", [])
+                    if src.startswith("js/")
+                ]
             results.append(item)
             print(json.dumps(item, ensure_ascii=False))
             if city == "Jundiai":
@@ -198,9 +203,26 @@ def main() -> None:
                             source, flags=re.IGNORECASE,
                         ) if "token" not in value.casefold()
                     ))[:35]
-                    result = {
+                    # Search only the *public* JS sources for visible route
+                # references; do not log form payloads or credentials.
+                keywords = ("cadastro", "logradouro", "contribuinte", "codlote",
+                            "geoserver", "$.ajax", "$.post", "url:", "numimovel")
+                lines = []
+                for line in source.splitlines():
+                    line_lower = line.casefold()
+                    if any(key in line_lower for key in keywords):
+                        if any(secret in line_lower for secret in (
+                            "password", "senha", "authorization", "api_key",
+                            "apikey", "bearer", "access_token",
+                        )):
+                            continue
+                        lines.append(line.strip()[:210])
+                    if len(lines) >= 24:
+                        break
+                result = {
                         "city": city, "static_source": script,
                         "public_api_path_hints": paths,
+                        "public_js_relevant_lines": lines,
                         "has_fetch": "fetch(" in source,
                         "has_ajax": "ajax(" in source or "$.post(" in source,
                         "has_getfeatureinfo": "GetFeatureInfo" in source,
