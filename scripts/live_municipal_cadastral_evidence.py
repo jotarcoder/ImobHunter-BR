@@ -87,6 +87,22 @@ CASES = [
         "adapter": "official_municipal",
     },
     {
+        "municipality": "Joinville/SC — Condeixa 2550",
+        "address": "Avenida Aluísio Pires Condeixa",
+        "number": "2550",
+        "city": "Joinville",
+        "state": "SC",
+        "adapter": "official_municipal",
+    },
+    {
+        "municipality": "São Bento do Sul/SC — Jorge Lacerda 75",
+        "address": "Rua Jorge Lacerda",
+        "number": "75",
+        "city": "São Bento do Sul",
+        "state": "SC",
+        "adapter": "official_municipal",
+    },
+    {
         "municipality": "Recife/PE",
         "address": "Avenida Conde da Boa Vista",
         "number": "100",
