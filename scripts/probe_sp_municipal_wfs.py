@@ -6,6 +6,7 @@ This script logs *schema names only*, never private field values.
 from __future__ import annotations
 
 import json
+import re
 import xml.etree.ElementTree as ET
 
 import httpx
@@ -145,6 +146,34 @@ def main() -> None:
                 result = inspect(client, city, endpoint)
                 results.append(result)
                 print(json.dumps(result, ensure_ascii=False))
+        for city, page in (
+            ("Santo Andre", "https://sigamapa.santoandre.sp.gov.br/"),
+            ("Jundiai", "https://geo.jundiai.sp.gov.br/geojundiai/cfImob.jsp"),
+        ):
+            try:
+                response = client.get(page)
+                response.raise_for_status()
+                html = response.text[:800_000]
+                # Only inspect public static script paths, never tokens or
+                # private application payloads.
+                scripts = re.findall(
+                    r'<script[^>]+src=[\x22\x27]([^\x22\x27]+)', html,
+                    flags=re.IGNORECASE,
+                )
+                endpoints = sorted(set(re.findall(
+                    r'[^\s\x22\x27<>()]{0,75}(?:geoserver|WMS|wfs|fiscal|lote)[^\s\x22\x27<>()]{0,75}',
+                    html,
+                    flags=re.IGNORECASE,
+                )))[:18]
+                item = {
+                    "city": city, "public_html_page": page, "http_status": response.status_code,
+                    "static_script_paths": scripts[:45],
+                    "public_html_geo_hints": endpoints,
+                }
+            except httpx.HTTPError as exc:
+                item = {"city": city, "public_html_page": page, "error": type(exc).__name__}
+            results.append(item)
+            print(json.dumps(item, ensure_ascii=False))
     with open("sp-municipal-public-schema.json", "w", encoding="utf-8") as file:
         json.dump(results, file, ensure_ascii=False, indent=2)
 
