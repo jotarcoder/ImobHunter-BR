@@ -1,0 +1,54 @@
+name: QA geral desktop e regressões (sem instaladores/R2)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/qa-homologacao.yml"
+      - "docs/QA_HOMOLOGACAO_2026-11-03.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qa-geral-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  qa-linux-offscreen:
+    name: Qt, mapas, dossies, fontes, IM e licenciamento
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONFAULTHANDLER: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Qt Linux runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libegl1 libopengl0 libgl1 libxkbcommon0
+      - name: Install desktop and test dependencies (no packaging tools)
+        run: python -m pip install -e ".[desktop,dev]"
+      - name: Validate source syntax
+        run: python -m compileall -q imobhunter tests scripts
+      - name: Full Python suite with actual Qt installed
+        run: python -m pytest -q --junitxml=qa-pytest.xml
+      - name: Lint all sources
+        run: ruff check .
+      - name: Repeat desktop map and settings smoke in a fresh Qt process
+        run: |
+          python -c "import PySide6; print('PySide6', PySide6.__version__)"
+          python -m pytest -q tests/test_cadastral_map_desktop.py tests/test_cadastral_map.py
+      - name: Upload QA unit and Qt results (not installers)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-geral-linux-offscreen-junit
+          path: qa-pytest.xml
+          if-no-files-found: warn
+          retention-days: 14
