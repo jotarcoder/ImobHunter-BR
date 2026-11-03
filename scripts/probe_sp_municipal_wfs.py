@@ -197,29 +197,31 @@ def main() -> None:
                     source = content.text[:1_200_000]
                     # Show public API paths only, without credentials or
                     # full URLs, query parameters, personal record values.
-                    paths = sorted(set(
+                    paths = sorted({
                         value.split("?", 1)[0] for value in re.findall(
                             r"[A-Za-z0-9_./:-]{3,120}(?:\\.jsp|\\.php|/query|/ows|/wfs)",
                             source, flags=re.IGNORECASE,
                         ) if "token" not in value.casefold()
-                    ))[:35]
-                    # Search only the *public* JS sources for visible route
-                # references; do not log form payloads or credentials.
-                keywords = ("cadastro", "logradouro", "contribuinte", "codlote",
-                            "geoserver", "$.ajax", "$.post", "url:", "numimovel")
-                lines = []
-                for line in source.splitlines():
-                    line_lower = line.casefold()
-                    if any(key in line_lower for key in keywords):
-                        if any(secret in line_lower for secret in (
-                            "password", "senha", "authorization", "api_key",
-                            "apikey", "bearer", "access_token",
-                        )):
-                            continue
-                        lines.append(line.strip()[:210])
-                    if len(lines) >= 24:
-                        break
-                result = {
+                    })[:35]
+                    # Search only public scripts for visible route names.
+                    # Do not log form payloads or credentials.
+                    keywords = (
+                        "cadastro", "logradouro", "contribuinte", "codlote",
+                        "geoserver", "$.ajax", "$.post", "url:", "numimovel",
+                    )
+                    lines = []
+                    for line in source.splitlines():
+                        lower = line.casefold()
+                        if any(key in lower for key in keywords):
+                            if any(secret in lower for secret in (
+                                "password", "senha", "authorization", "api_key",
+                                "apikey", "bearer", "access_token",
+                            )):
+                                continue
+                            lines.append(line.strip()[:210])
+                        if len(lines) >= 24:
+                            break
+                    result = {
                         "city": city, "static_source": script,
                         "public_api_path_hints": paths,
                         "public_js_relevant_lines": lines,
