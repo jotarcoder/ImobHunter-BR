@@ -80,3 +80,9 @@ Execução do diagnóstico técnico: https://github.com/jotarcoder/ImobHunter-BR
 **Campinas:** procurar publicação pública documentada da camada cadastral com campos de inscrição e endereço; metadados e downloads de SHP exigem avaliação de cada camada. Serviços que exigem login continuam restritos a acessos autorizados.
 
 O PR contém apenas descobertas/testes read-only e **não alterou o roteamento municipal de produção**, as licenças ou os instaladores. Nenhum upload no R2.
+
+## Implementação de leitura segura no ImobHunter
+
+O módulo `sp_mogi_cadastre.py` já identifica a publicação CKAN e reconhece o esquema cadastral municipal de 2024 **quando o próprio usuário possui uma exportação autorizada importada no aplicativo**. A busca é por logradouro e número **exatos** (sem aproximação), preserva somente `cadastro_id` e `area_terreno` como dados históricos e descarta colunas de proprietário, valores venais, transações, débito ou pagamento. O código deixa inscrição atual, SQL, quadra e lote **vazios** até haver vínculo oficial válido.
+
+A pesquisa por endereço **não baixa automaticamente os 26 arquivos CSV nem publica esse dataset**, porque o cadastro específico aparece sem licença definida. O aplicativo registra a pendência e aponta a fonte oficial; a base não é anunciada como serviço cadastral atual homologado. É uma etapa funcional local e de rastreabilidade, não uma consulta de SQL atual.
