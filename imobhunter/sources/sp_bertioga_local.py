@@ -364,7 +364,7 @@ class BertiogaLocalStore:
                     "zoneamento_candidato": zones[:5],
                     "zoneamento_status": "intersecao_por_centro_geometrico",
                     "distancia_eixo_logradouro_m_estimada": round(distance, 1),
-                    "cadastre_match": "spatial_candidate_not_address_confirmed",
+                    "cadastre_match": "spatial_candidate_only",
                     "sql": None, "iptu_registration_number": None,
                     "municipal_registration_number": None,
                     "sql_status": "official_lot_inscription_not_licensed_as_address_sql",
