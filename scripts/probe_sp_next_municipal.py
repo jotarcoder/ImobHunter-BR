@@ -64,7 +64,7 @@ def list_arcgis(client: httpx.Client) -> list[dict]:
     try:
         payload = http_get(client, RIBEIRAO_REST, {"f": "json"}).json()
         if not isinstance(payload, dict):
-            raise ValueError("Invalid ArcGIS service catalogue")
+            raise TypeError("Invalid ArcGIS service catalogue")
         services = payload.get("services") or []
         folders = payload.get("folders") or []
         results.append({
@@ -89,7 +89,7 @@ def list_arcgis(client: httpx.Client) -> list[dict]:
             try:
                 part = http_get(client, RIBEIRAO_REST + "/" + folder, {"f": "json"}).json()
                 if not isinstance(part, dict):
-                    raise ValueError("Invalid folder metadata")
+                    raise TypeError("Invalid folder metadata")
                 services = part.get("services") or []
                 results.append({
                     "city": "Ribeirão Preto",
@@ -112,7 +112,7 @@ def list_arcgis(client: httpx.Client) -> list[dict]:
             "sortField": "title",
         }).json()
         if not isinstance(search, dict):
-            raise ValueError("Invalid portal search payload")
+            raise TypeError("Invalid portal search payload")
         items = search.get("results") or []
         results.append({
             "city": "Ribeirão Preto", "source": "public_portal_search",
@@ -156,7 +156,7 @@ def list_geosanja(client: httpx.Client) -> list[dict]:
         for url in script_urls[:3]:
             try:
                 source = http_get(client, url).text
-                matches = sorted(set(
+                matches = sorted({
                     match[:140] for match in re.findall(
                         r"[^\"'\s<>]{0,100}(?:geoserver|/wfs|/ows|geosanja)[^\"'\s<>]{0,120}",
                         source, flags=re.IGNORECASE,
@@ -164,7 +164,7 @@ def list_geosanja(client: httpx.Client) -> list[dict]:
                     if not any(bad in match.lower() for bad in (
                         "token", "authorization", "password", "senha",
                     ))
-                ))[:15]
+                })[:15]
                 results.append({
                     "city": "São José dos Campos",
                     "source": "public_static_script",
