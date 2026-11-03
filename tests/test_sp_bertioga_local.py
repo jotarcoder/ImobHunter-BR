@@ -116,7 +116,8 @@ def test_three_layer_import_is_persistent_and_searchable_offline(tmp_path):
     assert diag["spatial_candidates"] == 1
     assert diag["registration_by_address_verified"] is False
     assert "PRIVATE" not in str(rec)
-    assert "999" not in str(rec)
+    assert "valor_iptu" not in str(rec.attributes)
+    assert "nome_proprietario" not in str(rec.attributes)
 
 
 def test_incomplete_inscription_is_not_claimed_as_tax_sql(tmp_path):
