@@ -21,6 +21,7 @@ from imobhunter.domain.identity import canonical_text
 from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest, SourceStatus
 from imobhunter.sources.base import SourceAdapter
 from imobhunter.sources.official_municipal_services import OfficialMunicipalServicesAdapter
+from imobhunter.sources.sp_mogi_cadastre import mogi_historical_file_record
 
 
 def _normalized_fields(properties: dict[str, Any]) -> dict[str, Any]:
@@ -74,6 +75,14 @@ def _local_row(
     if not isinstance(properties, dict):
         return None
     f = _normalized_fields(properties)
+    if (canonical_text(source.city) == "MOGI DAS CRUZES"
+            and canonical_text(source.state) == "SP"
+            and {"cadastro_id", "nro_local", "logradouro"}.issubset(f)):
+        # The 2024 official municipal CSV is historical and may include
+        # monetary/tributary columns. Keep only a safe cadastral projection.
+        return mogi_historical_file_record(
+            f, request, source.source_id, source.file_name or "arquivo autorizado"
+        )
     row_city = _first(f, "municipio", "cidade", "city", "nm_municipio")
     row_state = _first(f, "uf", "estado", "state", "sigla_uf")
     # User catalog metadata never overrides a contradictory municipality/UF
