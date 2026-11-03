@@ -679,7 +679,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             "feature_count": len(payload["features"]),
             "geometry_keys": sorted({
                 str(key) for feature in payload["features"][:3]
-                for key in ((feature.get("geometry") or {}).keys())
+                for key in (feature.get("geometry") or {})
             }),
             "fields": sorted({
                 str(key)
@@ -817,7 +817,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             self.last_diagnostics[city]["fallback_geometry_keys"] = sorted({
                 str(key)
                 for feature in payload["features"][:3]
-                for key in ((feature.get("geometry") or {}).keys())
+                for key in (feature.get("geometry") or {})
             })
             self.last_diagnostics[city]["fallback_missing_geometry"] = sum(
                 not bool((feature.get("geometry") or {}).get("rings"))
