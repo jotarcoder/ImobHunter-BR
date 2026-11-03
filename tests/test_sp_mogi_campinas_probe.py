@@ -142,3 +142,46 @@ def test_municipal_scripts_are_preferred_over_vendor_libraries():
     assert any(path.endswith("/js/mapa_publico.js") for path in selected)
     assert all(path.startswith("https://geomogi.mogidascruzes.sp.gov.br/")
                for path in selected)
+
+
+def test_geomogi_public_wfs_reads_metadata_not_property_values():
+    queried = []
+    capabilities = (
+        '<?xml version="1.0"?><wfs:WFS_Capabilities '
+        'xmlns:wfs="http://www.opengis.net/wfs">'
+        '<wfs:FeatureTypeList><wfs:FeatureType>'
+        '<wfs:Name>geomogi:lotes</wfs:Name>'
+        '<wfs:Title>Lotes urbanos</wfs:Title>'
+        '</wfs:FeatureType></wfs:FeatureTypeList>'
+        '</wfs:WFS_Capabilities>'
+    )
+    schema = (
+        '<?xml version="1.0"?><xs:schema '
+        'xmlns:xs="http://www.w3.org/2001/XMLSchema">'
+        '<xs:element name="setor"/><xs:element name="quadra"/>'
+        '<xs:element name="lote"/></xs:schema>'
+    )
+    def handler(request):
+        queried.append(str(request.url))
+        operation = request.url.params["request"]
+        assert operation in ("GetCapabilities", "DescribeFeatureType")
+        if request.url.path.endswith("/wms"):
+            return httpx.Response(200, text='<WMS_Capabilities/>')
+        if operation == "DescribeFeatureType":
+            return httpx.Response(200, text=schema)
+        return httpx.Response(200, text=capabilities)
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        result = probe.probe_geomogi_wfs(client)
+    assert len(queried) == 3
+    assert all("GetFeature&" not in url and "GetFeatureInfo" not in url
+               for url in queried)
+    assert result[0]["schema"]["geomogi:lotes"] == ["setor", "quadra", "lote"]
+
+
+def test_geomogi_wfs_offline_is_reported_separately_from_missing_lot():
+    def handler(_request):
+        raise httpx.ConnectTimeout("source unavailable")
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        output = probe.probe_geomogi_wfs(client)
+    assert len(output) == 2
+    assert all(row["error_type"] == "ConnectTimeout" for row in output)

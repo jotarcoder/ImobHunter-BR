@@ -5,6 +5,7 @@ import csv
 import io
 import json
 import re
+import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 
@@ -303,6 +304,95 @@ def probe_mogi_cadastre_metadata(client: httpx.Client) -> list[dict]:
     return output
 
 
+
+MOGI_GEOWFS = "https://geoserver1.mogidascruzes.sp.gov.br/geoserver/wfs"
+MOGI_GEOWMS = "https://geoserver1.mogidascruzes.sp.gov.br/geoserver/wms"
+
+
+def _layer_metadata(root: ET.Element, tag: str) -> list[dict]:
+    output = []
+    for feature in root.iter():
+        if feature.tag.rsplit("}", 1)[-1] != tag:
+            continue
+        name = next((
+            (child.text or "").strip() for child in feature
+            if child.tag.rsplit("}", 1)[-1] == "Name"
+        ), "")
+        title = next((
+            (child.text or "").strip() for child in feature
+            if child.tag.rsplit("}", 1)[-1] == "Title"
+        ), "")
+        if name:
+            output.append({"name": name[:120], "title": title[:120]})
+    return output
+
+
+def probe_geomogi_wfs(client: httpx.Client) -> list[dict]:
+    """Inspect capabilities and at most five public feature schemas; no records."""
+    output = []
+    try:
+        xml = request_text(client, MOGI_GEOWFS, {
+            "service": "WFS", "request": "GetCapabilities",
+            "version": "1.1.0",
+        })
+        root = ET.fromstring(xml)
+        layers = _layer_metadata(root, "FeatureType")
+        candidates = [
+            item for item in layers
+            if any(token in (item["name"] + " " + item["title"]).casefold()
+                   for token in KEYWORDS)
+        ]
+        result = {
+            "city": "Mogi das Cruzes", "source": "public_wfs_capabilities",
+            "endpoint": MOGI_GEOWFS, "feature_count": len(layers),
+            "sample_names": layers[:20], "cadastral_candidates": candidates[:35],
+            "schema": {},
+        }
+        for candidate in candidates[:5]:
+            name = candidate["name"]
+            try:
+                schema = ET.fromstring(request_text(client, MOGI_GEOWFS, {
+                    "service": "WFS", "request": "DescribeFeatureType",
+                    "version": "1.1.0", "typeName": name,
+                }))
+                result["schema"][name] = [
+                    node.attrib["name"][:90]
+                    for node in schema.iter()
+                    if node.tag.rsplit("}", 1)[-1] == "element"
+                    and node.attrib.get("name")
+                ][:85]
+            except (httpx.HTTPError, ET.ParseError, TypeError, ValueError) as exc:
+                result["schema"][name] = {"error_type": type(exc).__name__}
+        output.append(result)
+    except (httpx.HTTPError, ET.ParseError, TypeError, ValueError) as exc:
+        output.append({
+            "city": "Mogi das Cruzes", "source": "public_wfs_capabilities",
+            "endpoint": MOGI_GEOWFS, "error_type": type(exc).__name__,
+        })
+    try:
+        root = ET.fromstring(request_text(client, MOGI_GEOWMS, {
+            "service": "WMS", "request": "GetCapabilities",
+            "version": "1.3.0",
+        }))
+        layers = _layer_metadata(root, "Layer")
+        relevant = [
+            item for item in layers
+            if any(token in (item["name"] + " " + item["title"]).casefold()
+                   for token in KEYWORDS)
+        ]
+        output.append({
+            "city": "Mogi das Cruzes", "source": "public_wms_capabilities",
+            "endpoint": MOGI_GEOWMS, "layer_count": len(layers),
+            "candidate_layers": relevant[:40],
+        })
+    except (httpx.HTTPError, ET.ParseError, TypeError, ValueError) as exc:
+        output.append({
+            "city": "Mogi das Cruzes", "source": "public_wms_capabilities",
+            "endpoint": MOGI_GEOWMS, "error_type": type(exc).__name__,
+        })
+    return output
+
+
 def main() -> None:
     with httpx.Client(
         timeout=httpx.Timeout(8.0), follow_redirects=True,
@@ -312,6 +402,7 @@ def main() -> None:
             probe_site(client, "Mogi das Cruzes", MOGI_MAP)
             + probe_ckan(client)
             + probe_mogi_cadastre_metadata(client)
+            + probe_geomogi_wfs(client)
             + probe_site(client, "Campinas", CAMPINAS_METADATA)
             + probe_site(client, "Campinas", CAMPINAS_INFO)
         )

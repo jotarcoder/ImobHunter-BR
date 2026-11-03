@@ -56,3 +56,9 @@ O conjunto `CADASTRO IMOBILIÁRIO` possui **169 recursos CSV**, mas os arquivos 
 - A base `LISTA DE LOGRADOUROS - VISÃO FINANÇAS` (2023) expõe colunas `Setor`, `Codlogr`, `Logr`, `Bairro/Loteamento` e `CEP`, mas ainda não há relação unívoca comprovada com os códigos de imóveis dos arquivos 2024.
 
 **Portanto, a pesquisa por endereço é tecnicamente promissora, mas ainda não está homologada para SQL/quadra/lote atual por endereço.** Antes de qualquer uso comercial automático, confirmar autorização de reutilização do conjunto específico (marcado no CKAN como **sem licença informada**), sem acessar ou divulgar valores fiscais nem dados pessoais. Nenhum CSV completo foi baixado nesta investigação.
+
+## Nova descoberta: servidor geográfico real do GeoMogi
+
+A leitura limitada do JavaScript oficial `https://geomogi.mogidascruzes.sp.gov.br/js/app.js` identificou o servidor WMS `https://geoserver1.mogidascruzes.sp.gov.br/geoserver/wms`. O workflow também verificará o WFS do mesmo host, solicitando apenas `GetCapabilities` e `DescribeFeatureType`, sem pesquisar ou registrar dados de imóveis individuais. Isso poderá confirmar a presença de polígonos cadastrais com atributos; **não garante inscrição fiscal por endereço**.
+
+A descoberta pública segue limitada, sem download de bases completas, consulta de proprietário, bypass de autenticação ou publicação comercial.
