@@ -270,14 +270,17 @@ def sao_bento(request: SearchRequest, fetch: Fetch, source_id: str) -> tuple[lis
     if not number or not token:
         diagnostic["result"] = "street_and_numeric_number_required"
         return [], diagnostic
-    where = "numero = '" + number + "' AND descricao_logradouro LIKE '%" + token + "%'"
+    where = (
+        "tipo_endereco = 1 AND numero = '" + number
+        + "' AND descricao_logradouro LIKE '%" + token + "%'"
+    )
     addresses = _query(fetch, SAO_BENTO_SERVICE + "/11", where, geometry=False)
     matched: dict[str, dict[str, Any]] = {}
     for row in addresses:
         props = row.get("attributes") or {}
         if not isinstance(props, dict):
             continue
-        if _field(props, "tipo_endereco") not in (1, "1", None):
+        if _field(props, "tipo_endereco") not in (1, "1"):
             continue
         if not _street_matches(request.address or "", _field(props, "descricao_logradouro")):
             continue

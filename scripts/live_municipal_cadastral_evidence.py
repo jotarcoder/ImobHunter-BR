@@ -95,6 +95,14 @@ CASES = [
         "adapter": "official_municipal",
     },
     {
+        "municipality": "São Bento do Sul/SC — Benjamin Constant 118",
+        "address": "Rua Benjamin Constant",
+        "number": "118",
+        "city": "São Bento do Sul",
+        "state": "SC",
+        "adapter": "official_municipal",
+    },
+    {
         "municipality": "São Bento do Sul/SC — Jorge Lacerda 75",
         "address": "Rua Jorge Lacerda",
         "number": "75",

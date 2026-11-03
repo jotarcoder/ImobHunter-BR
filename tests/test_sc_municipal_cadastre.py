@@ -182,7 +182,7 @@ def test_sao_bento_multiple_registrations_not_assigned_to_wrong_lot(tmp_path):
     def handler(request):
         if request.url.path.endswith("/11/query"):
             return httpx.Response(200, json={"features": [{
-                "attributes": {"geolot": "KEY", "descricao_logradouro": "JORGE LACERDA", "numero": "75"},
+                "attributes": {"geolot": "KEY", "tipo_endereco": 1, "descricao_logradouro": "JORGE LACERDA", "numero": "75"},
             }]})
         if request.url.path.endswith("/0/query"):
             return httpx.Response(200, json={"features": [{
@@ -203,6 +203,30 @@ def test_sao_bento_multiple_registrations_not_assigned_to_wrong_lot(tmp_path):
     assert records[0].attributes["iptu_registration_number"] is None
     assert records[0].attributes["registration_ambiguity_count"] == 2
     assert records[0].block == "2" and records[0].lot == "3"
+
+
+def test_sao_bento_does_not_treat_correspondence_address_as_parcel_location(tmp_path):
+    calls = []
+
+    def handler(request):
+        calls.append(request.url.path)
+        assert "tipo_endereco = 1" in dict(request.url.params)["where"]
+        return httpx.Response(200, json={"features": [{
+            "attributes": {
+                "geolot": "OTHER-LOT", "tipo_endereco": 2,
+                "descricao_logradouro": "RUA JORGE LACERDA", "numero": "75",
+            },
+        }]})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = OfficialMunicipalServicesAdapter(cache_dir=tmp_path, client=client)
+    records = adapter.search(SearchRequest(
+        address="Rua Jorge Lacerda", number="75", city="São Bento do Sul", state="SC",
+    ))
+    client.close()
+    assert records == []
+    assert len(calls) == 1
+    assert adapter.last_diagnostics["São Bento do Sul"]["result"] == "no_exact_address_match"
 
 
 def test_sc_municipal_queries_require_number_and_never_run_unbounded(tmp_path):
