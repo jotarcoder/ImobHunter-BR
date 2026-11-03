@@ -79,6 +79,8 @@ def _float(value: Any) -> float | None:
 def _geometry(feature: dict[str, Any]) -> tuple[str | None, float | None, float | None]:
     raw = feature.get("geometry") or {}
     rings = raw.get("rings") if isinstance(raw, dict) else None
+    if isinstance(raw, dict) and raw.get("type") == "Polygon":
+        rings = raw.get("coordinates")
     if not isinstance(rings, list) or not rings:
         return None, None, None
     valid_rings = []
@@ -118,7 +120,7 @@ def _query(fetch: Fetch, layer: str, where: str, *, geometry: bool) -> list[dict
     payload = response.json()
     if not isinstance(payload, dict) or not isinstance(payload.get("features"), list):
         error = payload.get("error") if isinstance(payload, dict) else type(payload).__name__
-        raise RuntimeError(f"ArcGIS municipal retornou consulta inválida: {error!r}")
+        raise TypeError(f"ArcGIS municipal retornou consulta inválida: {error!r}")
     return [feature for feature in payload["features"] if isinstance(feature, dict)]
 
 
@@ -139,6 +141,38 @@ def joinville(request: SearchRequest, fetch: Fetch, source_id: str) -> tuple[lis
         "AND gisdb.gisadmin.mvw_lote.numero = " + number
     )
     candidates = _query(fetch, JOINVILLE_LAYER, where, geometry=True)
+    diagnostic["first_geometry_keys"] = sorted(
+        (candidates[0].get("geometry") or {}) if candidates else {}
+    )
+    if candidates and not any(_geometry(candidate)[0] for candidate in candidates):
+        # MapServer's ESRI JSON may report UTM rings despite outSR=4326,
+        # or omit rings altogether. GeoJSON is a documented output format
+        # for this official layer and uses geographic coordinates.
+        try:
+            response = fetch(JOINVILLE_LAYER + "/query", {
+                "where": where, "outFields": "*", "returnGeometry": "true",
+                "outSR": 4326, "f": "geojson",
+                "resultRecordCount": MAX_RESULTS,
+            })
+            payload = response.json()
+            features = payload.get("features") if isinstance(payload, dict) else None
+            if isinstance(features, list):
+                by_inscription = {
+                    str(_field(feature.get("properties") or {}, "iq")): feature
+                    for feature in features
+                    if isinstance(feature, dict) and isinstance(feature.get("properties"), dict)
+                    and _field(feature["properties"], "iq") is not None
+                }
+                for candidate in candidates:
+                    props = candidate.get("attributes") or {}
+                    match = by_inscription.get(str(_field(props, "iq")))
+                    if match and _geometry(match)[0]:
+                        candidate["geometry"] = match["geometry"]
+                diagnostic["geojson_fallback_count"] = len(features)
+            else:
+                diagnostic["geojson_fallback_error"] = "invalid_geojson"
+        except (ValueError, TypeError, RuntimeError) as exc:
+            diagnostic["geojson_fallback_error"] = type(exc).__name__
     records: list[PropertyRecord] = []
     for feature in candidates:
         props = feature.get("attributes") or {}
@@ -152,6 +186,12 @@ def joinville(request: SearchRequest, fetch: Fetch, source_id: str) -> tuple[lis
         geometry, lat, lon = _geometry(feature)
         block = _field(props, "quadra")
         lot = _field(props, "lote")
+        if block is None and inscription is not None:
+            # SIMGeo documents IQ as QQ-QQ-SS-QQ-LLLL.
+            # Use the official format only when all five parts are numeric.
+            parts = str(inscription).split("-")
+            if len(parts) == 5 and all(part.isdecimal() for part in parts):
+                block = parts[3]
         registry = _field(props, "matricula_ri")
         records.append(PropertyRecord(
             property_id=str(_field(props, "objectid", "mslink") or "") or None,
