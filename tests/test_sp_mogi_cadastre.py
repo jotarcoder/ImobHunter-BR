@@ -18,7 +18,7 @@ def test_mogi_exact_historical_address_projection_drops_pii_and_money():
         "cadastro_id": "0987654321", "area_terreno": "250,40",
         "proprietario": "SEGREDO", "cpf": "PRIVATE",
         "valor_venal": "999999", "debito_iptu": "123",
-        "zona_fiscal": "Z2", "situcao": "2024",
+        "zona_fiscal": "Z2", "situacao(2024)": "Regular",
     }
     record = mogi_historical_file_record(
         row, _request(), "mogi_local", "approved_2024.csv"
@@ -37,6 +37,20 @@ def test_mogi_exact_historical_address_projection_drops_pii_and_money():
     assert "999999" not in str(record.attributes)
     assert "PRIVATE" not in str(record.attributes)
     assert record.owner_name is None
+
+
+def test_mogi_historical_row_without_year_marker_must_not_assume_2024():
+    row = {
+        "logradouro": "Rua Doutor Deodato Wertheimer",
+        "nro_local": "100", "cadastro_id": "000123",
+        "valor_venal": "180000",
+    }
+    rec = mogi_historical_file_record(row, _request(), "s", "export.csv")
+    assert rec is not None
+    assert rec.attributes["source_year"] is None
+    assert rec.attributes["source_year_status"] == "unknown"
+    assert rec.attributes["historical_data"] is True
+    assert rec.attributes["sql"] is None
 
 
 def test_mogi_same_street_different_number_or_ambiguous_street_is_rejected():

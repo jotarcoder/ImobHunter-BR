@@ -7,6 +7,7 @@ the locally imported file. Do not claim cadastro_id is current SQL.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+import re
 from typing import Any
 
 from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest
@@ -39,13 +40,20 @@ def mogi_catalogue(
         and str(entry.get("name") or "").startswith("pmmc_imobiliario_")
         and str(entry.get("name") or "").lower().endswith(".csv")
     ]
+    observed_years = sorted({
+        int(match.group(1))
+        for entry in sources
+        for match in [re.search(r"pmmc_imobiliario_(20[0-2][0-9])_", str(entry.get("name")))]
+        if match is not None
+    })
     diag: dict[str, Any] = {
         "result": "historical_dataset_only",
         "dataset_url": MOGI_DATASET_PAGE,
         "metadata_api": MOGI_DATASET_API,
         "source_id": MOGI_DATASET_ID,
         "dataset_license": package.get("license_id") or "not_specified",
-        "last_published_exercise": MOGI_LAST_PUBLISHED_EXERCISE,
+        "last_published_exercise": observed_years[-1] if observed_years else None,
+        "published_exercises": observed_years,
         "available_cadastre_files": len(sources),
         "registration_verified": False,
         "sql_status": "not_verified",
@@ -86,13 +94,21 @@ def mogi_historical_file_record(
     if len(cid) > 64:
         return None
     area = _float(row.get("area_terreno"))
+    year_keys = [
+        match.group(1)
+        for column in row
+        for match in [re.fullmatch(r"situacao\((20[0-2][0-9])\)", str(column).casefold())]
+        if match is not None
+    ]
+    source_year = int(year_keys[0]) if len(year_keys) == 1 else None
     sanitized = {
         "historical_cadastro_id": cid,
         "source": source_id,
         "official_source": "Prefeitura de Mogi das Cruzes — Cadastro Imobiliário histórico",
         "official_dataset_page": MOGI_DATASET_PAGE,
         "imported_municipal_file": local_file,
-        "source_year": MOGI_LAST_PUBLISHED_EXERCISE,
+        "source_year": source_year,
+        "source_year_status": "column_verified" if source_year else "unknown",
         "historical_data": True,
         "source_properties": {
             "cadastro_id": cid, "logradouro": str(official_street),
@@ -117,7 +133,7 @@ def mogi_historical_file_record(
             Provenance(
                 source_id=source_id,
                 confidence=0.60,
-                reference=f"Cadastro Imobiliário {MOGI_LAST_PUBLISHED_EXERCISE}: {local_file}",
+                reference=f"Cadastro Imobiliário {source_year or 'ano não identificado'}: {local_file}",
             ),
         ),
     )
