@@ -37,3 +37,10 @@ A descoberta real em 03/11/2026 encontrou no CKAN municipal:
 A presença dos conjuntos não comprova os campos. A próxima execução inspeciona somente **metadados de publicação e cabeçalhos de até três CSVs por conjunto**, com leitura parcial, sem capturar linhas ou dados de cidadãos. Verificar qualidade e autorização antes de qualquer vínculo fiscal.
 
 Evidência da descoberta inicial: https://github.com/jotarcoder/ImobHunter-BR/actions/runs/41709239199
+
+### Conferência de esquema cadastral por ano
+Os primeiros CSVs da base são arquivos de IPTU/ITBI de **2016–2018**, com `cadastro_id`, `logradouro`, `nro_imov_qda`, `bairro` e campos financeiros. **Isso não comprova SQL atual e não autoriza exibir valores tributários.**
+
+O registro específico de **CADASTRO IMOBILIÁRIO** não declara licença própria no CKAN (`license_id` vazio), embora o portal apresente uma orientação genérica de reutilização. É necessário verificar a licença aplicável antes de incorporar automaticamente os arquivos ao produto comercial. A descoberta não baixa nem persiste dados de contribuinte.
+
+A próxima sondagem seleciona os **cabeçalhos mais recentes das famílias `pmmc_imobiliario_*`, `pmmc_iptu_*` e `iptu_itbi_*`** para confirmar se há endereçamento, quadra/lote e inscrição individual.

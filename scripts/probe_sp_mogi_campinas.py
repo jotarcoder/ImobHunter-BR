@@ -217,12 +217,45 @@ def probe_mogi_cadastre_metadata(client: httpx.Client) -> list[dict]:
                     "official_host": _official_resource_url(resource.get("url")),
                 }
                 entry["resources"].append(description)
-            csv_resources = [
+            public_csv = [
                 resource for resource in resources
                 if isinstance(resource, dict)
                 and str(resource.get("format") or "").casefold() == "csv"
                 and _official_resource_url(resource.get("url"))
-            ][:3]
+            ]
+            entry["resource_years"] = sorted({
+                int(year)
+                for resource in public_csv
+                for year in re.findall(
+                    r"20[0-2][0-9]", str(resource.get("name") or "")
+                )
+            })
+            entry["recent_resource_names"] = [
+                resource.get("name")
+                for resource in public_csv
+                if any(t in str(resource.get("name") or "").lower() for t in (
+                    "2024", "2025", "2026"
+                ))
+            ][:35]
+            csv_resources = []
+            for prefix in ("pmmc_imobiliario_", "pmmc_iptu_", "iptu_itbi_"):
+                choices = [
+                    res for res in public_csv
+                    if re.fullmatch(
+                        re.escape(prefix) + r"20[0-2][0-9](?:_part1)?[.]csv",
+                        str(res.get("name") or ""), flags=re.IGNORECASE,
+                    )
+                ]
+                if choices:
+                    csv_resources.append(max(
+                        choices,
+                        key=lambda res: str(res.get("name") or ""),
+                    ))
+            if not csv_resources:
+                csv_resources = public_csv[:3]
+            entry["selected_schema_resources"] = [
+                res.get("name") for res in csv_resources
+            ]
             entry["csv_public_schemas"] = [
                 {
                     "resource_name": resource.get("name"),
