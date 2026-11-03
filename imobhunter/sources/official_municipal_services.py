@@ -625,6 +625,36 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                     "ArcGIS REST municipal sem lista features; "
                     f"consulta inicial={first_error!r}; fallback={fallback_error!r}"
                 )
+        # Some ArcGIS servers accept buffered point queries but return zero
+        # candidates for a local-projection parcel layer. For Porto Alegre only,
+        # try an exact point intersection before reporting no parcel. This
+        # cannot introduce unrelated nearby lots or invent fiscal identifiers.
+        if layer_url == PORTO_ALEGRE_ARCGIS_LAYER and not payload["features"]:
+            exact_params = {
+                "where": "1=1",
+                "geometry": json.dumps(point_geometry),
+                "geometryType": "esriGeometryPoint",
+                "inSR": 4326,
+                "spatialRel": "esriSpatialRelIntersects",
+                "outFields": "*",
+                "returnGeometry": "true",
+                "outSR": 4326,
+                "f": "json",
+                "resultRecordCount": MAX_FEATURES,
+            }
+            exact_payload = self._get(url, exact_params).json()
+            self.last_diagnostics[city] = {
+                **self.last_diagnostics.get(city, {}),
+                "empty_buffer_fallback": "point_intersection",
+            }
+            if isinstance(exact_payload, dict) and isinstance(exact_payload.get("features"), list):
+                payload = exact_payload
+            else:
+                self.last_diagnostics[city]["point_intersection_error"] = (
+                    exact_payload.get("error") if isinstance(exact_payload, dict)
+                    else type(exact_payload).__name__
+                )
+
         self.last_diagnostics[city] = {
             **self.last_diagnostics.get(city, {}),
             "endpoint": layer_url,
