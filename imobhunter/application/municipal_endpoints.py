@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from imobhunter.sources.geosampa import DEFAULT_WFS_URL
+from imobhunter.sources.sp_mogi_cadastre import MOGI_DATASET_API, MOGI_DATASET_ID
 from imobhunter.sources.sp_abc_cadastre import JUNDIAI_WFS, SANTO_ANDRE_WFS
 from imobhunter.sources.sp_fiscal_lookup_portals import (
     CAMPINAS_LOOKUP, CAMPINAS_INFO, SANTO_ANDRE_LOOKUP, JUNDIAI_LOOKUP,
@@ -73,6 +74,15 @@ def municipal_endpoints() -> tuple[MunicipalEndpoint, ...]:
             "Descoberta por GetCapabilities", limits,
         ))
     result.extend((
+        MunicipalEndpoint(
+            "mogi_ckan_cadastro_historico", "Mogi das Cruzes", "SP",
+            "Mogi — CKAN cadastro imobiliário 2016–2024",
+            f"{MOGI_DATASET_API}?id={MOGI_DATASET_ID}",
+            "ckan", "package_show/cadastro-imobiliario",
+            "Metadados e CSVs históricos; sem API por endereço ou licença "
+            "específica informada. Não inferir SQL/IPTU atual.",
+            "context",
+        ),
         MunicipalEndpoint(
             "santo_andre_contexto", "Santo André", "SP",
             "Santo André — SIGA (WFS geográfico público)",

@@ -14,6 +14,7 @@ import httpx
 from imobhunter.application.address_geocoding import CachedAddressGeocoder, GeocodingError
 from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest, SourceStatus
 from imobhunter.sources.base import SourceAdapter
+from imobhunter.sources.sp_mogi_cadastre import mogi_catalogue as query_mogi_catalogue
 from imobhunter.sources.sp_fiscal_lookup_portals import campinas as query_campinas
 from imobhunter.sources.sp_fiscal_lookup_portals import (
     CAMPINAS_LOOKUP, SANTO_ANDRE_LOOKUP, JUNDIAI_LOOKUP,
@@ -1056,6 +1057,9 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         elif city_key in {"recife", "recife (pe)"} and state_key in {"pe", "pernambuco"}:
             city, state, service_key = "Recife", "PE", "recife"
             configured = None
+        elif city_key in {"mogi das cruzes", "mogi das cruzes (sp)"} and state_key in {"sp", "sao paulo"}:
+            city, state, service_key = "Mogi das Cruzes", "SP", "mogi"
+            configured = None
         elif city_key == "campinas" and state_key in {"sp", "sao paulo"}:
             city, state, service_key = "Campinas", "SP", "campinas"
             configured = None
@@ -1088,6 +1092,17 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             city, state = configured["city"], configured["state"]
 
         try:
+            if service_key == "mogi":
+                records, diagnostic = query_mogi_catalogue(
+                    request, self._get, self.source_id
+                )
+                self.last_diagnostics[city] = diagnostic
+                self.last_errors[city] = (
+                    "Fonte municipal apenas histórica (2016–2024); "
+                    "sem API autorizada para SQL/IPTU por endereço. "
+                    "Licença específica do dataset ainda não informada."
+                )
+                return records
             if service_key == "campinas":
                 records, diagnostic = query_campinas(request, self.source_id)
                 self.last_diagnostics[city] = diagnostic
