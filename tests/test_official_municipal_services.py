@@ -698,6 +698,56 @@ def test_porto_alegre_retries_exact_point_when_buffer_returns_no_features(tmp_pa
     assert adapter.last_diagnostics["Porto Alegre"]["empty_buffer_fallback"] == "point_intersection"
 
 
+def test_porto_alegre_uses_official_smf_polygon_layer_after_empty_dmweb(tmp_path):
+    class Geocoder:
+        def geocode(self, _query):
+            return {"latitude": -30.0346, "longitude": -51.2177}
+
+    requested_layers = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested_layers.append(request.url.path)
+        params = dict(request.url.params)
+        assert params["inSR"] == "4326"
+        assert params["outSR"] == "4326"
+        if "/dmweb_lotes_fiscais/" in request.url.path:
+            return httpx.Response(200, json={"features": []})
+        assert request.url.path.endswith("/POA___Consultas_MIL1/MapServer/98/query")
+        return httpx.Response(200, json={"features": [{
+            "attributes": {
+                "OBJECTID": 99, "NUMBLOCO": "0123456789",
+                "SETOR": 12, "QUARTEIRAO": 34, "AREA": 322.5,
+            },
+            "geometry": {"rings": [[
+                [-51.2180, -30.0350], [-51.2175, -30.0350],
+                [-51.2175, -30.0345], [-51.2180, -30.0350],
+            ]]},
+        }]})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = OfficialMunicipalServicesAdapter(
+        cache_dir=tmp_path / "cache", client=client, geocoder=Geocoder()
+    )
+    records = adapter.search(SearchRequest(
+        address="Rua dos Andradas", number="100", city="Porto Alegre", state="RS"
+    ))
+    client.close()
+
+    assert len(requested_layers) == 3
+    assert len(records) == 1
+    record = records[0]
+    assert record.block == "34"
+    assert record.lot == "0123456789"
+    assert record.area_m2 == 322.5
+    assert record.attributes["municipal_sector"] == "12"
+    assert record.attributes["parcel_identifier"] == "0123456789"
+    assert record.attributes["fiscal_lot_identifier"] == "0123456789"
+    assert record.attributes["sql"] is None
+    assert record.attributes["iptu_registration_number"] is None
+    assert record.attributes["service_url"].endswith("/POA___Consultas_MIL1/MapServer/98")
+    assert json.loads(record.attributes["geometry_geojson"])["type"] == "Polygon"
+
+
 def test_porto_alegre_reports_zero_when_both_spatial_queries_are_empty(tmp_path):
     calls = []
 
@@ -719,7 +769,7 @@ def test_porto_alegre_reports_zero_when_both_spatial_queries_are_empty(tmp_path)
     client.close()
 
     assert records == []
-    assert len(calls) == 2
+    assert len(calls) == 3
     assert "distance" not in calls[1]
     assert adapter.last_diagnostics["Porto Alegre"]["feature_count"] == 0
     assert adapter.last_diagnostics["Porto Alegre"]["empty_buffer_fallback"] == "point_intersection"
