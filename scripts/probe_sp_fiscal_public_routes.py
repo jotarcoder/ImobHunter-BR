@@ -18,13 +18,14 @@ PUBLIC_PORTALS = {
     "Jundiaí": "https://geo.jundiai.sp.gov.br/geojundiai/cfImob.jsp",
 }
 MAX_JS = 7
-MAX_HTML_BYTES = 2_000_000
+MAX_HTML_BYTES = 12_000_000
 MAX_SCRIPT_BYTES = 1_000_000
 SUSPICIOUS = ("password", "senha", "token", "oauth", "bearer", "authorization",
               "secret", "apikey", "api_key")
 ROUTE_RE = re.compile(
     r'(?:(?:https://[a-z0-9.-]+)?/(?:[a-z0-9_-]+/){0,7}'
-    r'[a-z0-9_-]+(?:[.]jsp|[.]aspx|[.]php|/query|/wms|/wfs|/ows))',
+    r'[a-z0-9_-]+(?:[.]jsp|[.]aspx|[.]php|/query|/wms|/wfs|/ows))'
+    r'|(?:[a-z0-9_-]+[.]jsp)',
     re.IGNORECASE,
 )
 
