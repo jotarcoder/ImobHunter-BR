@@ -111,6 +111,14 @@ CASES = [
         "adapter": "official_municipal",
     },
     {
+        "municipality": "Juiz de Fora/MG — Avenida Brasil 2001",
+        "address": "Avenida Brasil",
+        "number": "2001",
+        "city": "Juiz de Fora",
+        "state": "MG",
+        "adapter": "official_municipal",
+    },
+    {
         "municipality": "Recife/PE",
         "address": "Avenida Conde da Boa Vista",
         "number": "100",
@@ -258,6 +266,11 @@ def main() -> None:
                 )
             if item["errors"]:
                 print(f'  errors={json.dumps(item["errors"], ensure_ascii=False)}')
+            if case["city"] == "Juiz de Fora":
+                print(
+                    "  juiz_diagnostics="
+                    + json.dumps(item["diagnostics"], ensure_ascii=False, default=str)[:3000]
+                )
             if case["city"] in {"Joinville", "São Bento do Sul"}:
                 print(
                     "  sc_diagnostics="

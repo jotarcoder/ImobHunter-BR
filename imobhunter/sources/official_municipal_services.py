@@ -14,6 +14,7 @@ import httpx
 from imobhunter.application.address_geocoding import CachedAddressGeocoder, GeocodingError
 from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest, SourceStatus
 from imobhunter.sources.base import SourceAdapter
+from imobhunter.sources.mg_juiz_cadastre import juiz_de_fora as query_juiz
 from imobhunter.sources.sc_municipal_cadastre import joinville as query_joinville
 from imobhunter.sources.sc_municipal_cadastre import sao_bento as query_sao_bento
 
@@ -229,7 +230,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         detail = (
             "Integrações diretas configuradas para Praia Grande/SP, Belo Horizonte/MG, "
             "Rio de Janeiro/RJ, Distrito Federal, Goiânia/GO, Blumenau/SC, Recife/PE, Porto Alegre/RS, "
-            "Joinville/SC e São Bento do Sul/SC; São Paulo capital usa GeoSampa. "
+            "Joinville/SC, São Bento do Sul/SC e Juiz de Fora/MG; São Paulo capital usa GeoSampa. "
             "Cobertura, atributos e disponibilidade dependem da camada oficial."
         )
         if self.last_errors:
@@ -1052,6 +1053,9 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         elif city_key == "sao bento do sul" and state_key in {"sc", "santa catarina"}:
             city, state, service_key = "São Bento do Sul", "SC", "sao_bento"
             configured = None
+        elif city_key == "juiz de fora" and state_key in {"mg", "minas gerais"}:
+            city, state, service_key = "Juiz de Fora", "MG", "juiz"
+            configured = None
         elif city_key in {"porto alegre", "porto alegre (rs)"} and state_key in {"rs", "rio grande do sul"}:
             city, state, service_key = "Porto Alegre", "RS", "porto_alegre"
             configured = None
@@ -1063,6 +1067,11 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             city, state = configured["city"], configured["state"]
 
         try:
+            if service_key == "juiz":
+                records, diagnostic = query_juiz(request, self._get, self.source_id)
+                self.last_diagnostics[city] = diagnostic
+                self.last_errors.pop(city, None)
+                return records
             if service_key in {"joinville", "sao_bento"}:
                 lookup = query_joinville if service_key == "joinville" else query_sao_bento
                 records, diagnostic = lookup(request, self._get, self.source_id)
