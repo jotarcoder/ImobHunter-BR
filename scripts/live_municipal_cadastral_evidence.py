@@ -234,6 +234,11 @@ def main() -> None:
                 )
             if item["errors"]:
                 print(f'  errors={json.dumps(item["errors"], ensure_ascii=False)}')
+            if case["city"] == "Porto Alegre":
+                print(
+                    "  porto_alegre_diagnostics="
+                    + json.dumps(item["diagnostics"], ensure_ascii=False, default=str)[:4000]
+                )
 
     report = {
         "purpose": "Live municipal cadastral evidence; geocoding alone is not cadastral proof.",
