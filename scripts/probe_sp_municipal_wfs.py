@@ -1,0 +1,105 @@
+"""Bounded, public, read-only SP municipal WFS capability discovery.
+
+No authentication, no taxpayer/owner data and no unbounded feature queries.
+This script logs *schema names only*, never private field values.
+"""
+from __future__ import annotations
+
+import json
+import re
+import xml.etree.ElementTree as ET
+
+import httpx
+
+TARGETS = {
+    "Jundiai": [
+        "https://geo.jundiai.sp.gov.br/geoserver/ows",
+        "https://geo.jundiai.sp.gov.br/geoserver/wfs",
+    ],
+    "Santo Andre": [
+        "https://sigamapa.santoandre.sp.gov.br/geoserver/ows",
+        "https://siga.santoandre.sp.gov.br/geoserver/ows",
+        "https://geoserver.santoandre.sp.gov.br/geoserver/ows",
+    ],
+}
+INTERESTING = ("lote", "quadra", "fiscal", "imob", "endereco", "numero", "predi")
+MAX_SCHEMA_LAYERS = 5
+
+
+def get_xml(client: httpx.Client, url: str, params: dict[str, str]):
+    response = client.get(url, params=params)
+    response.raise_for_status()
+    if len(response.content) > 3_000_000:
+        raise ValueError("Capabilities exceeded 3 MB; skipped")
+    return ET.fromstring(response.content)
+
+
+def show_names(root: ET.Element, tag: str) -> list[str]:
+    return [
+        (elem.text or "").strip()
+        for elem in root.iter()
+        if elem.tag.rsplit("}", 1)[-1].casefold() == tag.casefold()
+        and elem.text and elem.text.strip()
+    ]
+
+
+def inspect(client: httpx.Client, city: str, endpoint: str) -> dict:
+    result = {"city": city, "endpoint": endpoint}
+    try:
+        root = get_xml(client, endpoint, {
+            "service": "WFS", "version": "1.1.0", "request": "GetCapabilities",
+        })
+        feature_names = [
+            (element.text or "").strip()
+            for ft in root.iter()
+            if ft.tag.rsplit("}", 1)[-1] == "FeatureType"
+            for element in ft
+            if element.tag.rsplit("}", 1)[-1] == "Name" and element.text
+        ]
+        selected = [
+            name for name in feature_names
+            if any(token in name.casefold() for token in INTERESTING)
+        ]
+        result.update({
+            "feature_type_count": len(feature_names),
+            "candidate_types": selected[:35],
+            "capabilities_root": root.tag,
+        })
+        for typename in selected[:MAX_SCHEMA_LAYERS]:
+            try:
+                schema = get_xml(client, endpoint, {
+                    "service": "WFS", "version": "1.1.0",
+                    "request": "DescribeFeatureType", "typeName": typename,
+                })
+                raw_fields = [
+                    node.attrib.get("name")
+                    for node in schema.iter()
+                    if node.tag.rsplit("}", 1)[-1] == "element"
+                    and node.attrib.get("name")
+                ]
+                result.setdefault("schema", {})[typename] = raw_fields[:90]
+            except (httpx.HTTPError, ET.ParseError, ValueError) as exc:
+                result.setdefault("schema_errors", {})[typename] = type(exc).__name__
+    except (httpx.HTTPError, ET.ParseError, ValueError) as exc:
+        result["error"] = type(exc).__name__
+        result["detail"] = str(exc).split("\n", 1)[0][:180]
+    return result
+
+
+def main() -> None:
+    results = []
+    with httpx.Client(
+        timeout=httpx.Timeout(9.0), follow_redirects=True,
+        headers={"User-Agent": "ImobHunter-BR/2.1 source-schema-audit"},
+    ) as client:
+        for city, endpoints in TARGETS.items():
+            for endpoint in endpoints:
+                result = inspect(client, city, endpoint)
+                results.append(result)
+                print(json.dumps(result, ensure_ascii=False))
+    with open("sp-municipal-public-schema.json", "w", encoding="utf-8") as file:
+        json.dump(results, file, ensure_ascii=False, indent=2)
+
+
+if __name__ == "__main__":
+    main()
