@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from imobhunter.sources.geosampa import DEFAULT_WFS_URL
+from imobhunter.sources.mg_juiz_cadastre import JUIZ_INSCRIPTIONS, JUIZ_PARCELS, JUIZ_PARCELS_LEGACY
 from imobhunter.sources.sc_municipal_cadastre import (
     JOINVILLE_LAYER, JOINVILLE_POLYGON_LAYER, SAO_BENTO_SERVICE,
 )
@@ -127,6 +128,26 @@ def municipal_endpoints() -> tuple[MunicipalEndpoint, ...]:
             SAO_BENTO_SERVICE + "/14", "arcgis", "MapServer/14",
             "Só cadastro de terreno vinculado por geolot; inscrições ambíguas não são assumidas.",
             "related",
+        ),
+        MunicipalEndpoint(
+            "juiz_inscricao", "Juiz de Fora", "MG",
+            "Juiz de Fora — MG (inscrição por endereço)",
+            JUIZ_INSCRIPTIONS, "arcgis", "MapServer/27",
+            "Confirma rua/número em cadastro municipal; usa INSCID, não SQL/SP.",
+        ),
+        MunicipalEndpoint(
+            "juiz_lotes", "Juiz de Fora", "MG",
+            "Juiz de Fora — MG (quadra, lote e geometria)",
+            JUIZ_PARCELS, "arcgis", "MapServer/0",
+            "Relacionamento por loteid; quadra/lote apenas se polígono inequívoco.",
+            "related",
+        ),
+        MunicipalEndpoint(
+            "juiz_lotes_legado", "Juiz de Fora", "MG",
+            "Juiz de Fora — MG (quadra/lote complementar)",
+            JUIZ_PARCELS_LEGACY, "arcgis", "FeatureServer/0",
+            "Complementa quadra/lote por loteid exato; origem cadastral histórica.",
+            "fallback",
         ),
         MunicipalEndpoint(
             "porto_alegre", "Porto Alegre", "RS",
