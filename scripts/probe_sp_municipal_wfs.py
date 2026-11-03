@@ -174,6 +174,41 @@ def main() -> None:
                 item = {"city": city, "public_html_page": page, "error": type(exc).__name__}
             results.append(item)
             print(json.dumps(item, ensure_ascii=False))
+            if city == "Jundiai":
+                script_paths = ("js/cfImob.js", "js/f.js", "js/f_pre.js")
+                base = "https://geo.jundiai.sp.gov.br/geojundiai/"
+            else:
+                script_paths = tuple(
+                    item.get("static_script_paths", [])[-18:]
+                )
+                base = "https://sigamapa.santoandre.sp.gov.br/"
+            for script in script_paths[:18]:
+                # Do not inspect third-party CDN or untrusted absolute URLs.
+                if not script.startswith("js/"):
+                    continue
+                try:
+                    content = client.get(base + script)
+                    content.raise_for_status()
+                    source = content.text[:1_200_000]
+                    # Show public API paths only, without credentials or
+                    # full URLs, query parameters, personal record values.
+                    paths = sorted(set(
+                        value.split("?", 1)[0] for value in re.findall(
+                            r"[A-Za-z0-9_./:-]{3,120}(?:\\.jsp|\\.php|/query|/ows|/wfs)",
+                            source, flags=re.IGNORECASE,
+                        ) if "token" not in value.casefold()
+                    ))[:35]
+                    result = {
+                        "city": city, "static_source": script,
+                        "public_api_path_hints": paths,
+                        "has_fetch": "fetch(" in source,
+                        "has_ajax": "ajax(" in source or "$.post(" in source,
+                        "has_getfeatureinfo": "GetFeatureInfo" in source,
+                    }
+                except httpx.HTTPError as exc:
+                    result = {"city": city, "static_source": script, "error": type(exc).__name__}
+                results.append(result)
+                print(json.dumps(result, ensure_ascii=False))
     with open("sp-municipal-public-schema.json", "w", encoding="utf-8") as file:
         json.dump(results, file, ensure_ascii=False, indent=2)
 
