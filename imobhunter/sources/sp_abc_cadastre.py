@@ -94,7 +94,10 @@ def santo_andre(
     response = fetch(SANTO_ANDRE_WFS, {
         "service": "WFS", "request": "GetCapabilities", "version": "1.1.0",
     })
-    root = ET.fromstring(response.content)
+    try:
+        root = ET.fromstring(response.content)
+    except ET.ParseError as exc:
+        raise TypeError("SIGA retornou GetCapabilities XML inválido.") from exc
     names = [
         (child.text or "").strip()
         for feature in root.iter()
