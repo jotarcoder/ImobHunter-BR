@@ -82,6 +82,46 @@ def test_joinville_never_invents_registration_for_unmatched_street(tmp_path):
     assert adapter.last_diagnostics["Joinville"]["result"] == "no_exact_address_match"
 
 
+def test_joinville_recovers_polygon_from_official_hosted_layer_by_iq(tmp_path):
+    paths = []
+
+    def handler(request):
+        paths.append(request.url.path)
+        params = dict(request.url.params)
+        if "/SEFAZ/" in request.url.path:
+            return httpx.Response(200, json={"features": [{
+                "attributes": {
+                    "gisdb.gisadmin.mvw_lote.logradouro": "ALUISIO PIRES CONDEIXA",
+                    "gisdb.gisadmin.mvw_lote.numero": 2550,
+                    "gisdb.gisadmin.lotes.iq": "13-20-44-52-1178",
+                    "gisdb.gisadmin.lotes.quadra": None,
+                    "gisdb.gisadmin.lotes.lote": 1178,
+                },
+            }]})
+        assert "/Hosted/Lotes_IPTU/FeatureServer/0/query" in request.url.path
+        assert "13-20-44-52-1178" in params["where"]
+        assert params["outFields"] == "iq"
+        return httpx.Response(200, json={"features": [{
+            "attributes": {"iq": "13-20-44-52-1178"},
+            "geometry": polygon(),
+        }]})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = OfficialMunicipalServicesAdapter(cache_dir=tmp_path, client=client)
+    records = adapter.search(SearchRequest(
+        address="Avenida Aluísio Pires Condeixa", number="2550",
+        city="Joinville", state="SC",
+    ))
+    client.close()
+    assert len(paths) == 2
+    assert len(records) == 1
+    assert records[0].block == "52"
+    assert records[0].lot == "1178"
+    assert records[0].attributes["iptu_registration_number"] == "13-20-44-52-1178"
+    assert records[0].attributes["geometry_source_url"].endswith("/Hosted/Lotes_IPTU/FeatureServer/0")
+    assert json.loads(records[0].attributes["geometry_geojson"])["type"] == "Polygon"
+
+
 def test_sao_bento_exact_address_geolot_join_to_lot_and_terreno_registration(tmp_path):
     paths = []
 

@@ -13,11 +13,17 @@ import unicodedata
 from collections.abc import Callable
 from typing import Any
 
+import httpx
+
 from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest
 
 JOINVILLE_LAYER = (
     "https://geo.joinville.sc.gov.br/server/rest/services/"
     "SEFAZ/lotes_joinsgc_sefaz/MapServer/0"
+)
+JOINVILLE_POLYGON_LAYER = (
+    "https://geo.joinville.sc.gov.br/server/rest/services/"
+    "Hosted/Lotes_IPTU/FeatureServer/0"
 )
 SAO_BENTO_SERVICE = (
     "https://geo.saobentodosul.sc.gov.br/server/rest/services/"
@@ -150,42 +156,49 @@ def joinville(request: SearchRequest, fetch: Fetch, source_id: str) -> tuple[lis
         if isinstance(rings, list) and rings and isinstance(rings[0], list):
             diagnostic["raw_first_ring_point"] = str(rings[0][0])[:120] if rings[0] else None
     if candidates and not any(_geometry(candidate)[0] for candidate in candidates):
-        # MapServer's ESRI JSON may report UTM rings despite outSR=4326,
-        # or omit rings altogether. GeoJSON is a documented output format
-        # for this official layer and uses geographic coordinates.
-        try:
-            response = fetch(JOINVILLE_LAYER + "/query", {
-                "where": where, "outFields": "*", "returnGeometry": "true",
-                "outSR": 4326, "f": "geojson",
-                "resultRecordCount": MAX_RESULTS,
-            })
-            payload = response.json()
-            features = payload.get("features") if isinstance(payload, dict) else None
-            if isinstance(features, list):
-                diagnostic["geojson_first_geometry_type"] = (
-                    (features[0].get("geometry") or {}).get("type")
-                    if features and isinstance(features[0], dict) else None
-                )
-                diagnostic["geojson_first_properties_keys"] = sorted(
-                    (features[0].get("properties") or {})
-                    if features and isinstance(features[0], dict) else {}
-                )[:20]
-                by_inscription = {
-                    str(_field(feature.get("properties") or {}, "iq")): feature
-                    for feature in features
-                    if isinstance(feature, dict) and isinstance(feature.get("properties"), dict)
-                    and _field(feature["properties"], "iq") is not None
-                }
+        # The SEFAZ joined lot table exposes exact address/registration fields,
+        # but does not return usable shapes. Fetch the official separate lot
+        # polygons by the same verified IQ instead of a spatial guess.
+        inscriptions = sorted({
+            str(_field(candidate.get("attributes") or {}, "iq"))
+            for candidate in candidates
+            if _field(candidate.get("attributes") or {}, "iq") is not None
+        })
+        if inscriptions:
+            keys = ", ".join("'" + iq.replace("'", "''") + "'" for iq in inscriptions)
+            try:
+                response = fetch(JOINVILLE_POLYGON_LAYER + "/query", {
+                    "where": "iq IN (" + keys + ")",
+                    "outFields": "iq",
+                    "returnGeometry": "true",
+                    "outSR": 4326,
+                    "f": "json",
+                    "resultRecordCount": MAX_RESULTS,
+                })
+                payload = response.json()
+                features = payload.get("features") if isinstance(payload, dict) else None
+                matches = {}
+                if isinstance(features, list):
+                    for feature in features:
+                        props = feature.get("attributes") or {}
+                        iq = _field(props, "iq", "iq_1")
+                        if iq is not None and _geometry(feature)[0]:
+                            matches[str(iq)] = feature["geometry"]
                 for candidate in candidates:
                     props = candidate.get("attributes") or {}
-                    match = by_inscription.get(str(_field(props, "iq")))
-                    if match and _geometry(match)[0]:
-                        candidate["geometry"] = match["geometry"]
-                diagnostic["geojson_fallback_count"] = len(features)
-            else:
-                diagnostic["geojson_fallback_error"] = "invalid_geojson"
-        except (ValueError, TypeError, RuntimeError) as exc:
-            diagnostic["geojson_fallback_error"] = type(exc).__name__
+                    geometry = matches.get(str(_field(props, "iq")))
+                    if geometry:
+                        candidate["geometry"] = geometry
+                        candidate["geometry_source_url"] = JOINVILLE_POLYGON_LAYER
+                diagnostic["hosted_polygon_count"] = len(matches)
+                diagnostic["hosted_feature_count"] = len(features) if isinstance(features, list) else 0
+                diagnostic["hosted_first_geometry_keys"] = sorted(
+                    (features[0].get("geometry") or {})
+                    if isinstance(features, list) and features and isinstance(features[0], dict)
+                    else {}
+                )
+            except (httpx.HTTPError, ValueError, TypeError, RuntimeError) as exc:
+                diagnostic["hosted_polygon_error"] = type(exc).__name__
     records: list[PropertyRecord] = []
     for feature in candidates:
         props = feature.get("attributes") or {}
@@ -222,6 +235,7 @@ def joinville(request: SearchRequest, fetch: Fetch, source_id: str) -> tuple[lis
                 "service_url": JOINVILLE_LAYER,
                 "source_properties": props,
                 "geometry_geojson": geometry,
+                "geometry_source_url": feature.get("geometry_source_url") or JOINVILLE_LAYER,
                 "municipal_registration_number": str(inscription) if inscription is not None else None,
                 "iptu_registration_number": str(inscription) if inscription is not None else None,
                 "sql": None,
@@ -275,6 +289,14 @@ def sao_bento(request: SearchRequest, fetch: Fetch, source_id: str) -> tuple[lis
         if len(matched) >= MAX_RESULTS:
             break
     diagnostic["address_candidate_count"] = len(addresses)
+    diagnostic["address_samples"] = [
+        {
+            "street": str(_field((row.get("attributes") or {}), "descricao_logradouro") or "")[:90],
+            "number": str(_field((row.get("attributes") or {}), "numero") or "")[:24],
+            "type": _field((row.get("attributes") or {}), "tipo_endereco"),
+        }
+        for row in addresses[:3]
+    ]
     diagnostic["exact_address_geolots"] = len(matched)
     if not matched:
         diagnostic["result"] = "no_exact_address_match"

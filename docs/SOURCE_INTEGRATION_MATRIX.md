@@ -47,6 +47,8 @@ A lista abaixo é de **conectores municipais/territoriais no código**, não de 
 | Distrito Federal — DF | IDE-DF ArcGIS REST — camada de imóvel/certidão | A camada oficial identificada publica campos cadastrais como inscrição/IPTU, CIU, endereço, quadra/lote e áreas, conforme o retorno. | DF é território distinto de município/UF estadual; cada campo ainda depende do retorno real da camada. |
 | Goiânia — GO | ArcGIS REST municipal — cadastro imobiliário | Campos documentados incluem `nrinscr`, logradouro, número, quadra, lote, área de terreno e área edificada, quando retornados. | `nrinscr` deve ser chamado de inscrição cadastral até haver comprovação de equivalência com SQL/IPTU. Não extrapolar para GO inteiro. |
 | Blumenau — SC | Serviço municipal de lotes / ArcGIS REST | Identificadores como `IQ`, número do lote, bairro, área cartográfica e geometria, conforme camada. | `IQ` é identificador cadastral; não renomear como SQL/IPTU. Não extrapolar para SC inteiro. |
+| Joinville — SC | SEFAZ ArcGIS REST e Hosted Lotes_IPTU por IQ | Inscrição imobiliária IQ, quadra (campo oficial ou padrão SIMGeo), lote, área, endereço validado; geometria apenas quando publicada pela camada vinculada. | Exigir endereço e número correspondentes; inscrição IQ não é SQL de São Paulo. Consulta real em 03/11/2026 retornou IQ, quadra e lote. |
+| São Bento do Sul — SC | Geobensul ArcGIS REST: Enderecos (11), Lotes (0), Cadastros Imobiliarios (14) | Relacionamento por geolot, logradouro e número, quadra/lote e inscrição cadastral de terreno quando retornada. | Consulta por endereço exato ainda pendente de homologação real; não atribuir inscrição ambígua. |
 | Recife — PE | Portal municipal de dados abertos / API CKAN — dataset de IPTU | Recursos de cadastro fiscal publicados no portal, quando o recurso é consultável e retorna registros. | A existência do dataset não garante datastore/API consultável nem geometria. Não inferir proprietário, débitos ou SQL não retornado. |
 | Porto Alegre — RS | ArcGIS REST municipal — lotes fiscais | Campos publicados incluem `id_lotes`, `setor`, `qtd` (quarteirão), bairro e geometria, conforme a camada. | A camada identificada não inclui SQL/IPTU individual nem área nos atributos documentados; lote próximo não confirma endereço exato. |
 
@@ -61,6 +63,11 @@ A lista abaixo é de **conectores municipais/territoriais no código**, não de 
 - Distrito Federal: https://www.geoservicos.ide.df.gov.br/arcgis/rest/services/Aplicacoes/CERTIDAO_IMOVEL/FeatureServer/0
 - Goiânia: https://portalmapa.goiania.go.gov.br/servicogyn/rest/services/MapaServer/Feature_Base/MapServer/3
 - Blumenau: https://geo.blumenau.sc.gov.br/server/rest/services/Cadastro_Imobiliario/Lotes_Blumenau/FeatureServer/0
+- Joinville — inscrição/endereço: https://geo.joinville.sc.gov.br/server/rest/services/SEFAZ/lotes_joinsgc_sefaz/MapServer/0
+- Joinville — lotes vinculados por IQ: https://geo.joinville.sc.gov.br/server/rest/services/Hosted/Lotes_IPTU/FeatureServer/0
+- São Bento do Sul — lotes: https://geo.saobentodosul.sc.gov.br/server/rest/services/integracao/Cadastro_Imobiliario/MapServer/0
+- São Bento do Sul — endereços: https://geo.saobentodosul.sc.gov.br/server/rest/services/integracao/Cadastro_Imobiliario/MapServer/11
+- São Bento do Sul — inscrições: https://geo.saobentodosul.sc.gov.br/server/rest/services/integracao/Cadastro_Imobiliario/MapServer/14
 - Recife — conjunto IPTU: https://dados.recife.pe.gov.br/dataset/imposto-predial-e-territorial-urbano-iptu
 - Recife — API CKAN: https://dados.recife.pe.gov.br/api/3/action/package_show?id=imposto-predial-e-territorial-urbano-iptu
 - Porto Alegre: https://gis-smamus.portoalegre.rs.gov.br/server/rest/services/01_PUBLICACOES/dmweb_lotes_fiscais/MapServer/0
