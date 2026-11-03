@@ -56,13 +56,34 @@ def inspect(client: httpx.Client, city: str, endpoint: str) -> dict:
             for element in ft
             if element.tag.rsplit("}", 1)[-1] == "Name" and element.text
         ]
+        # The Santo André municipality uses numeric/opaque layer names.
+        # Use the public WFS Title metadata to identify cadastral candidates.
+        feature_meta = []
+        for ft in root.iter():
+            if ft.tag.rsplit("}", 1)[-1] != "FeatureType":
+                continue
+            name = next((
+                (c.text or "").strip()
+                for c in ft if c.tag.rsplit("}", 1)[-1] == "Name"
+            ), "")
+            title = next((
+                (c.text or "").strip()
+                for c in ft if c.tag.rsplit("}", 1)[-1] == "Title"
+            ), "")
+            if name:
+                feature_meta.append({"name": name, "title": title[:120]})
         selected = [
-            name for name in feature_names
-            if any(token in name.casefold() for token in INTERESTING)
+            feature["name"] for feature in feature_meta
+            if any(token in (feature["name"] + " " + feature["title"]).casefold()
+                   for token in INTERESTING)
         ]
         result.update({
             "feature_type_count": len(feature_names),
             "candidate_types": selected[:35],
+            "candidate_metadata": [
+                item for item in feature_meta if item["name"] in selected[:35]
+            ],
+            "first_feature_names": feature_meta[:45],
             "capabilities_root": root.tag,
         })
         for typename in selected[:MAX_SCHEMA_LAYERS]:
