@@ -748,6 +748,49 @@ def test_porto_alegre_uses_official_smf_polygon_layer_after_empty_dmweb(tmp_path
     assert json.loads(record.attributes["geometry_geojson"])["type"] == "Polygon"
 
 
+def test_porto_alegre_recovers_when_dmweb_returns_attributes_but_no_polygon(tmp_path):
+    class Geocoder:
+        def geocode(self, _query):
+            return {"latitude": -30.0551712, "longitude": -51.1735106}
+
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        if "/dmweb_lotes_fiscais/" in request.url.path:
+            return httpx.Response(200, json={"features": [{
+                "attributes": {"objectid": 1, "id_lotes": 51, "qtd": 34},
+                "geometry": {},
+            }]})
+        assert "/POA___Consultas_MIL1/MapServer/98/query" in request.url.path
+        return httpx.Response(200, json={"features": [{
+            "attributes": {
+                "OBJECTID": 7, "NUMBLOCO": "0000123456",
+                "SETOR": 2, "QUARTEIRAO": 5, "AREA": 300,
+            },
+            "geometry": {"rings": [[
+                [-51.174, -30.056], [-51.173, -30.056],
+                [-51.173, -30.055], [-51.174, -30.056],
+            ]]},
+        }]})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = OfficialMunicipalServicesAdapter(
+        cache_dir=tmp_path / "cache", client=client, geocoder=Geocoder()
+    )
+    records = adapter.search(SearchRequest(
+        address="Avenida Ipiranga", number="6681", city="Porto Alegre", state="RS"
+    ))
+    client.close()
+
+    assert len(calls) == 2
+    assert len(records) == 1
+    assert records[0].block == "5"
+    assert records[0].attributes["fiscal_lot_identifier"] == "0000123456"
+    assert records[0].attributes["sql"] is None
+    assert records[0].attributes["service_url"].endswith("/POA___Consultas_MIL1/MapServer/98")
+
+
 def test_porto_alegre_reports_zero_when_both_spatial_queries_are_empty(tmp_path):
     calls = []
 
