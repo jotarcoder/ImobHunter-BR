@@ -62,3 +62,21 @@ O conjunto `CADASTRO IMOBILIÁRIO` possui **169 recursos CSV**, mas os arquivos 
 A leitura limitada do JavaScript oficial `https://geomogi.mogidascruzes.sp.gov.br/js/app.js` identificou o servidor WMS `https://geoserver1.mogidascruzes.sp.gov.br/geoserver/wms`. O workflow também verificará o WFS do mesmo host, solicitando apenas `GetCapabilities` e `DescribeFeatureType`, sem pesquisar ou registrar dados de imóveis individuais. Isso poderá confirmar a presença de polígonos cadastrais com atributos; **não garante inscrição fiscal por endereço**.
 
 A descoberta pública segue limitada, sem download de bases completas, consulta de proprietário, bypass de autenticação ou publicação comercial.
+
+## GeoMogi — resultado real do geoserviço
+
+Execução do diagnóstico técnico: https://github.com/jotarcoder/ImobHunter-BR/actions/runs/41710907972
+
+- O JavaScript público do GeoMogi aponta para `https://geoserver1.mogidascruzes.sp.gov.br/geoserver/wms`.
+- `GetCapabilities` do WFS `https://geoserver1.mogidascruzes.sp.gov.br/geoserver/wfs` respondeu, mas **não anunciou FeatureTypes públicos consultáveis (0)**.
+- O WMS expôs **16 camadas**, principalmente mosaico e ortofotos de 2010/2016. **Não foi localizada camada de lotes/quadras fiscais nesse catálogo**.
+- **Conclusão:** o servidor geográfico encontrado não fornece, pelas rotas públicas testadas, SQL/inscrição, quadra, lote ou polígono fiscal por rua e número. A interface GeoMogi pode consultar outros serviços, que ainda exigem documentação/autorização de uso.
+- Não confundir uma imagem WMS com feição vetorial cadastrada; não retornar imóvel de vizinhança como sendo o imóvel pesquisado.
+
+## Condição para uma próxima integração fiscal
+
+**Mogi:** confirmar com a Secretaria de Finanças o contrato/licença aplicável ao dataset `CADASTRO IMOBILIÁRIO`, confirmar a semântica de `cadastro_id` e `nro_local`, obter edição atualizada para 2026 e autorização de reutilização comercial, além de testar vínculo por logradouro/número. Até lá, **não ativar download automático** nem preencher inscrição fiscal no dossiê.
+
+**Campinas:** procurar publicação pública documentada da camada cadastral com campos de inscrição e endereço; metadados e downloads de SHP exigem avaliação de cada camada. Serviços que exigem login continuam restritos a acessos autorizados.
+
+O PR contém apenas descobertas/testes read-only e **não alterou o roteamento municipal de produção**, as licenças ou os instaladores. Nenhum upload no R2.
