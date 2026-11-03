@@ -267,6 +267,48 @@ def main() -> None:
             if item["errors"]:
                 print(f'  errors={json.dumps(item["errors"], ensure_ascii=False)}')
             if case["city"] == "Juiz de Fora":
+                if not item["record_count"] and not item["errors"]:
+                    # Evidence-only: inspect a few safe public address fields;
+                    # this does not create a property match or return owners.
+                    from imobhunter.sources.mg_juiz_cadastre import JUIZ_INSCRIPTIONS
+
+                    for sample_kind, condition in (
+                        ("brasil_street", "Logradouro LIKE '%BRASIL%'"),
+                        ("small_public_sample", "1=1"),
+                    ):
+                        try:
+                            response = municipal_adapter._get(
+                                JUIZ_INSCRIPTIONS + "/query", {
+                                    "where": condition,
+                                    "outFields": "INSCID,Logradouro,Numero,loteid",
+                                    "returnGeometry": "false",
+                                    "f": "json",
+                                    "resultRecordCount": 8,
+                                },
+                            )
+                            payload = response.json()
+                            found = payload.get("features") if isinstance(payload, dict) else None
+                            if isinstance(found, list):
+                                sample = [{
+                                    "street": str((feat.get("attributes") or {}).get("Logradouro") or "")[:80],
+                                    "number": str((feat.get("attributes") or {}).get("Numero") or "")[:24],
+                                    "has_registration": bool((feat.get("attributes") or {}).get("INSCID")),
+                                    "has_loteid": (feat.get("attributes") or {}).get("loteid") is not None,
+                                } for feat in found[:5] if isinstance(feat, dict)]
+                                item["diagnostics"][sample_kind] = {
+                                    "candidate_count": len(found),
+                                    "sample": sample,
+                                }
+                                if found and sample_kind == "brasil_street":
+                                    break
+                            else:
+                                item["diagnostics"][sample_kind] = {
+                                    "error": payload.get("error") if isinstance(payload, dict) else "invalid_json",
+                                }
+                        except Exception as exc:  # noqa: BLE001 - diagnostics must not fail evidence runs.
+                            item["diagnostics"][sample_kind] = {
+                                "error_type": type(exc).__name__,
+                            }
                 print(
                     "  juiz_diagnostics="
                     + json.dumps(item["diagnostics"], ensure_ascii=False, default=str)[:3000]
