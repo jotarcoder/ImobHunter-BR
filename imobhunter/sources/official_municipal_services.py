@@ -14,6 +14,8 @@ import httpx
 from imobhunter.application.address_geocoding import CachedAddressGeocoder, GeocodingError
 from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest, SourceStatus
 from imobhunter.sources.base import SourceAdapter
+from imobhunter.sources.sp_abc_cadastre import jundiai as query_jundiai
+from imobhunter.sources.sp_abc_cadastre import santo_andre as query_santo_andre
 from imobhunter.sources.rs_caxias_cadastre import caxias_do_sul as query_caxias
 from imobhunter.sources.pe_recife_cadastre import recife_parcels as query_recife_esig
 from imobhunter.sources.mg_juiz_cadastre import juiz_de_fora as query_juiz
@@ -1050,6 +1052,12 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         elif city_key in {"recife", "recife (pe)"} and state_key in {"pe", "pernambuco"}:
             city, state, service_key = "Recife", "PE", "recife"
             configured = None
+        elif city_key == "santo andre" and state_key in {"sp", "sao paulo"}:
+            city, state, service_key = "Santo André", "SP", "santo_andre"
+            configured = None
+        elif city_key == "jundiai" and state_key in {"sp", "sao paulo"}:
+            city, state, service_key = "Jundiaí", "SP", "jundiai"
+            configured = None
         elif city_key == "joinville" and state_key in {"sc", "santa catarina"}:
             city, state, service_key = "Joinville", "SC", "joinville"
             configured = None
@@ -1073,6 +1081,18 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             city, state = configured["city"], configured["state"]
 
         try:
+            if service_key == "santo_andre":
+                records, diagnostic = query_santo_andre(request, self._get, self.source_id)
+                self.last_diagnostics[city] = diagnostic
+                self.last_errors.pop(city, None)
+                return records
+            if service_key == "jundiai":
+                records, diagnostic = query_jundiai(
+                    request, self._get, self._geocode, self.source_id
+                )
+                self.last_diagnostics[city] = diagnostic
+                self.last_errors.pop(city, None)
+                return records
             if service_key == "caxias":
                 records, diagnostic = query_caxias(request, self._get, self.source_id)
                 self.last_diagnostics[city] = diagnostic

@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from imobhunter.sources.geosampa import DEFAULT_WFS_URL
+from imobhunter.sources.sp_abc_cadastre import JUNDIAI_WFS, SANTO_ANDRE_WFS
 from imobhunter.sources.rs_caxias_cadastre import CAXIAS_LOTS, CAXIAS_BLOCKS, CAXIAS_MAP_LOTS, CAXIAS_MAP_BLOCKS
 from imobhunter.sources.pe_recife_cadastre import RECIFE_LOTS, RECIFE_LOTS_FEATURE
 from imobhunter.sources.mg_juiz_cadastre import JUIZ_INSCRIPTIONS, JUIZ_PARCELS, JUIZ_PARCELS_LEGACY
@@ -69,6 +70,22 @@ def municipal_endpoints() -> tuple[MunicipalEndpoint, ...]:
             "Descoberta por GetCapabilities", limits,
         ))
     result.extend((
+        MunicipalEndpoint(
+            "santo_andre_contexto", "Santo André", "SP",
+            "Santo André — SIGA (WFS geográfico público)",
+            SANTO_ANDRE_WFS, "wfs", "GetCapabilities / sem lote fiscal anônimo",
+            "GeoServer público responde, porém cadastro fiscal por endereço "
+            "não está disponível no WFS anônimo; consulta fiscal no SIGA.",
+            "context",
+        ),
+        MunicipalEndpoint(
+            "jundiai_lotes_publicos", "Jundiaí", "SP",
+            "Jundiaí — lotes cartográficos GeoJundiaí",
+            JUNDIAI_WFS, "wfs", "GeoJundiai:lotes_jund",
+            "Somente geometrias candidatas; não publicar como SQL/IPTU, quadra "
+            "ou lote individual do imóvel sem vínculo oficial por endereço.",
+            "context",
+        ),
         MunicipalEndpoint(
             "rio_territorial", "Rio de Janeiro", "RJ",
             "Rio de Janeiro — RJ (imóveis territoriais)", RIO_ARCGIS_LAYER,

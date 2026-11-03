@@ -31,6 +31,22 @@ CASES = [
         "adapter": "official_municipal",
     },
     {
+        "municipality": "Santo André/SP — Figueiras 100 (status do catálogo)",
+        "address": "Rua das Figueiras",
+        "number": "100",
+        "city": "Santo André",
+        "state": "SP",
+        "adapter": "official_municipal",
+    },
+    {
+        "municipality": "Jundiaí/SP — Nove de Julho 100 (candidatos cartográficos)",
+        "address": "Avenida Nove de Julho",
+        "number": "100",
+        "city": "Jundiaí",
+        "state": "SP",
+        "adapter": "official_municipal",
+    },
+    {
         "municipality": "Rio de Janeiro/RJ",
         "address": "Avenida Rio Branco",
         "number": "1",
@@ -284,6 +300,11 @@ def main() -> None:
                 )
             if item["errors"]:
                 print(f'  errors={json.dumps(item["errors"], ensure_ascii=False)}')
+            if case["city"] in {"Santo André", "Jundiaí"}:
+                print(
+                    "  sp_abc_diagnostics="
+                    + json.dumps(item["diagnostics"], ensure_ascii=False, default=str)[:2500]
+                )
             if case["city"] == "Recife":
                 if (
                     not item["record_count"]
