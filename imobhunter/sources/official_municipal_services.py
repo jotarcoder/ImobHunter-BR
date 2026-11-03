@@ -65,6 +65,13 @@ PORTO_ALEGRE_ARCGIS_LAYER = (
     "https://gis-smamus.portoalegre.rs.gov.br/server/rest/services/"
     "01_PUBLICACOES/dmweb_lotes_fiscais/MapServer/0"
 )
+# The SMF's public POA Consultas polygon layer is in Web Mercator (EPSG:3857),
+# unlike the DMWEB TM-POA local projection. NUMBLOCO is a fiscal lot key,
+# NOT an IPTU registration number.
+PORTO_ALEGRE_SMF_ARCGIS_LAYER = (
+    "https://gis-smamus.portoalegre.rs.gov.br/server/rest/services/"
+    "POA___Consultas_MIL1/MapServer/98"
+)
 CADASTRAL_TERMS = (
     "lote", "lotes", "parcela", "parcelas", "quadra", "imobiliario",
     "imobiliário", "iptu", "inscricao_imobiliaria", "inscrição imobiliária",
@@ -655,6 +662,16 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                     else type(exact_payload).__name__
                 )
 
+        if layer_url == PORTO_ALEGRE_ARCGIS_LAYER and not payload["features"]:
+            # DMWEB uses a local TM-POA projection. When both buffered and
+            # exact point queries are empty, use the separate official SMF
+            # polygon layer advertised in EPSG:3857. No nationwide fallback.
+            self.last_diagnostics[city]["fallback_official_layer"] = PORTO_ALEGRE_SMF_ARCGIS_LAYER
+            return self._arcgis_records(
+                city, state, latitude, longitude, request,
+                layer_url=PORTO_ALEGRE_SMF_ARCGIS_LAYER,
+            )
+
         self.last_diagnostics[city] = {
             **self.last_diagnostics.get(city, {}),
             "endpoint": layer_url,
@@ -686,16 +703,16 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             )
             is_goiania = layer_url == GOIANIA_ARCGIS_LAYER
             is_blumenau = layer_url == BLUMENAU_ARCGIS_LAYER
-            is_porto_alegre = layer_url == PORTO_ALEGRE_ARCGIS_LAYER
+            is_porto_alegre = layer_url in {PORTO_ALEGRE_ARCGIS_LAYER, PORTO_ALEGRE_SMF_ARCGIS_LAYER}
             cib = _first(properties, "cib", "cd_cib", "codigo_cib")
             block = _first(
-                properties, "nrquadra", "quadra", "cod_quadra", "lt_quadra", "qtd"
+                properties, "nrquadra", "quadra", "cod_quadra", "lt_quadra", "qtd", "quarteirao"
             )
             lot = _first(
-                properties, "nrlote", "numlote", "lote", "np", "chavegeo", "ch_lote", "lt_lote"
+                properties, "nrlote", "numlote", "lote", "np", "chavegeo", "ch_lote", "lt_lote", "numbloCO"
             )
             area = _area(_first(
-                properties, "areaterr", "area_cartografica", "area_m2", "area_descrita", "shape_area",
+                properties, "areaterr", "area_cartografica", "area_m2", "area_descrita", "area", "shape_area",
                 "shape__area", "iptu_area_terr",
             ))
             built_area = _area(_first(
@@ -715,7 +732,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 properties, "nrinscr", "inscricao_municipal", "inscricao_cadastral"
             ) if is_goiania else None
             parcel_identifier = (
-                _first(properties, "id_lotes", "parcel_identifier") if is_porto_alegre
+                _first(properties, "id_lotes", "numbloCO", "parcel_identifier") if is_porto_alegre
                 else _first(properties, "iq", "parcel_identifier") if is_blumenau
                 else None
             )
@@ -759,6 +776,11 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                     ),
                     "parcel_identifier": (
                         str(parcel_identifier) if parcel_identifier not in (None, "") else None
+                    ),
+                    "fiscal_lot_identifier": (
+                        str(_first(properties, "numbloCO"))
+                        if is_porto_alegre and _first(properties, "numbloCO") not in (None, "")
+                        else None
                     ),
                     "neighborhood": _first(properties, "nobairro", "bairro") if is_blumenau or is_porto_alegre else None,
                     "municipal_sector": (
