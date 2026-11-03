@@ -12,13 +12,13 @@ from imobhunter.sources.sp_bertioga_local import BertiogaLocalStore
 def polygon(lon=-46.10, lat=-23.82):
     return {
         "type": "MultiPolygon",
-        "coordinates": [[[[
+        "coordinates": [[[
             [lon - .0001, lat - .0001],
             [lon + .0001, lat - .0001],
             [lon + .0001, lat + .0001],
             [lon - .0001, lat + .0001],
             [lon - .0001, lat - .0001],
-        ]]]],
+        ]]],
     }
 
 
@@ -57,11 +57,11 @@ def zone():
         },
         "geometry": {
             "type": "MultiPolygon",
-            "coordinates": [[[[
+            "coordinates": [[[
                 [-46.101, -23.821], [-46.099, -23.821],
                 [-46.099, -23.819], [-46.101, -23.819],
                 [-46.101, -23.821],
-            ]]]],
+            ]]],
         },
     }
 
