@@ -10,6 +10,9 @@ from dataclasses import dataclass
 from imobhunter.sources.geosampa import DEFAULT_WFS_URL
 from imobhunter.sources.sp_mogi_cadastre import MOGI_DATASET_API, MOGI_DATASET_ID
 from imobhunter.sources.sp_abc_cadastre import JUNDIAI_WFS, SANTO_ANDRE_WFS
+from imobhunter.sources.sp_fiscal_lookup_portals import (
+    CAMPINAS_LOOKUP, CAMPINAS_INFO, SANTO_ANDRE_LOOKUP, JUNDIAI_LOOKUP,
+)
 from imobhunter.sources.rs_caxias_cadastre import CAXIAS_LOTS, CAXIAS_BLOCKS, CAXIAS_MAP_LOTS, CAXIAS_MAP_BLOCKS
 from imobhunter.sources.pe_recife_cadastre import RECIFE_LOTS, RECIFE_LOTS_FEATURE
 from imobhunter.sources.mg_juiz_cadastre import JUIZ_INSCRIPTIONS, JUIZ_PARCELS, JUIZ_PARCELS_LEGACY
@@ -95,6 +98,37 @@ def municipal_endpoints() -> tuple[MunicipalEndpoint, ...]:
             "Somente geometrias candidatas; não publicar como SQL/IPTU, quadra "
             "ou lote individual do imóvel sem vínculo oficial por endereço.",
             "context",
+        ),
+        MunicipalEndpoint(
+            "campinas_codigo_cartografico", "Campinas", "SP",
+            "Campinas — busca de código cartográfico por endereço",
+            CAMPINAS_LOOKUP, "website", "Zoneamento municipal",
+            "Consulta pública sem login por rua e número; quadra/lote dependem "
+            "da confirmação no portal. API automática não homologada.",
+            "reference",
+        ),
+        MunicipalEndpoint(
+            "campinas_fiscal_instrucoes", "Campinas", "SP",
+            "Campinas — instruções oficiais da Secretaria de Finanças",
+            CAMPINAS_INFO, "website", "Busca do código cartográfico",
+            "Instruções públicas; não é API fiscal automática.",
+            "reference",
+        ),
+        MunicipalEndpoint(
+            "santo_andre_fiscal_portal", "Santo André", "SP",
+            "Santo André — consulta oficial da classificação fiscal",
+            SANTO_ANDRE_LOOKUP, "website", "Busca setor/quadra/lote",
+            "Busque por logradouro oficial e número de porta; a classificação "
+            "fiscal não está exposta no WFS anônimo.",
+            "reference",
+        ),
+        MunicipalEndpoint(
+            "jundiai_fiscal_portal", "Jundiaí", "SP",
+            "Jundiaí — consulta oficial do contribuinte imobiliário",
+            JUNDIAI_LOOKUP, "website", "Cadastro Fiscal Imobiliário",
+            "Consulte endereço no portal; condomínios podem exigir "
+            "seleção de unidade. WFS de lotes é apenas cartográfico.",
+            "reference",
         ),
         MunicipalEndpoint(
             "rio_territorial", "Rio de Janeiro", "RJ",
