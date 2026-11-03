@@ -8,6 +8,7 @@ from PySide6.QtCore import QSettings, QObject, QRunnable, QThreadPool, Signal, Q
 from .application.municipal_endpoints import settings_endpoint_rows
 from .application.custom_municipal_sources import CustomMunicipalStore, infer_protocol
 from .sources.custom_municipal import reload_custom_sources
+from .sources.sp_bertioga_local import BertiogaLocalStore
 from .application.source_probe import EndpointProbe, is_official_service_url, probe_endpoint
 from .sources.geosampa import DEFAULT_WFS_URL
 from .ui_responsive import fit_window_to_screen
@@ -55,6 +56,29 @@ class MunicipalProbeWorker(QRunnable):
         self.signals.finished.emit(self.source["id"], result)
 
 
+class BertiogaImportSignals(QObject):
+    finished = Signal(object)
+
+
+class BertiogaImportWorker(QRunnable):
+    """Index the municipal GeoJSON trio off the Qt UI thread."""
+
+    def __init__(self, paths: tuple[Path, Path, Path]) -> None:
+        super().__init__()
+        self.paths = paths
+        self.signals = BertiogaImportSignals()
+
+    def run(self) -> None:
+        try:
+            counts = BertiogaLocalStore().import_files(*self.paths)
+            self.signals.finished.emit({"ok": True, "counts": counts})
+        except Exception as exc:  # noqa: BLE001 - keep Qt thread alive on invalid municipal files
+            self.signals.finished.emit({
+                "ok": False,
+                "message": f"{type(exc).__name__}: {str(exc)[:220]}",
+            })
+
+
 class SourceSettingsDialog(QDialog):
     """Configures local datasets and supported source endpoints for this user."""
 
@@ -62,6 +86,8 @@ class SourceSettingsDialog(QDialog):
         super().__init__(parent)
         self.registry = registry
         self.custom_store = custom_store or CustomMunicipalStore()
+        self.bertioga_store = BertiogaLocalStore()
+        self._bertioga_import_worker: BertiogaImportWorker | None = None
         self.settings = QSettings("ImobHunter", "ImobHunter-BR")
         self.path_fields: dict[str, QLineEdit] = {}
         self._municipal_probe_workers: dict[str, MunicipalProbeWorker] = {}
@@ -222,6 +248,34 @@ class SourceSettingsDialog(QDialog):
         custom_layout.addWidget(self._custom_list_host)
         form.addRow(custom_section)
         self._refresh_custom_sources()
+
+        # Bertioga downloads are three complementary layers, not three
+        # independent address APIs. One atomic import builds the local index.
+        bertioga_panel = QWidget()
+        bertioga_box = QVBoxLayout(bertioga_panel)
+        bertioga_box.setContentsMargins(2, 10, 2, 10)
+        bertioga_title = QLabel("Bertioga/SP — lotes, vias e zoneamento (offline)")
+        bertioga_title.setStyleSheet("font-size:16px;font-weight:800;color:#72f59e;")
+        bertioga_box.addWidget(bertioga_title)
+        bertioga_note = QLabel(
+            "Importe os três GeoJSON oficiais do Geoportal de Bertioga. "
+            "Os polígonos, inscrição do lote, quadra, lote, matrícula e zona "
+            "ficam indexados somente neste computador. Rua + emplacamento "
+            "produzem candidatos cartográficos, não SQL/IPTU confirmado."
+        )
+        bertioga_note.setWordWrap(True)
+        bertioga_note.setObjectName("muted")
+        bertioga_box.addWidget(bertioga_note)
+        self._bertioga_status = QLabel(self._bertioga_source_status())
+        self._bertioga_status.setWordWrap(True)
+        self._bertioga_status.setObjectName("muted")
+        bertioga_box.addWidget(self._bertioga_status)
+        self._bertioga_import_button = QPushButton(
+            "Importar 3 GeoJSON de Bertioga (lotes, eixos e zoneamento)"
+        )
+        self._bertioga_import_button.clicked.connect(self._start_bertioga_import)
+        bertioga_box.addWidget(self._bertioga_import_button)
+        form.addRow(bertioga_panel)
 
         sinter = registry.get("sinter_cib")
         self.sinter_url = QLineEdit(
@@ -608,6 +662,63 @@ class SourceSettingsDialog(QDialog):
             self, "Fonte municipal salva",
             f"{source.name} — {source.city}/{source.state} foi adicionada. "
             "Use Testar fonte e/ou Importar arquivo para habilitar os dados.",
+        )
+
+    def _bertioga_source_status(self) -> str:
+        try:
+            counts = self.bertioga_store.counts()
+        except (OSError, ValueError, TypeError) as exc:
+            return f"Base local de Bertioga com erro: {type(exc).__name__}."
+        if not counts:
+            return "Não instalada — selecione lotes.geojson, eixoLogradouro.geojson e zoneamento.geojson."
+        return (
+            f"Base local instalada: {counts['lotes']:,} lotes, "
+            f"{counts['logradouros']:,} eixos e {counts['zonas']:,} zonas. "
+            "Não depende do WFS online da prefeitura."
+        )
+
+    def _start_bertioga_import(self) -> None:
+        if self._bertioga_import_worker is not None:
+            return
+        selected = []
+        for label in (
+            "1/3 — lotes.geojson (inscrição, quadra, lote e matrícula)",
+            "2/3 — eixoLogradouro.geojson (ruas e CEP)",
+            "3/3 — zoneamento.geojson (zonas e usos)",
+        ):
+            file_path, _ = QFileDialog.getOpenFileName(
+                self, f"Bertioga — selecionar {label}", "",
+                "Arquivos GeoJSON (*.geojson *.json)",
+            )
+            if not file_path:
+                return
+            selected.append(Path(file_path))
+        self._bertioga_import_button.setEnabled(False)
+        self._bertioga_status.setText(
+            "Importando e indexando as 3 camadas em SQLite local… "
+            "A pesquisa de Bertioga continuará offline após concluir."
+        )
+        worker = BertiogaImportWorker(tuple(selected))
+        self._bertioga_import_worker = worker
+        worker.signals.finished.connect(self._finish_bertioga_import)
+        QThreadPool.globalInstance().start(worker)
+
+    def _finish_bertioga_import(self, result: object) -> None:
+        self._bertioga_import_worker = None
+        self._bertioga_import_button.setEnabled(True)
+        if not isinstance(result, dict) or not result.get("ok"):
+            message = result.get("message", "Erro de importação") if isinstance(result, dict) \
+                else "Erro ao importar os arquivos GeoJSON"
+            self._bertioga_status.setText("Falha: " + str(message))
+            QMessageBox.warning(self, "Bertioga — importação", str(message))
+            return
+        self._bertioga_status.setText(self._bertioga_source_status())
+        QMessageBox.information(
+            self, "Bertioga — camadas locais",
+            "As 3 camadas foram indexadas neste computador. "
+            "O ImobHunter usará esse pacote na próxima pesquisa por "
+            "endereço em Bertioga/SP, preservando as inscrições "
+            "como dados de lotes candidatos até confirmação de vínculo fiscal.",
         )
 
     def _import_custom_file(self, source_id: str) -> None:
