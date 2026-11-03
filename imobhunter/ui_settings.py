@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 from urllib.parse import urlparse
@@ -667,7 +668,7 @@ class SourceSettingsDialog(QDialog):
     def _bertioga_source_status(self) -> str:
         try:
             counts = self.bertioga_store.counts()
-        except (OSError, ValueError, TypeError) as exc:
+        except (OSError, ValueError, TypeError, sqlite3.Error) as exc:
             return f"Base local de Bertioga com erro: {type(exc).__name__}."
         if not counts:
             return "Não instalada — selecione lotes.geojson, eixoLogradouro.geojson e zoneamento.geojson."

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import math
 import unicodedata
 import xml.etree.ElementTree as ET
@@ -1219,6 +1220,6 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 )
             self.last_errors.pop(city, None)
             return records
-        except (GeocodingError, httpx.HTTPError, ValueError, TypeError, RuntimeError, json.JSONDecodeError) as exc:
+        except (GeocodingError, httpx.HTTPError, ValueError, TypeError, RuntimeError, json.JSONDecodeError, sqlite3.Error) as exc:
             self.last_errors[city] = f"{type(exc).__name__}: {str(exc)[:180]}"
             return []

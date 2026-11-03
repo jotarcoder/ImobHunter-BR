@@ -16,7 +16,9 @@ import os
 import re
 import sqlite3
 import tempfile
+from contextlib import closing
 from datetime import UTC, datetime
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
@@ -134,7 +136,7 @@ def _distance_to_line(lon: float, lat: float, geom: Any) -> float:
     scale_x = 111_320.0 * math.cos(math.radians(lat))
     scale_y = 111_320.0
     minimum = float("inf")
-    for a, b in zip(coordinates, coordinates[1:]):
+    for a, b in pairwise(coordinates):
         if not (isinstance(a, list) and isinstance(b, list)
                 and len(a) >= 2 and len(b) >= 2):
             continue
@@ -174,9 +176,13 @@ def _point_in_geometry(lon: float, lat: float, geometry: Any) -> bool:
     if not isinstance(polys, list):
         return False
     for polygon in polys:
-        if isinstance(polygon, list) and polygon and _point_in_ring(lon, lat, polygon[0]):
-            if not any(_point_in_ring(lon, lat, hole) for hole in polygon[1:]):
-                return True
+        if (
+            isinstance(polygon, list)
+            and polygon
+            and _point_in_ring(lon, lat, polygon[0])
+            and not any(_point_in_ring(lon, lat, hole) for hole in polygon[1:])
+        ):
+            return True
     return False
 
 
@@ -193,7 +199,7 @@ class BertiogaLocalStore:
     def counts(self) -> dict[str, int]:
         if not self.installed():
             return {}
-        with sqlite3.connect(self.database) as db:
+        with closing(sqlite3.connect(self.database)) as db:
             return {
                 "lotes": db.execute("SELECT COUNT(*) FROM lots").fetchone()[0],
                 "logradouros": db.execute("SELECT COUNT(*) FROM roads").fetchone()[0],
@@ -211,7 +217,7 @@ class BertiogaLocalStore:
         os.close(fd)
         tmp = Path(name)
         try:
-            with sqlite3.connect(tmp) as db:
+            with closing(sqlite3.connect(tmp)) as db:
                 db.executescript(SCHEMA)
                 counts: dict[str, int] = {}
                 for kind, file_path in zip(("lotes", "eixos", "zoneamento"), paths):
