@@ -512,3 +512,50 @@ def test_custom_municipal_source_renders_and_updates_in_settings(tmp_path) -> No
         dialog.close()
         dialog.deleteLater()
         app.processEvents()
+
+
+def test_bertioga_candidate_details_on_native_map(monkeypatch) -> None:
+    """Public parcel attributes remain explicitly tied to a candidate, not address SQL."""
+    pytest.importorskip("PySide6")
+    import json
+
+    from imobhunter.domain.models import PropertyRecord
+    from imobhunter.ui_cadastral_map import CadastralMapWidget
+
+    monkeypatch.setattr(CadastralMapWidget, "_request_visible_tiles", lambda self: None)
+    geometry = {
+        "type": "MultiPolygon",
+        "coordinates": [[[[-46.10, -23.82], [-46.099, -23.82],
+                          [-46.099, -23.819], [-46.10, -23.82]]]],
+    }
+    record = PropertyRecord(
+        city="Bertioga", state="SP", address="Rua Exemplo, 177",
+        block="4", lot="6",
+        attributes={
+            "geometry_geojson": json.dumps(geometry),
+            "cadastre_match": "spatial_candidate_only",
+            "inscricao_cadastral_do_lote_candidato": "16.004.022.000",
+            "matricula_informada_no_lote": "2/55391",
+            "zoneamento_candidato": [{"code": "ZM1", "label": "ZM1 - Zona Mista"}],
+            "sql": None, "iptu_registration_number": None,
+        },
+    )
+    app = _app()
+    widget = CadastralMapWidget([record])
+    widget.show()
+    app.processEvents()
+    try:
+        assert widget._target is not None
+        assert widget.features[0].classification == "candidate"
+        details = widget.details.toPlainText()
+        assert "Inscrição publicada no lote candidato" in details
+        assert "16.004.022.000" in details
+        assert "Matrícula publicada no lote candidato" in details
+        assert "2/55391" in details
+        assert "Zoneamento indicativo do lote" in details
+        assert "ZM1 - Zona Mista" in details
+        assert "Não fornecido nesta fonte" in details
+        assert "Número predial confirmado" not in details
+    finally:
+        widget.close()
+        app.processEvents()

@@ -507,6 +507,23 @@ class CadastralMapWidget(QWidget):
         sources = ", ".join(sorted({p.source_id for p in rec.provenance})) or str(
             rec.attributes.get("source") or "Não informada"
         )
+        candidate_fields: tuple[tuple[str, object], ...] = ()
+        if rec.attributes.get("cadastre_match") == "spatial_candidate_only":
+            raw_zones = rec.attributes.get("zoneamento_candidato")
+            zones = raw_zones if isinstance(raw_zones, list) else []
+            zone_labels = [
+                str(zone.get("label") or zone.get("code"))
+                for zone in zones
+                if isinstance(zone, dict) and (zone.get("label") or zone.get("code"))
+            ]
+            candidate_fields = (
+                ("Inscrição publicada no lote candidato",
+                 rec.attributes.get("inscricao_cadastral_do_lote_candidato") or "Não informada"),
+                ("Matrícula publicada no lote candidato",
+                 rec.attributes.get("matricula_informada_no_lote") or "Não informada"),
+                ("Zoneamento indicativo do lote",
+                 "; ".join(zone_labels) or "Não informado"),
+            )
         fields = (
             ("Situação", category),
             ("Geometria", "Polígono cadastral retornado pela fonte"
@@ -520,6 +537,7 @@ class CadastralMapWidget(QWidget):
              else "Não informada"),
             ("CIB", rec.cib or "Não informado"),
             ("Matrícula", rec.registry_number or "Não informada"),
+            *candidate_fields,
             ("Fonte(s)", sources),
         )
         self._details_text = "\n".join(f"{label}: {value}" for label, value in fields)
