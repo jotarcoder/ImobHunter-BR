@@ -75,8 +75,8 @@ def _local_row(
     if not isinstance(properties, dict):
         return None
     f = _normalized_fields(properties)
-    if (canonical_text(source.city) == "mogi das cruzes"
-            and canonical_text(source.state) == "sp"
+    if (canonical_text(source.city) == "MOGI DAS CRUZES"
+            and canonical_text(source.state) == "SP"
             and {"cadastro_id", "nro_local", "logradouro"}.issubset(f)):
         # The 2024 official municipal CSV is historical and may include
         # monetary/tributary columns. Keep only a safe cadastral projection.

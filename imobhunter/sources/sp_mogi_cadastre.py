@@ -97,7 +97,7 @@ def mogi_historical_file_record(
     year_keys = [
         match.group(1)
         for column in row
-        for match in [re.fullmatch(r"situacao\((20[0-2][0-9])\)", str(column).casefold())]
+        for match in [re.fullmatch(r"situacao(?:\(|_)(20[0-2][0-9])\)?", str(column).casefold())]
         if match is not None
     ]
     source_year = int(year_keys[0]) if len(year_keys) == 1 else None

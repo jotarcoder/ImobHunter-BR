@@ -39,6 +39,32 @@ def test_mogi_exact_historical_address_projection_drops_pii_and_money():
     assert record.owner_name is None
 
 
+def test_mogi_authorized_local_adapter_uses_sanitized_historical_projection():
+    from imobhunter.application.custom_municipal_sources import CustomMunicipalSource
+    from imobhunter.sources.custom_municipal import _local_row
+
+    source = CustomMunicipalSource(
+        id="a" * 32, city="Mogi das Cruzes", state="SP",
+        name="Cadastro histórico 2024", file_name="arquivo.csv",
+    )
+    row = {
+        "cadastro_id": "012345", "logradouro": "RUA DOUTOR DEODATO WERTHEIMER",
+        "nro_local": 100, "area_terreno": 290,
+        "situacao(2024)": "Regular", "cpf": "SENSIVEL",
+        "proprietario": "PESSOA PRIVADA", "valor_venal": 999999,
+    }
+    result = _local_row(row, _request(), source)
+    assert result is not None
+    assert result.attributes["historical_cadastro_id"] == "012345"
+    assert result.attributes["source_year"] == 2024
+    assert result.attributes["source_year_status"] == "column_verified"
+    assert result.attributes["sql"] is None
+    assert result.block is None and result.lot is None
+    assert "PESSOA PRIVADA" not in str(result)
+    assert "SENSIVEL" not in str(result)
+    assert "999999" not in str(result)
+
+
 def test_mogi_historical_row_without_year_marker_must_not_assume_2024():
     row = {
         "logradouro": "Rua Doutor Deodato Wertheimer",
