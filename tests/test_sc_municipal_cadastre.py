@@ -205,6 +205,84 @@ def test_sao_bento_multiple_registrations_not_assigned_to_wrong_lot(tmp_path):
     assert records[0].block == "2" and records[0].lot == "3"
 
 
+def test_sao_bento_discard_placeholder_without_lot_or_geometry(tmp_path):
+    def handler(request):
+        if request.url.path.endswith("/11/query"):
+            return httpx.Response(200, json={"features": [
+                {"attributes": {
+                    "geolot": "VALID", "tipo_endereco": 1,
+                    "descricao_logradouro": "RUA JORGE LACERDA", "numero": "75",
+                    "quadra": "0059", "lote": "0407",
+                }},
+                {"attributes": {
+                    "geolot": "PLACEHOLDER", "tipo_endereco": 1,
+                    "descricao_logradouro": "RUA JORGE LACERDA", "numero": "75",
+                }},
+            ]})
+        if request.url.path.endswith("/0/query"):
+            return httpx.Response(200, json={"features": [{
+                "attributes": {"geolot": "VALID", "quadra": "0059", "lote": "0407"},
+                "geometry": polygon(),
+            }]})
+        return httpx.Response(200, json={"features": [
+            {"attributes": {
+                "geolot": "VALID", "tipo_cadastro": 1,
+                "inscricao_imobiliaria": "01.01.0059.0407",
+            }},
+            {"attributes": {
+                "geolot": "PLACEHOLDER", "tipo_cadastro": 1,
+                "inscricao_imobiliaria": "00.00.0000.000",
+                "area_terreno": 0.01,
+            }},
+        ]})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = OfficialMunicipalServicesAdapter(cache_dir=tmp_path, client=client)
+    records = adapter.search(SearchRequest(
+        address="Rua Jorge Lacerda", number="75",
+        city="São Bento do Sul", state="SC",
+    ))
+    client.close()
+    assert len(records) == 1
+    assert records[0].lot == "0407"
+    assert records[0].block == "0059"
+    assert records[0].attributes["iptu_registration_number"] == "01.01.0059.0407"
+    assert adapter.last_diagnostics["São Bento do Sul"]["discarded_unverified_parcels"] == 1
+
+
+def test_sao_bento_zero_inscription_not_treated_as_real_registration(tmp_path):
+    def handler(request):
+        if request.url.path.endswith("/11/query"):
+            return httpx.Response(200, json={"features": [{
+                "attributes": {
+                    "geolot": "LOT", "tipo_endereco": 1,
+                    "descricao_logradouro": "RUA JORGE LACERDA", "numero": "75",
+                    "quadra": "0059", "lote": "0407",
+                },
+            }]})
+        if request.url.path.endswith("/0/query"):
+            return httpx.Response(200, json={"features": [{
+                "attributes": {"geolot": "LOT"},
+                "geometry": polygon(),
+            }]})
+        return httpx.Response(200, json={"features": [{
+            "attributes": {
+                "geolot": "LOT", "tipo_cadastro": 1,
+                "inscricao_imobiliaria": "00.00.0000.000",
+            },
+        }]})
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = OfficialMunicipalServicesAdapter(cache_dir=tmp_path, client=client)
+    records = adapter.search(SearchRequest(
+        address="Rua Jorge Lacerda", number="75",
+        city="São Bento do Sul", state="SC",
+    ))
+    client.close()
+    assert len(records) == 1
+    assert records[0].attributes["iptu_registration_number"] is None
+    assert records[0].attributes["iptu_status"] == "not_provided_or_ambiguous"
+
+
 def test_sao_bento_does_not_treat_correspondence_address_as_parcel_location(tmp_path):
     calls = []
 

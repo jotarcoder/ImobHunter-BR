@@ -338,6 +338,7 @@ def sao_bento(request: SearchRequest, fetch: Fetch, source_id: str) -> tuple[lis
             areas[key] = area
 
     results: list[PropertyRecord] = []
+    discarded_unverified = 0
     for geolot, address_row in matched.items():
         feature = by_lot.get(geolot, {})
         lot_row = feature.get("attributes") or {}
@@ -346,6 +347,15 @@ def sao_bento(request: SearchRequest, fetch: Fetch, source_id: str) -> tuple[lis
         inscription = next(iter(values)) if len(values) == 1 else None
         block = _field(address_row, "quadra") or _field(lot_row, "quadra")
         lot = _field(address_row, "lote") or _field(lot_row, "lote")
+        # Some public rows are correspondence/placeholders rather than actual
+        # fiscal parcels. An exact address row alone is not cadastral proof.
+        # Keep a parcel with either official geometry or a complete quadra/lote.
+        if geometry is None and (block is None or lot is None):
+            discarded_unverified += 1
+            continue
+        if inscription and not any(char in "123456789" for char in inscription):
+            # All-zero registrations are placeholders, not a usable IPTU code.
+            inscription = None
         street = _field(address_row, "descricao_logradouro")
         results.append(PropertyRecord(
             property_id=str(_field(lot_row, "objectid") or geolot),
@@ -380,6 +390,7 @@ def sao_bento(request: SearchRequest, fetch: Fetch, source_id: str) -> tuple[lis
         ))
     diagnostic.update({
         "exact_match_count": len(results),
+        "discarded_unverified_parcels": discarded_unverified,
         "polygon_count": sum(bool(record.attributes["geometry_geojson"]) for record in results),
         "registration_count": sum(bool(record.attributes["iptu_registration_number"]) for record in results),
         "result": "exact_address_records" if results else "no_exact_address_match",
