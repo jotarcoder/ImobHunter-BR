@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+from imobhunter.application.cadastral_map import classification, prepare_features
 from imobhunter.domain.models import SearchRequest
 from imobhunter.sources.sp_bertioga_local import BertiogaLocalStore
 
@@ -109,7 +110,9 @@ def test_three_layer_import_is_persistent_and_searchable_offline(tmp_path):
     assert rec.attributes["sql"] is None
     assert rec.attributes["municipal_registration_number"] is None
     assert rec.attributes["iptu_registration_number"] is None
-    assert rec.attributes["cadastre_match"] == "spatial_candidate_not_address_confirmed"
+    assert rec.attributes["cadastre_match"] == "spatial_candidate_only"
+    assert classification(rec) == "candidate"
+    assert prepare_features(rows)[0].has_official_polygon
     assert rec.area_m2 is None  # No official cadastral area exists in the source
     assert rec.provenance[0].confidence < 0.5
     assert diag["matching_road_segments"] == 1
