@@ -284,6 +284,51 @@ def main() -> None:
                 )
             if item["errors"]:
                 print(f'  errors={json.dumps(item["errors"], ensure_ascii=False)}')
+            if case["city"] == "Recife":
+                if not item["record_count"] and not item["errors"]:
+                    from imobhunter.sources.pe_recife_cadastre import RECIFE_LOTS
+
+                    for sample_kind, condition in (
+                        ("conde_street", "NMENDCOMP LIKE '%CONDE%'"),
+                        ("public_lots_sample", "1=1"),
+                    ):
+                        try:
+                            response = municipal_adapter._get(
+                                RECIFE_LOTS + "/query", {
+                                    "where": condition,
+                                    "outFields": "OBJECTID,NMENDCOMP,ENDNUMERO,SEQIMOVEL,QUADRA,LOTE",
+                                    "returnGeometry": "false",
+                                    "f": "json",
+                                    "resultRecordCount": 5,
+                                },
+                            )
+                            payload = response.json()
+                            found = payload.get("features") if isinstance(payload, dict) else None
+                            if isinstance(found, list):
+                                item["diagnostics"][sample_kind] = {
+                                    "candidate_count": len(found),
+                                    "samples": [{
+                                        "street": str((row.get("attributes") or {}).get("NMENDCOMP") or "")[:90],
+                                        "number": str((row.get("attributes") or {}).get("ENDNUMERO") or "")[:20],
+                                        "has_sequence": bool((row.get("attributes") or {}).get("SEQIMOVEL")),
+                                        "has_block": (row.get("attributes") or {}).get("QUADRA") is not None,
+                                        "has_lot": (row.get("attributes") or {}).get("LOTE") is not None,
+                                    } for row in found[:5] if isinstance(row, dict)],
+                                }
+                                if found:
+                                    break
+                            else:
+                                item["diagnostics"][sample_kind] = {
+                                    "error": str(payload.get("error") if isinstance(payload, dict) else "invalid_json")[:250],
+                                }
+                        except Exception as exc:  # noqa: BLE001 - diagnosis must never cancel full evidence
+                            item["diagnostics"][sample_kind] = {
+                                "error_type": type(exc).__name__,
+                            }
+                print(
+                    "  recife_diagnostics="
+                    + json.dumps(item["diagnostics"], ensure_ascii=False, default=str)[:3500]
+                )
             if case["city"] == "Caxias do Sul":
                 print(
                     "  caxias_diagnostics="
