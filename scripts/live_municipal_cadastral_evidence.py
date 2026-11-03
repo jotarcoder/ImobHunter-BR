@@ -119,6 +119,14 @@ CASES = [
         "adapter": "official_municipal",
     },
     {
+        "municipality": "Juiz de Fora/MG — Avenida Brasil 1512",
+        "address": "Avenida Brasil",
+        "number": "1512",
+        "city": "Juiz de Fora",
+        "state": "MG",
+        "adapter": "official_municipal",
+    },
+    {
         "municipality": "Recife/PE",
         "address": "Avenida Conde da Boa Vista",
         "number": "100",

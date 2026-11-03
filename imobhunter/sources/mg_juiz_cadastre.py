@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
+
+import httpx
 from typing import Any
 
 from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest
@@ -23,6 +25,10 @@ JUIZ_INSCRIPTIONS = (
 JUIZ_PARCELS = (
     "https://sisurb.pjf.mg.gov.br/server/rest/services/"
     "SISURB_cadastro/Cadastro_Recadastramento_2026_08_10/MapServer/0"
+)
+JUIZ_PARCELS_LEGACY = (
+    "https://sisurb.pjf.mg.gov.br/server/rest/services/"
+    "Cadastro_lotes_s2000/FeatureServer/0"
 )
 Fetch = Callable[[str, dict[str, Any]], Any]
 
@@ -86,19 +92,50 @@ def juiz_de_fora(
     # Only numeric loteids supplied by confirmed municipal address rows.
     keys = sorted({key for _feature, _inscription, key in matched if key is not None})
     polygons: dict[str, list[dict[str, Any]]] = {}
+    legacy: dict[str, list[dict[str, Any]]] = {}
     if keys:
-        features = _query(
-            fetch, JUIZ_PARCELS, "loteid IN (" + ", ".join(keys) + ")",
-            geometry=True,
-        )
+        ids_where = "loteid IN (" + ", ".join(keys) + ")"
+        try:
+            features = _query(fetch, JUIZ_PARCELS, ids_where, geometry=True)
+        except (httpx.HTTPError, ValueError, TypeError, RuntimeError) as exc:
+            # The address inscription is already verified; optional parcel
+            # enrichment must never erase it when a layer is unavailable.
+            diagnostic["parcel_source_error"] = type(exc).__name__
+            features = []
         for feature in features:
             attrs = feature.get("attributes") or {}
             if not isinstance(attrs, dict):
                 continue
             key = _lot_key(_field(attrs, "loteid"))
-            if key in keys and _geometry(feature)[0]:
+            if key in keys:
                 polygons.setdefault(key, []).append(feature)
         diagnostic["parcel_candidates"] = len(features)
+
+        # Older public, non-personal lot layer supplies numero_lote/quadra.
+        # Use the same official loteid; never infer from spatial proximity.
+        needs_legacy = any(
+            not (
+                len(polygons.get(key, [])) == 1
+                and _field(polygons[key][0].get("attributes") or {}, "quadra") is not None
+                and _field(polygons[key][0].get("attributes") or {}, "numero_lot") is not None
+            )
+            for key in keys
+        )
+        if needs_legacy:
+            try:
+                old_features = _query(
+                    fetch, JUIZ_PARCELS_LEGACY, ids_where, geometry=True,
+                )
+                for feature in old_features:
+                    attrs = feature.get("attributes") or {}
+                    if not isinstance(attrs, dict):
+                        continue
+                    key = _lot_key(_field(attrs, "loteid"))
+                    if key in keys:
+                        legacy.setdefault(key, []).append(feature)
+                diagnostic["legacy_parcel_candidates"] = len(old_features)
+            except (httpx.HTTPError, ValueError, TypeError, RuntimeError) as exc:
+                diagnostic["legacy_parcel_error"] = type(exc).__name__
     else:
         diagnostic["parcel_candidates"] = 0
 
@@ -106,12 +143,30 @@ def juiz_de_fora(
     for feature, inscription, lot_id in matched:
         attrs = feature["attributes"]
         parcel_matches = polygons.get(lot_id, []) if lot_id is not None else []
-        # More than one polygon for the same ID is ambiguous: no forced quadra/lot.
+        legacy_matches = legacy.get(lot_id, []) if lot_id is not None else []
+        # Never pick the first polygon if a loteid appears multiple times.
         parcel = parcel_matches[0] if len(parcel_matches) == 1 else {}
+        older = legacy_matches[0] if len(legacy_matches) == 1 else {}
         parcel_props = parcel.get("attributes") or {}
+        older_props = older.get("attributes") or {}
         geom, lat, lon = _geometry(parcel)
-        block = _field(parcel_props, "quadra")
-        lot = _field(parcel_props, "numero_lot")
+        if geom is None:
+            geom, lat, lon = _geometry(older)
+        current_block = _field(parcel_props, "quadra")
+        old_block = _field(older_props, "quadra")
+        current_lot = _field(parcel_props, "numero_lot")
+        old_lot = _field(older_props, "numero_lote")
+        # If public layers disagree, expose no misleading block/lot.
+        block = (
+            None if current_block is not None and old_block is not None
+            and str(current_block) != str(old_block)
+            else current_block if current_block is not None else old_block
+        )
+        lot = (
+            None if current_lot is not None and old_lot is not None
+            and str(current_lot) != str(old_lot)
+            else current_lot if current_lot is not None else old_lot
+        )
         official_street = _field(attrs, "Logradouro")
         official_number = _field(attrs, "Numero")
         source_fields = {
@@ -135,6 +190,7 @@ def juiz_de_fora(
                 "official_source": "Prefeitura de Juiz de Fora — SISURB Cadastro",
                 "service_url": JUIZ_INSCRIPTIONS,
                 "parcel_source_url": JUIZ_PARCELS,
+                "parcel_fallback_source_url": JUIZ_PARCELS_LEGACY if older else None,
                 "service_type": "ArcGIS REST",
                 "source_properties": source_fields,
                 "geometry_geojson": geom,
@@ -145,9 +201,17 @@ def juiz_de_fora(
                 "sql_status": "not_applicable_sp_sql",
                 "iptu_status": "provided_by_layer",
                 "parcel_join_status": (
-                    "unique_loteid_match" if len(parcel_matches) == 1
-                    else "ambiguous_loteid" if parcel_matches
+                    "unique_loteid_match"
+                    if len(parcel_matches) == 1 or len(legacy_matches) == 1
+                    else "ambiguous_loteid"
+                    if parcel_matches or legacy_matches
                     else "parcel_not_returned"
+                ),
+                "block_lot_source": (
+                    JUIZ_PARCELS_LEGACY
+                    if older and (current_block is None or current_lot is None)
+                    else JUIZ_PARCELS if block is not None or lot is not None
+                    else None
                 ),
                 "cadastre_match": "exact_address_match",
                 "owner_status": "not_requested",

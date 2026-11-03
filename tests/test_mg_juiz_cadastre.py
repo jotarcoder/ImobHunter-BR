@@ -5,7 +5,7 @@ import httpx
 
 from imobhunter.domain.models import SearchRequest
 from imobhunter.sources.official_municipal_services import OfficialMunicipalServicesAdapter
-from imobhunter.sources.mg_juiz_cadastre import JUIZ_INSCRIPTIONS, JUIZ_PARCELS
+from imobhunter.sources.mg_juiz_cadastre import JUIZ_INSCRIPTIONS, JUIZ_PARCELS, JUIZ_PARCELS_LEGACY
 
 
 def polygon():
@@ -112,6 +112,73 @@ def test_juiz_ambiguous_polygon_does_not_assign_first(tmp_path):
     assert records[0].attributes["parcel_join_status"] == "ambiguous_loteid"
 
 
+def test_juiz_older_official_parcel_layer_fills_only_missing_block_lot(tmp_path):
+    calls = []
+    def handler(request):
+        calls.append(request.url.path)
+        if "/inscricoes_imobiliarias_geocentro/" in request.url.path:
+            return httpx.Response(200, json={"features": [{
+                "attributes": {
+                    "INSCID": "034101002", "Logradouro": "BRASIL",
+                    "Numero": "2680", "loteid": 391, "Area_Lote": 210,
+                },
+            }]})
+        if "/Cadastro_Recadastramento_2026_08_10/" in request.url.path:
+            return httpx.Response(200, json={"features": [{
+                "attributes": {"loteid": 391, "quadra": None, "numero_lot": None},
+                "geometry": polygon(),
+            }]})
+        assert request.url.path.endswith("/Cadastro_lotes_s2000/FeatureServer/0/query")
+        assert dict(request.url.params)["where"] == "loteid IN (391)"
+        return httpx.Response(200, json={"features": [{
+            "attributes": {"loteid": 391, "quadra": "055", "numero_lote": "008"},
+            "geometry": polygon(),
+        }]})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = OfficialMunicipalServicesAdapter(cache_dir=tmp_path, client=client)
+    records = adapter.search(SearchRequest(
+        address="Avenida Brasil", number="2680", city="Juiz de Fora", state="MG",
+    ))
+    client.close()
+    assert len(calls) == 3
+    assert len(records) == 1
+    assert records[0].block == "055"
+    assert records[0].lot == "008"
+    assert records[0].attributes["iptu_registration_number"] == "034101002"
+    assert records[0].attributes["block_lot_source"] == JUIZ_PARCELS_LEGACY
+    assert records[0].attributes["parcel_identifier"] == "391"
+    assert json.loads(records[0].attributes["geometry_geojson"])["type"] == "Polygon"
+
+
+def test_juiz_legacy_parcel_timeout_preserves_verified_inscription(tmp_path):
+    def handler(request):
+        if "/inscricoes_imobiliarias_geocentro/" in request.url.path:
+            return httpx.Response(200, json={"features": [{
+                "attributes": {
+                    "INSCID": "REAL-123", "Logradouro": "BRASIL",
+                    "Numero": "2680", "loteid": 391,
+                },
+            }]})
+        if "/Cadastro_Recadastramento_2026_08_10/" in request.url.path:
+            return httpx.Response(200, json={"features": [{
+                "attributes": {"loteid": 391, "quadra": None, "numero_lot": None},
+                "geometry": polygon(),
+            }]})
+        raise httpx.ConnectTimeout("legacy unavailable")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = OfficialMunicipalServicesAdapter(cache_dir=tmp_path, client=client)
+    records = adapter.search(SearchRequest(
+        address="Avenida Brasil", number="2680", city="Juiz de Fora", state="MG",
+    ))
+    client.close()
+    assert len(records) == 1
+    assert records[0].block is None and records[0].lot is None
+    assert records[0].attributes["iptu_registration_number"] == "REAL-123"
+    assert adapter.last_diagnostics["Juiz de Fora"]["legacy_parcel_error"] == "ConnectTimeout"
+
+
 def test_juiz_missing_number_and_sql_injection_rejected_without_calls(tmp_path):
     def handler(_request):
         raise AssertionError("Should never make an unbounded request")
@@ -138,3 +205,4 @@ def test_juiz_wrong_state_never_reaches_juiz_endpoint(tmp_path):
 def test_juiz_endpoints_are_official_https():
     assert JUIZ_INSCRIPTIONS.startswith("https://sisurb.pjf.mg.gov.br/")
     assert JUIZ_PARCELS.startswith("https://sisurb.pjf.mg.gov.br/")
+    assert JUIZ_PARCELS_LEGACY.startswith("https://sisurb.pjf.mg.gov.br/")
