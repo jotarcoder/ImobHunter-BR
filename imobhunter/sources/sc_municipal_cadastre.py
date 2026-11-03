@@ -144,6 +144,11 @@ def joinville(request: SearchRequest, fetch: Fetch, source_id: str) -> tuple[lis
     diagnostic["first_geometry_keys"] = sorted(
         (candidates[0].get("geometry") or {}) if candidates else {}
     )
+    if candidates:
+        raw = candidates[0].get("geometry") or {}
+        rings = raw.get("rings") or raw.get("curveRings")
+        if isinstance(rings, list) and rings and isinstance(rings[0], list):
+            diagnostic["raw_first_ring_point"] = str(rings[0][0])[:120] if rings[0] else None
     if candidates and not any(_geometry(candidate)[0] for candidate in candidates):
         # MapServer's ESRI JSON may report UTM rings despite outSR=4326,
         # or omit rings altogether. GeoJSON is a documented output format
@@ -157,6 +162,14 @@ def joinville(request: SearchRequest, fetch: Fetch, source_id: str) -> tuple[lis
             payload = response.json()
             features = payload.get("features") if isinstance(payload, dict) else None
             if isinstance(features, list):
+                diagnostic["geojson_first_geometry_type"] = (
+                    (features[0].get("geometry") or {}).get("type")
+                    if features and isinstance(features[0], dict) else None
+                )
+                diagnostic["geojson_first_properties_keys"] = sorted(
+                    (features[0].get("properties") or {})
+                    if features and isinstance(features[0], dict) else {}
+                )[:20]
                 by_inscription = {
                     str(_field(feature.get("properties") or {}, "iq")): feature
                     for feature in features

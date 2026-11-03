@@ -250,6 +250,11 @@ def main() -> None:
                 )
             if item["errors"]:
                 print(f'  errors={json.dumps(item["errors"], ensure_ascii=False)}')
+            if case["city"] in {"Joinville", "São Bento do Sul"}:
+                print(
+                    "  sc_diagnostics="
+                    + json.dumps(item["diagnostics"], ensure_ascii=False, default=str)[:3000]
+                )
             if case["city"] == "Porto Alegre":
                 print(
                     "  porto_alegre_diagnostics="
