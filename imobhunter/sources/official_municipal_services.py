@@ -677,6 +677,10 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             "endpoint": layer_url,
             "geocoded_address": self.last_geocoded.get(city),
             "feature_count": len(payload["features"]),
+            "geometry_keys": sorted({
+                str(key) for feature in payload["features"][:3]
+                for key in ((feature.get("geometry") or {}).keys())
+            }),
             "fields": sorted({
                 str(key)
                 for feature in payload["features"][:1]
@@ -799,6 +803,26 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                     source_id=self.source_id, confidence=0.8, reference=str(sql or feature.get("id") or ""),
                 ),),
             ))
+        if layer_url == PORTO_ALEGRE_ARCGIS_LAYER and not records:
+            # The original DMWEB endpoint may return attributes for dozens of
+            # features but omit usable polygon geometries (e.g. unsupported
+            # local projection or curveRings). Do not discard them silently:
+            # query the separately published official SMF polygon layer.
+            self.last_diagnostics[city]["primary_unusable_features"] = len(payload["features"])
+            return self._arcgis_records(
+                city, state, latitude, longitude, request,
+                layer_url=PORTO_ALEGRE_SMF_ARCGIS_LAYER,
+            )
+        if layer_url == PORTO_ALEGRE_SMF_ARCGIS_LAYER and not records:
+            self.last_diagnostics[city]["fallback_geometry_keys"] = sorted({
+                str(key)
+                for feature in payload["features"][:3]
+                for key in ((feature.get("geometry") or {}).keys())
+            })
+            self.last_diagnostics[city]["fallback_missing_geometry"] = sum(
+                not bool((feature.get("geometry") or {}).get("rings"))
+                for feature in payload["features"]
+            )
         return records
 
     def _rio_geopal_records(
