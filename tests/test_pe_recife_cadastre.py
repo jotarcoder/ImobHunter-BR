@@ -97,6 +97,23 @@ def test_recife_does_not_consider_nearby_parcel_an_address_match(tmp_path):
     assert adapter.last_diagnostics["Recife"]["result"] == "no_exact_address_match"
 
 
+def test_recife_unavailable_official_layers_are_reported_as_error(tmp_path):
+    urls = []
+    def handler(request):
+        urls.append(request.url.path)
+        raise httpx.ConnectTimeout("municipal origin timed out")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = OfficialMunicipalServicesAdapter(cache_dir=tmp_path, client=client)
+    records = search(adapter)
+    client.close()
+    assert records == []
+    assert len(urls) == 2
+    assert adapter.last_diagnostics["Recife"]["result"] == "all_official_services_unavailable"
+    assert "Recife" in adapter.last_errors
+    assert "ConnectTimeout" in adapter.last_errors["Recife"]
+
+
 def test_recife_no_number_makes_no_external_request(tmp_path):
     def handler(request):
         raise AssertionError(f"Unbounded query: {request.url}")

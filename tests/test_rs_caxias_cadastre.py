@@ -246,6 +246,8 @@ def test_caxias_both_official_endpoints_timeout_does_not_fabricate_records(tmp_p
     assert records == []
     assert len(paths) == 2
     assert adapter.last_diagnostics["Caxias do Sul"]["result"] == "both_official_lot_services_unavailable"
+    assert "Caxias do Sul" in adapter.last_errors
+    assert "ConnectTimeout" in adapter.last_errors["Caxias do Sul"]
 
 
 def test_caxias_endpoints_are_official_https():

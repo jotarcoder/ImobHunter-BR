@@ -1076,7 +1076,14 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             if service_key == "caxias":
                 records, diagnostic = query_caxias(request, self._get, self.source_id)
                 self.last_diagnostics[city] = diagnostic
-                self.last_errors.pop(city, None)
+                if diagnostic.get("result") == "both_official_lot_services_unavailable":
+                    self.last_errors[city] = (
+                        "Fontes ArcGIS oficiais de Caxias indisponíveis; "
+                        "FeatureServer/MapServer não responderam. "
+                        + ", ".join(diagnostic.get("endpoint_attempt_errors", []))
+                    )
+                else:
+                    self.last_errors.pop(city, None)
                 return records
             if service_key == "juiz":
                 records, diagnostic = query_juiz(request, self._get, self.source_id)
@@ -1092,7 +1099,16 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
             if service_key == "recife":
                 records, diagnostic = query_recife_esig(request, self._get, self.source_id)
                 self.last_diagnostics[city] = diagnostic
-                self.last_errors.pop(city, None)
+                if diagnostic.get("result") == "all_official_services_unavailable":
+                    attempts = diagnostic.get("attempts", [])
+                    failures = ", ".join(
+                        str(attempt.get("result", "unknown")) for attempt in attempts
+                    )
+                    self.last_errors[city] = (
+                        "Serviços ESIG oficiais de Recife indisponíveis: " + failures
+                    )
+                else:
+                    self.last_errors.pop(city, None)
                 return records
             if request.address:
                 latitude, longitude = self._geocode(request)

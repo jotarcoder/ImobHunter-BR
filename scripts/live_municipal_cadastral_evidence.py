@@ -285,7 +285,11 @@ def main() -> None:
             if item["errors"]:
                 print(f'  errors={json.dumps(item["errors"], ensure_ascii=False)}')
             if case["city"] == "Recife":
-                if not item["record_count"] and not item["errors"]:
+                if (
+                    not item["record_count"]
+                    and not item["errors"]
+                    and item["diagnostics"].get("result") == "no_exact_address_match"
+                ):
                     from imobhunter.sources.pe_recife_cadastre import RECIFE_LOTS
 
                     for sample_kind, condition in (
