@@ -67,8 +67,10 @@ def test_styles_responsive_and_installer_links_intact():
     assert "#fontes .sources-localities" in CSS
     assert "#fontes .sourcegrid-restricted" in CSS
     published = re.search(
-        r"ImobHunter-BR-Setup-Windows-(\d+\.\d+\.\d+)\.exe", INDEX
+        r"(?:releases/v(\d+\.\d+\.\d+)/ImobHunter-BR-Setup-Windows\.exe|"
+        r"ImobHunter-BR-Setup-Windows-(\d+\.\d+\.\d+)\.exe)", INDEX
     )
     assert published is not None
-    assert INDEX.count(f"Baixar v{published.group(1)} →") == 4
+    version = published.group(1) or published.group(2)
+    assert INDEX.count(f"Baixar v{version} →") == 4
     assert 'id="demoSearch"' not in INDEX
