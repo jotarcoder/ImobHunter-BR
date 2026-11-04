@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
+import math
 import re
 import sqlite3
 import unicodedata
@@ -62,7 +63,7 @@ def _columns(names: list[str]) -> dict[str, str | None]:
 def _value(value: object) -> str:
     if value is None:
         return ""
-    if isinstance(value, float) and value != value:
+    if isinstance(value, float) and math.isnan(value):
         return ""
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
@@ -135,9 +136,9 @@ def import_sp_iptu_parquet(
                 data = batch.to_pydict()
                 buffer = []
                 for i in range(batch.num_rows):
-                    def get(key: str):
+                    def get(key: str, batch_data: dict = data, row_index: int = i):
                         name = columns[key]
-                        return data[name][i] if name else None
+                        return batch_data[name][row_index] if name else None
                     sql = _value(get("sql"))
                     street = _value(get("street"))
                     number = _value(get("number"))
