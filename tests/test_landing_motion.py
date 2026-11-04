@@ -1,4 +1,5 @@
 from pathlib import Path
+import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -38,7 +39,9 @@ def test_landing_is_institutional_only():
     assert "magnetic-cursor" in css
     assert "cursor.className = 'magnetic-cursor'" in motion
     assert 'href="https://ridigital.org.br/" target="_blank" rel="noopener noreferrer"' in html
-    assert "ImobHunter-BR-Setup-Windows-2.0.0.exe" in html
+    version = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+    assert f"ImobHunter-BR-Setup-Windows-{version}.exe" in html
+    assert html.count(f"Baixar v{version} →") == 4
     assert "grid-template-columns:minmax(0,1fr)" in css
     assert "Premium centered composition" in css
     assert "data-magnetic" in motion
