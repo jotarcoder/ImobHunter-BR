@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from imobhunter.application.sp_iptu_parquet import search_sp_iptu_sqlite
+
 from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest, SourceStatus, TaxDebt
 
 from .base import SourceAdapter
@@ -45,8 +47,11 @@ class MunicipalIPTUAdapter(SourceAdapter):
         return SourceStatus(self.source_id, self.name, "configured")
 
     def search(self, request: SearchRequest) -> list[PropertyRecord]:
-        rows = self._load()
-        matches = [row for row in rows if self._matches(row, request)]
+        if self.data_path and self.data_path.suffix.lower() == ".sqlite3":
+            matches = search_sp_iptu_sqlite(self.data_path, request)
+        else:
+            rows = self._load()
+            matches = [row for row in rows if self._matches(row, request)]
         return [self._to_record(row) for row in matches]
 
     def _load(self) -> list[dict[str, Any]]:
@@ -57,6 +62,10 @@ class MunicipalIPTUAdapter(SourceAdapter):
         if self.data_path.suffix.lower() == ".csv":
             with self.data_path.open("r", encoding="utf-8-sig", newline="") as handle:
                 return list(csv.DictReader(handle))
+        if self.data_path.suffix.lower() == ".parquet":
+            raise ValueError(
+                "Importe o Parquet em Configurações para criar o banco SQLite indexado."
+            )
         payload = json.loads(self.data_path.read_text(encoding="utf-8"))
         if isinstance(payload, dict):
             payload = payload.get("data", payload.get("items", payload))
@@ -118,6 +127,10 @@ class MunicipalIPTUAdapter(SourceAdapter):
             "iptu_query_status": query_status,
             "iptu_query_date": row.get("query_date") or row.get("data_consulta"),
             "iptu_official_source": row.get("official_source") or row.get("fonte_oficial"),
+            "building_area_m2": row.get("area_construida_m2"),
+            "iptu_complement": row.get("complemento"),
+            "iptu_neighborhood": row.get("bairro"),
+            "iptu_postal_code": row.get("cep"),
             "iptu_reference_year": reference_year,
             "iptu_data_scope": "historical" if reference_year is not None and reference_year <= 2016 else "unspecified",
             "taxpayer_name": taxpayer_name,
@@ -134,6 +147,7 @@ class MunicipalIPTUAdapter(SourceAdapter):
             state=row.get("uf") or row.get("state"),
             block=row.get("quadra") or row.get("block"),
             lot=row.get("lote") or row.get("lot"),
+            area_m2=cls._float(row.get("area_m2")) if row.get("area_m2") not in (None, "") else None,
             # Taxpayer and legal owner are distinct concepts; do not promote
             # the IPTU taxpayer into the legal-owner field without a source claim.
             owner_name=row.get("registered_owner_name") or row.get("proprietario_registrado"),
