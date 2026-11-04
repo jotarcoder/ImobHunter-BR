@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from PySide6.QtCore import QSettings, QObject, QRunnable, QThreadPool, Signal, QSize, Qt
 from .application.municipal_endpoints import settings_endpoint_rows
 from .application.custom_municipal_sources import CustomMunicipalStore, infer_protocol
+from .application.sp_iptu_parquet import import_sp_iptu_parquet
 from .sources.custom_municipal import reload_custom_sources
 from .sources.sp_bertioga_local import BertiogaLocalStore
 from .sources.pe_recife_iptu_local import RecifeIPTULocalStore
@@ -36,7 +37,7 @@ SOURCE_FILES = (
     ("sigef", "SIGEF / INCRA", "data_path", "CSV, JSON ou GeoJSON"),
     ("cnir", "CNIR / CAFIR", "data_path", "CSV, JSON ou GeoJSON"),
     ("cnpj", "Receita Federal / CNPJ", "data_path", "CSV ou JSON"),
-    ("municipal_iptu", "IPTU municipal", "data_path", "CSV ou JSON"),
+    ("municipal_iptu", "IPTU municipal", "data_path", "CSV, JSON ou Parquet"),
     ("osm", "OpenStreetMap (base local)", "data_path", "CSV, JSON, GeoJSON ou JSONL"),
 )
 
@@ -103,6 +104,30 @@ class RecifeIPTUImportWorker(QRunnable):
             })
 
 
+class SPIPTUImportSignals(QObject):
+    finished = Signal(object)
+
+
+class SPIPTUImportWorker(QRunnable):
+    """Index multi-million-record Parquet off the Qt UI thread."""
+
+    def __init__(self, file: Path) -> None:
+        super().__init__()
+        self.path = file
+        self.signals = SPIPTUImportSignals()
+
+    def run(self) -> None:
+        try:
+            sqlite_path, count = import_sp_iptu_parquet(self.path)
+            self.signals.finished.emit({
+                "ok": True, "path": str(sqlite_path), "count": count,
+            })
+        except Exception as exc:  # noqa: BLE001 - never crash settings on corrupt Parquet.
+            self.signals.finished.emit({
+                "ok": False, "message": f"{type(exc).__name__}: {str(exc)[:280]}",
+            })
+
+
 class SourceSettingsDialog(QDialog):
     """Configures local datasets and supported source endpoints for this user."""
 
@@ -114,6 +139,8 @@ class SourceSettingsDialog(QDialog):
         self._bertioga_import_worker: BertiogaImportWorker | None = None
         self.recife_store = RecifeIPTULocalStore()
         self._recife_import_worker: RecifeIPTUImportWorker | None = None
+        self._sp_iptu_worker: SPIPTUImportWorker | None = None
+        self._sp_iptu_field: QLineEdit | None = None
         self.settings = QSettings("ImobHunter", "ImobHunter-BR")
         self.path_fields: dict[str, QLineEdit] = {}
         self._municipal_probe_workers: dict[str, MunicipalProbeWorker] = {}
@@ -165,11 +192,22 @@ class SourceSettingsDialog(QDialog):
             if str(field.text()).strip():
                 setattr(source, attr, Path(field.text()).expanduser())
             browse = QPushButton("Selecionar…")
-            browse.clicked.connect(lambda checked=False, f=field, t=file_types: self._browse(f, t))
+            browse.clicked.connect(
+                lambda checked=False, f=field, t=file_types, sid=source_id:
+                self._browse(f, t, sid)
+            )
             row = QHBoxLayout()
             row.addWidget(field, 1)
             row.addWidget(browse)
             form.addRow(label, row)
+            if source_id == "municipal_iptu":
+                self._sp_iptu_status = QLabel(
+                    "Parquet de São Paulo: importação em segundo plano para SQLite local. "
+                    "CSV e JSON continuam disponíveis."
+                )
+                self._sp_iptu_status.setObjectName("muted")
+                self._sp_iptu_status.setWordWrap(True)
+                form.addRow(self._sp_iptu_status)
 
         geosampa = registry.get("geosampa")
         saved_geosampa_endpoint = str(
@@ -501,8 +539,11 @@ class SourceSettingsDialog(QDialog):
             "\n\n".join(lines) + suffix
         )
 
-    def _browse(self, field: QLineEdit, file_types: str) -> None:
-        if "ZIP" in file_types and "CSV" in file_types:
+    def _browse(self, field: QLineEdit, file_types: str,
+                source_id: str | None = None) -> None:
+        if source_id == "municipal_iptu":
+            patterns = "Dados IPTU (*.csv *.json *.parquet)"
+        elif "ZIP" in file_types and "CSV" in file_types:
             patterns = "Dados (*.csv *.zip *.json *.geojson)"
         elif "JSONL" in file_types:
             patterns = "Dados (*.csv *.json *.geojson *.jsonl)"
@@ -511,8 +552,52 @@ class SourceSettingsDialog(QDialog):
         else:
             patterns = "Dados (*.csv *.json *.geojson)"
         path, _ = QFileDialog.getOpenFileName(self, "Selecionar base local", field.text(), patterns)
-        if path:
-            field.setText(path)
+        if not path:
+            return
+        if source_id == "municipal_iptu" and Path(path).suffix.lower() == ".parquet":
+            if self._sp_iptu_worker is not None:
+                QMessageBox.information(
+                    self, "Importação em andamento", "Aguarde o processamento do Parquet atual."
+                )
+                return
+            self._sp_iptu_field = field
+            self._sp_iptu_status.setText(
+                "Importando Parquet e criando índices SQLite localmente. "
+                "Aguarde; o arquivo original será preservado."
+            )
+            worker = SPIPTUImportWorker(Path(path))
+            self._sp_iptu_worker = worker
+            worker.signals.finished.connect(self._sp_iptu_import_finished)
+            QThreadPool.globalInstance().start(worker)
+            return
+        field.setText(path)
+
+    def _sp_iptu_import_finished(self, result: dict) -> None:
+        self._sp_iptu_worker = None
+        if not result.get("ok"):
+            message = str(result.get("message") or "Falha ao importar Parquet.")
+            self._sp_iptu_status.setText("A importação falhou; a fonte anterior foi preservada.")
+            QMessageBox.warning(self, "IPTU São Paulo — Parquet", message)
+            return
+        path = str(result["path"])
+        if self._sp_iptu_field is not None:
+            self._sp_iptu_field.setText(path)
+        # The importer has already validated and atomically saved the database.
+        # Apply immediately and keep the path after restarting the desktop.
+        source = self.registry.get("municipal_iptu")
+        if source is not None:
+            source.data_path = Path(path)
+        self.settings.setValue("sources/municipal_iptu/path", path)
+        self.settings.sync()
+        self._sp_iptu_status.setText(
+            f"{result['count']:,} registros de São Paulo indexados em SQLite local. "
+            "Consultas por endereço e número já podem usar esta base."
+        )
+        QMessageBox.information(
+            self, "IPTU São Paulo — importação concluída",
+            f"{result['count']:,} registros indexados localmente.\\n"
+            "O GeoSampa não foi alterado. O arquivo Parquet original foi preservado."
+        )
 
     def _clear_saved_token(self, key: str, field: QLineEdit, source_id: str) -> None:
         """Explicitly remove a saved credential and clear it from the active adapter."""
