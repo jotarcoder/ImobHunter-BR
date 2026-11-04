@@ -1,0 +1,102 @@
+name: Investigate Defender detection in existing Windows 2.1.1 artifact (no rebuild or publish)
+
+on:
+  push:
+    branches: [fix/site-cards-defender-triage]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  scan-windows-installer:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Verify immutable release run is green and matches approved commit
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $release = gh api repos/$env:GITHUB_REPOSITORY/actions/runs/41767418671 | ConvertFrom-Json
+          if ($release.status -ne "completed" -or $release.conclusion -ne "success" -or
+              $release.head_sha -ne "b80f70b6a58b7a1769606ad89b8480404e26a800") {
+            throw "Source installer release was not independently verified."
+          }
+
+      - name: Download approved Windows installer, without running it
+        uses: actions/download-artifact@v4
+        with:
+          name: ImobHunter-BR-Windows
+          run-id: 41767418671
+          github-token: ${{ github.token }}
+          path: sample
+
+      - name: Download SHA256 manifest for same release
+        uses: actions/download-artifact@v4
+        with:
+          name: ImobHunter-BR-Checksums-v2.1.1
+          run-id: 41767418671
+          github-token: ${{ github.token }}
+          path: manifest
+
+      - name: Verify original SHA256 and Authenticode signing
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $p = Join-Path $PWD "sample/ImobHunter-BR-Setup-Windows.exe"
+          $lines = Get-Content "manifest/build-manifest.txt"
+          if ($lines -notcontains "ImobHunter-BR candidate version: 2.1.1") { throw "Version mismatch" }
+          if ($lines -notcontains "Source commit: b80f70b6a58b7a1769606ad89b8480404e26a800") { throw "Commit mismatch" }
+          $line = $lines | Where-Object { $_ -match '^[A-Fa-f0-9]{64}  ImobHunter-BR-Setup-Windows.exe$' } | Select-Object -First 1
+          if (-not $line) { throw "Missing Windows checksum in signed-off manifest" }
+          $hash = (Get-FileHash -Algorithm SHA256 $p).Hash.ToLowerInvariant()
+          $expected = $line.Substring(0,64).ToLowerInvariant()
+          if ($hash -ne $expected) { throw "Original Windows artifact hash mismatch" }
+          Write-Host "Windows SHA256: $hash"
+          $sig = Get-AuthenticodeSignature -FilePath $p
+          Write-Host "Authenticode status: $($sig.Status)"
+          if ($sig.SignerCertificate) {
+            Write-Host "Signer subject: $($sig.SignerCertificate.Subject)"
+          } else {
+            Write-Warning "Installer is unsigned; no trusted publisher reputation can be assumed."
+          }
+          "ARTIFACT_PATH=$p" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Scan final installer with Microsoft Defender if available
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if (-not (Get-Command Get-MpComputerStatus -ErrorAction SilentlyContinue)) {
+            throw "Defender scan unavailable on GitHub runner; do not label binary safe."
+          }
+          $status = Get-MpComputerStatus
+          Write-Host "AntivirusEnabled=$($status.AntivirusEnabled); RealTimeProtectionEnabled=$($status.RealTimeProtectionEnabled); SignatureVersion=$($status.AntivirusSignatureVersion)"
+          if (-not $status.AntivirusEnabled) {
+            throw "Microsoft Defender is disabled on this runner; test inconclusive."
+          }
+          try {
+            Update-MpSignature -ErrorAction Stop
+          } catch {
+            Write-Warning "Could not update Defender signatures; using already installed signatures: $($_.Exception.Message)"
+          }
+          try {
+            Start-MpScan -ScanType CustomScan -ScanPath $env:ARTIFACT_PATH -ErrorAction Stop
+          } catch {
+            Write-Error "Defender did not complete the scan; no security clearance: $($_.Exception.Message)"
+            exit 1
+          }
+          $detections = @(Get-MpThreatDetection -ErrorAction SilentlyContinue | Where-Object {
+            ($_.Resources -join ' ') -match 'ImobHunter-BR|Setup-Windows'
+          })
+          if ($detections.Count -gt 0) {
+            foreach ($d in $detections) {
+              Write-Host "Detection: $($d.ThreatID); action=$($d.ActionSuccess); resources=$($d.Resources -join ';')"
+            }
+            throw "Microsoft Defender detected the candidate; distribution needs incident review."
+          }
+          if (-not (Test-Path $env:ARTIFACT_PATH)) {
+            throw "Installer was removed or quarantined by antivirus during scan."
+          }
+          Write-Host "No threats detected by Microsoft Defender in this runner scan. This is not a guarantee of safety or the user's local verdict."

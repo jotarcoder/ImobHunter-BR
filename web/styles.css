@@ -953,3 +953,66 @@ footer{display:flex;justify-content:center;align-items:center;flex-wrap:wrap;tex
   #fontes .sourcegrid .source-card{min-height:164px}
   #fontes .sources-notice,#fontes .sources-footnote{text-align:left}
 }
+
+
+/* Hover readability: text and card indices must stay in normal layout, not stacked 3D planes. */
+:is(#plataforma,#matricula) .cards article,
+#fontes .sourcegrid .source-card{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:flex-start;
+  gap:11px;
+  padding:26px 20px;
+  transform:none!important;
+  transform-style:flat!important;
+  will-change:auto;
+}
+:is(#plataforma,#matricula) .cards article:hover,
+#fontes .sourcegrid .source-card:hover{
+  transform:translateY(-3px)!important;
+}
+:is(#plataforma,#matricula) .cards article .card-index,
+#fontes .sourcegrid .source-card .source-index{
+  position:static;
+  inset:auto;
+  display:block;
+  flex:0 0 auto;
+  margin:0 auto 6px;
+  color:#a4f5c4;
+  font-size:10px;
+  line-height:1.35;
+  transform:none!important;
+}
+:is(#plataforma,#matricula) .cards article > b,
+:is(#plataforma,#matricula) .cards article > p,
+#fontes .sourcegrid .source-card > strong,
+#fontes .sourcegrid .source-card > small{
+  position:relative;
+  z-index:4;
+  width:auto;
+  max-width:100%;
+  margin-left:auto;
+  margin-right:auto;
+  transform:none!important;
+}
+:is(#plataforma,#matricula) .cards article > b{
+  display:block;
+  min-height:2.7em;
+  font-size:17px;
+  line-height:1.35;
+}
+:is(#plataforma,#matricula) .cards article > p{
+  margin-top:0;
+  margin-bottom:0;
+  font-size:14px;
+  line-height:1.65;
+}
+#fontes .sourcegrid .source-card > small{
+  font-size:13px;
+  line-height:1.55;
+}
+@media(max-width:700px){
+  :is(#plataforma,#matricula) .cards article,
+  #fontes .sourcegrid .source-card{padding:22px 18px}
+}
