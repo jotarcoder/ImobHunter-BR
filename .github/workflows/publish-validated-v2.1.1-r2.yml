@@ -1,0 +1,155 @@
+name: Publish audited ImobHunter-BR v2.1.1 candidates to R2
+
+on:
+  push:
+    branches: [r2-publish-v2.1.1]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      BUILD_RUN_ID: "41767418671"
+      BUILD_SHA: "b80f70b6a58b7a1769606ad89b8480404e26a800"
+      RELEASE_VERSION: "2.1.1"
+      R2_ENDPOINT: https://15895c53eb86fc8d91e14e9b4456b656.r2.cloudflarestorage.com
+      PUBLIC_BASE: https://pub-6bd1ab819504434691f4832d98de3cb6.r2.dev
+      R2_BUCKET: imobhunter-downloads
+    steps:
+      - name: Confirm exact green main build and all five required artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run_info="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID")"
+          test "$(jq -r '.status' <<< "$run_info")" = "completed"
+          test "$(jq -r '.conclusion' <<< "$run_info")" = "success"
+          test "$(jq -r '.head_sha' <<< "$run_info")" = "$BUILD_SHA"
+          test "$(jq -r '.event' <<< "$run_info")" = "workflow_run"
+          main_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+          test "$main_sha" = "$BUILD_SHA" || {
+            echo "::error::Main changed since the candidate build. Refusing R2 publication."
+            exit 1
+          }
+          artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID/artifacts?per_page=100")"
+          for name in ImobHunter-BR-Windows ImobHunter-BR-Linux ImobHunter-BR-macOS-Intel ImobHunter-BR-macOS-AppleSilicon "ImobHunter-BR-Checksums-v$RELEASE_VERSION"; do
+            jq -e --arg n "$name" '[.artifacts[] | select(.name == $n and .expired == false and .size_in_bytes > 0)] | length == 1' <<< "$artifacts" >/dev/null || {
+              echo "::error::Missing or expired artifact: $name"
+              exit 1
+            }
+          done
+          echo "Source and all five artifacts verified in build $BUILD_RUN_ID."
+
+      - name: Download only the approved build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ env.BUILD_RUN_ID }}
+          github-token: ${{ github.token }}
+          pattern: ImobHunter-BR-*
+          path: candidate
+          merge-multiple: true
+
+      - name: Validate version, commit, sizes, formats and SHA256 of all four packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd candidate
+          grep -Fx "ImobHunter-BR candidate version: $RELEASE_VERSION" build-manifest.txt
+          grep -Fx "Source commit: $BUILD_SHA" build-manifest.txt
+          for file in ImobHunter-BR-Setup-Windows.exe ImobHunter-BR-Linux.AppImage ImobHunter-BR-macOS-Intel.dmg ImobHunter-BR-macOS-AppleSilicon.dmg; do
+            test -s "$file"
+            test "$(stat -c%s "$file")" -gt 50000000 || {
+              echo "::error::Unexpectedly small installer: $file"
+              exit 1
+            }
+            file "$file"
+          done
+          file -b ImobHunter-BR-Setup-Windows.exe | grep -Eq 'PE32|MS Windows'
+          file -b ImobHunter-BR-Linux.AppImage | grep -q 'ELF'
+          grep -E '^[[:xdigit:]]{64}[[:space:]]{2}ImobHunter-BR-' build-manifest.txt > checksums.sha256
+          test "$(wc -l < checksums.sha256 | tr -d ' ')" = "4"
+          sha256sum -c checksums.sha256
+          echo "Four SHA256 hashes verified."
+
+      - name: Stage four versioned files and manifest to R2, verifying object lengths
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          set -euo pipefail
+          test -n "$AWS_ACCESS_KEY_ID" && test -n "$AWS_SECRET_ACCESS_KEY"
+          prefix="releases/v$RELEASE_VERSION"
+          for file in ImobHunter-BR-Setup-Windows.exe ImobHunter-BR-Linux.AppImage ImobHunter-BR-macOS-Intel.dmg ImobHunter-BR-macOS-AppleSilicon.dmg; do
+            aws s3 cp "candidate/$file" "s3://$R2_BUCKET/$prefix/$file" \
+              --endpoint-url "$R2_ENDPOINT" --only-show-errors \
+              --content-type application/octet-stream \
+              --content-disposition "attachment; filename=\"$file\"" \
+              --cache-control 'public, max-age=0, must-revalidate'
+            actual="$(aws s3api head-object --bucket "$R2_BUCKET" --key "$prefix/$file" \
+              --endpoint-url "$R2_ENDPOINT" --query ContentLength --output text)"
+            test "$actual" = "$(stat -c%s "candidate/$file")" || {
+              echo "::error::Versioned R2 object length mismatch: $file"
+              exit 1
+            }
+          done
+          aws s3 cp candidate/build-manifest.txt "s3://$R2_BUCKET/$prefix/build-manifest.txt" \
+            --endpoint-url "$R2_ENDPOINT" --only-show-errors --content-type text/plain
+          echo "All versioned files staged and verified."
+
+      - name: Publish four canonical links plus Windows v2.1.1 alias
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          set -euo pipefail
+          for file in ImobHunter-BR-Setup-Windows.exe ImobHunter-BR-Linux.AppImage ImobHunter-BR-macOS-Intel.dmg ImobHunter-BR-macOS-AppleSilicon.dmg; do
+            aws s3 cp "candidate/$file" "s3://$R2_BUCKET/$file" \
+              --endpoint-url "$R2_ENDPOINT" --only-show-errors \
+              --content-type application/octet-stream \
+              --content-disposition "attachment; filename=\"$file\"" \
+              --cache-control 'public, max-age=0, must-revalidate'
+            actual="$(aws s3api head-object --bucket "$R2_BUCKET" --key "$file" \
+              --endpoint-url "$R2_ENDPOINT" --query ContentLength --output text)"
+            test "$actual" = "$(stat -c%s "candidate/$file")" || {
+              echo "::error::Canonical R2 object length mismatch: $file"
+              exit 1
+            }
+          done
+          versioned="ImobHunter-BR-Setup-Windows-$RELEASE_VERSION.exe"
+          aws s3 cp candidate/ImobHunter-BR-Setup-Windows.exe "s3://$R2_BUCKET/$versioned" \
+            --endpoint-url "$R2_ENDPOINT" --only-show-errors \
+            --content-type application/octet-stream \
+            --content-disposition "attachment; filename=\"$versioned\"" \
+            --cache-control 'public, max-age=0, must-revalidate'
+          actual="$(aws s3api head-object --bucket "$R2_BUCKET" --key "$versioned" \
+            --endpoint-url "$R2_ENDPOINT" --query ContentLength --output text)"
+          test "$actual" = "$(stat -c%s candidate/ImobHunter-BR-Setup-Windows.exe)"
+          echo "Four canonical R2 objects and the versioned Windows installer are ready."
+
+      - name: Verify five public R2 download URLs and attachment headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in ImobHunter-BR-Setup-Windows.exe ImobHunter-BR-Linux.AppImage ImobHunter-BR-macOS-Intel.dmg ImobHunter-BR-macOS-AppleSilicon.dmg "ImobHunter-BR-Setup-Windows-$RELEASE_VERSION.exe"; do
+            headers="$(mktemp)"
+            curl --fail --silent --show-error --head --location --max-time 40 --retry 2 \
+              --dump-header "$headers" --output /dev/null "$PUBLIC_BASE/$file?verify=$GITHUB_RUN_ID"
+            grep -Eiq '^content-disposition:[[:space:]]*attachment' "$headers" || {
+              echo "::error::Public URL lacks attachment header: $file"
+              cat "$headers"
+              rm -f "$headers"
+              exit 1
+            }
+            rm -f "$headers"
+            echo "Public download verified: $file"
+          done
+          echo "ImobHunter-BR v$RELEASE_VERSION published and public URLs validated."
