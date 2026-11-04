@@ -508,7 +508,7 @@ class CadastralMapWidget(QWidget):
             rec.attributes.get("source") or "Não informada"
         )
         candidate_fields: tuple[tuple[str, object], ...] = ()
-        if rec.attributes.get("cadastre_match") == "spatial_candidate_only":
+        if rec.city == "Bertioga" and rec.attributes.get("cadastre_match") == "spatial_candidate_only":
             raw_zones = rec.attributes.get("zoneamento_candidato")
             zones = raw_zones if isinstance(raw_zones, list) else []
             zone_labels = [
@@ -524,6 +524,31 @@ class CadastralMapWidget(QWidget):
                 ("Zoneamento indicativo do lote",
                  "; ".join(zone_labels) or "Não informado"),
             )
+        city_fields: tuple[tuple[str, object], ...] = ()
+        if rec.city == "Porto Alegre":
+            zoning = rec.attributes.get("zoning_dmweb") or {}
+            if not isinstance(zoning, dict):
+                zoning = {}
+            city_fields = (
+                ("Setor municipal", rec.attributes.get("municipal_sector") or "Não informado"),
+                ("Quarteirão municipal", rec.attributes.get("municipal_quarteirao") or "Não informado"),
+                ("Chave SMF/NUMBLOCO (não é SQL)",
+                 rec.attributes.get("fiscal_lot_identifier") or "Não informada"),
+                ("Identificador geométrico DMWEB",
+                 rec.attributes.get("parcel_identifier") or "Não informado"),
+                ("Zoneamento por lote",
+                 zoning.get("zone_percent") or "Não informado"),
+                ("Frentes urbanísticas disponíveis",
+                 "Sim" if rec.attributes.get("frontage_dmweb_available") else "Não informadas"),
+            )
+        elif rec.city == "Recife" and rec.attributes.get("fiscal_year"):
+            city_fields = (
+                ("Ano da base pública", rec.attributes["fiscal_year"]),
+                ("Complemento publicado", rec.attributes.get("complemento") or "Não informado"),
+                ("Área construída", rec.attributes.get("area_construida_m2") or "Não informada"),
+                ("Uso do imóvel", rec.attributes.get("tipo_uso_imovel") or "Não informado"),
+                ("Identificação da unidade", "A conferir; o CPF e o identificador do contribuinte não são usados"),
+            )
         fields = (
             ("Situação", category),
             ("Geometria", "Polígono cadastral retornado pela fonte"
@@ -538,6 +563,7 @@ class CadastralMapWidget(QWidget):
             ("CIB", rec.cib or "Não informado"),
             ("Matrícula", rec.registry_number or "Não informada"),
             *candidate_fields,
+            *city_fields,
             ("Fonte(s)", sources),
         )
         self._details_text = "\n".join(f"{label}: {value}" for label, value in fields)

@@ -559,3 +559,55 @@ def test_bertioga_candidate_details_on_native_map(monkeypatch) -> None:
     finally:
         widget.close()
         app.processEvents()
+
+
+def test_porto_alegre_and_recife_show_correct_source_fields_on_native_map(monkeypatch):
+    pytest.importorskip("PySide6")
+    import json
+    from imobhunter.domain.models import PropertyRecord
+    from imobhunter.ui_cadastral_map import CadastralMapWidget
+
+    monkeypatch.setattr(CadastralMapWidget, "_request_visible_tiles", lambda self: None)
+    polygon = {"type": "Polygon", "coordinates": [[
+        [-51.22, -30.03], [-51.219, -30.03], [-51.219, -30.029],
+        [-51.22, -30.03],
+    ]]}
+    poa = PropertyRecord(city="Porto Alegre", state="RS", attributes={
+        "geometry_geojson": json.dumps(polygon),
+        "cadastre_match": "spatial_candidate_only",
+        "parcel_identifier": "17", "fiscal_lot_identifier": "0000123456",
+        "municipal_quarteirao": "34",
+        "zoning_dmweb": {"zone_percent": "ZM 100%"},
+        "frontage_dmweb_available": True,
+        "sql": None,
+    })
+    recife = PropertyRecord(
+        city="Recife", state="PE", latitude=-8.03, longitude=-34.89,
+        attributes={
+            "fiscal_year": 2026, "complemento": "APTO 2",
+            "area_construida_m2": 74.5, "tipo_uso_imovel": "RESIDENCIAL",
+            "iptu_registration_number": None,
+        },
+    )
+    app = _app()
+    widget = CadastralMapWidget([poa, recife])
+    widget.show()
+    app.processEvents()
+    try:
+        for feature in widget.features:
+            widget._display_feature(feature)
+            details = widget.details.toPlainText()
+            if feature.record.city == "Porto Alegre":
+                assert "Chave SMF/NUMBLOCO (não é SQL)" in details
+                assert "0000123456" in details
+                assert "Quarteirão municipal" in details
+                assert "ZM 100%" in details
+                assert "Não fornecido nesta fonte" in details
+            else:
+                assert "Ano da base pública" in details
+                assert "APTO 2" in details
+                assert "A conferir" in details
+                assert "Não fornecido nesta fonte" in details
+    finally:
+        widget.close()
+        app.processEvents()

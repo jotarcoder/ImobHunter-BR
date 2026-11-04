@@ -603,6 +603,18 @@ def test_porto_alegre_arcgis_returns_official_fiscal_lot_geometry_without_invent
             return {"latitude": -30.0346, "longitude": -51.2177}
 
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/dmweb_lotes_fiscais/MapServer/3/query"):
+            return httpx.Response(200, json={"features": [{
+                "attributes": {"id_lotes": 80123, "sub_atividade": "5", "bairro": "CENTRO HISTORICO"}
+            }]})
+        if request.url.path.endswith("/dmweb_lotes_fiscais/MapServer/4/query"):
+            return httpx.Response(200, json={"features": [{
+                "attributes": {"id_lotes": 80123, "parcel_area": 350.5, "zone_percent": "ZONA A 100%"}
+            }]})
+        if request.url.path.endswith("/dmweb_lotes_fiscais/MapServer/5/query"):
+            return httpx.Response(200, json={"features": [{
+                "attributes": {"id_lotes": 80123, "json_front": "{\\\"faces\\\": 2}"}
+            }]})
         assert request.url.path == PORTO_ALEGRE_ARCGIS_LAYER.removeprefix(
             "https://gis-smamus.portoalegre.rs.gov.br"
         ) + "/query"
@@ -641,8 +653,14 @@ def test_porto_alegre_arcgis_returns_official_fiscal_lot_geometry_without_invent
     assert len(records) == 1
     record = records[0]
     assert record.city == "Porto Alegre" and record.state == "RS"
-    assert record.block == "34"
+    assert record.block is None
+    assert record.attributes["municipal_quarteirao"] == "34"
     assert record.attributes["parcel_identifier"] == "80123"
+    assert record.area_m2 == 350.5
+    assert record.registry_number is None
+    assert record.attributes["urban_planning_dmweb"]["sub_atividade"] == "5"
+    assert record.attributes["zoning_dmweb"]["zone_percent"] == "ZONA A 100%"
+    assert record.attributes["frontage_dmweb_available"] is True
     assert record.attributes["municipal_sector"] == "12"
     assert record.attributes["neighborhood"] == "CENTRO HISTORICO"
     assert record.attributes["sql"] is None
@@ -664,6 +682,8 @@ def test_porto_alegre_retries_exact_point_when_buffer_returns_no_features(tmp_pa
             return {"latitude": -30.0346, "longitude": -51.2177}
 
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith(("/MapServer/3/query", "/MapServer/4/query", "/MapServer/5/query")):
+            return httpx.Response(200, json={"features": []})
         assert request.url.path.endswith("/dmweb_lotes_fiscais/MapServer/0/query")
         params = dict(request.url.params)
         calls.append(params)
@@ -736,8 +756,9 @@ def test_porto_alegre_uses_official_smf_polygon_layer_after_empty_dmweb(tmp_path
     assert len(requested_layers) == 3
     assert len(records) == 1
     record = records[0]
-    assert record.block == "34"
-    assert record.lot == "0123456789"
+    assert record.block is None
+    assert record.attributes["municipal_quarteirao"] == "34"
+    assert record.lot is None
     assert record.area_m2 == 322.5
     assert record.attributes["municipal_sector"] == "12"
     assert record.attributes["parcel_identifier"] == "0123456789"
@@ -785,7 +806,8 @@ def test_porto_alegre_recovers_when_dmweb_returns_attributes_but_no_polygon(tmp_
 
     assert len(calls) == 2
     assert len(records) == 1
-    assert records[0].block == "5"
+    assert records[0].block is None
+    assert records[0].attributes["municipal_quarteirao"] == "5"
     assert records[0].attributes["fiscal_lot_identifier"] == "0000123456"
     assert records[0].attributes["sql"] is None
     assert records[0].attributes["service_url"].endswith("/POA___Consultas_MIL1/MapServer/98")

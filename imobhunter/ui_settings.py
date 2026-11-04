@@ -10,6 +10,7 @@ from .application.municipal_endpoints import settings_endpoint_rows
 from .application.custom_municipal_sources import CustomMunicipalStore, infer_protocol
 from .sources.custom_municipal import reload_custom_sources
 from .sources.sp_bertioga_local import BertiogaLocalStore
+from .sources.pe_recife_iptu_local import RecifeIPTULocalStore
 from .application.source_probe import EndpointProbe, is_official_service_url, probe_endpoint
 from .sources.geosampa import DEFAULT_WFS_URL
 from .ui_responsive import fit_window_to_screen
@@ -80,6 +81,28 @@ class BertiogaImportWorker(QRunnable):
             })
 
 
+class RecifeIPTUImportSignals(QObject):
+    finished = Signal(object)
+
+
+class RecifeIPTUImportWorker(QRunnable):
+    """Stream large public CSVs into local SQLite, without blocking Qt."""
+
+    def __init__(self, paths: tuple[Path, ...]) -> None:
+        super().__init__()
+        self.paths = paths
+        self.signals = RecifeIPTUImportSignals()
+
+    def run(self) -> None:
+        try:
+            counts = RecifeIPTULocalStore().import_files(self.paths)
+            self.signals.finished.emit({"ok": True, "counts": counts})
+        except Exception as exc:  # noqa: BLE001 - report corrupt municipal files without Qt crash
+            self.signals.finished.emit({
+                "ok": False, "message": f"{type(exc).__name__}: {str(exc)[:220]}",
+            })
+
+
 class SourceSettingsDialog(QDialog):
     """Configures local datasets and supported source endpoints for this user."""
 
@@ -89,6 +112,8 @@ class SourceSettingsDialog(QDialog):
         self.custom_store = custom_store or CustomMunicipalStore()
         self.bertioga_store = BertiogaLocalStore()
         self._bertioga_import_worker: BertiogaImportWorker | None = None
+        self.recife_store = RecifeIPTULocalStore()
+        self._recife_import_worker: RecifeIPTUImportWorker | None = None
         self.settings = QSettings("ImobHunter", "ImobHunter-BR")
         self.path_fields: dict[str, QLineEdit] = {}
         self._municipal_probe_workers: dict[str, MunicipalProbeWorker] = {}
@@ -277,6 +302,30 @@ class SourceSettingsDialog(QDialog):
         self._bertioga_import_button.clicked.connect(self._start_bertioga_import)
         bertioga_box.addWidget(self._bertioga_import_button)
         form.addRow(bertioga_panel)
+
+        recife_panel = QWidget()
+        recife_box = QVBoxLayout(recife_panel)
+        recife_box.setContentsMargins(2, 10, 2, 10)
+        recife_title = QLabel("Recife/PE — dados abertos IPTU CSV (offline)")
+        recife_title.setStyleSheet("font-size:16px;font-weight:800;color:#72f59e;")
+        recife_box.addWidget(recife_title)
+        recife_note = QLabel(
+            "Selecione um ou mais CSVs anuais oficiais (2025 e 2026, por exemplo). "
+            "São armazenados somente endereço, complemento, área, uso e coordenadas "
+            "no computador. CPF/CNPJ, identificadores de contribuinte e tributos "
+            "não são importados. Rua/número fornecem candidatos, não inscrição IPTU."
+        )
+        recife_note.setWordWrap(True)
+        recife_note.setObjectName("muted")
+        recife_box.addWidget(recife_note)
+        self._recife_status = QLabel(self._recife_source_status())
+        self._recife_status.setWordWrap(True)
+        self._recife_status.setObjectName("muted")
+        recife_box.addWidget(self._recife_status)
+        self._recife_import_button = QPushButton("Importar CSVs anuais do Recife")
+        self._recife_import_button.clicked.connect(self._start_recife_import)
+        recife_box.addWidget(self._recife_import_button)
+        form.addRow(recife_panel)
 
         sinter = registry.get("sinter_cib")
         self.sinter_url = QLineEdit(
@@ -720,6 +769,49 @@ class SourceSettingsDialog(QDialog):
             "O ImobHunter usará esse pacote na próxima pesquisa por "
             "endereço em Bertioga/SP, preservando as inscrições "
             "como dados de lotes candidatos até confirmação de vínculo fiscal.",
+        )
+
+    def _recife_source_status(self) -> str:
+        try:
+            counts = self.recife_store.counts()
+        except (OSError, ValueError, TypeError, sqlite3.Error) as exc:
+            return f"Base local do Recife com erro: {type(exc).__name__}."
+        if not counts:
+            return "Não instalada — selecione os CSVs anuais oficiais do Recife."
+        summary = ", ".join(f"{year}: {count:,} registros" for year, count in sorted(counts.items()))
+        return f"Base local de Recife instalada: {summary}. Pesquisa offline."
+
+    def _start_recife_import(self) -> None:
+        if self._recife_import_worker is not None:
+            return
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "Recife — selecionar um ou mais CSVs de IPTU", "",
+            "Arquivos CSV (*.csv)",
+        )
+        if not paths:
+            return
+        self._recife_import_button.setEnabled(False)
+        self._recife_status.setText("Indexando os CSVs em SQLite local, sem enviar dados à nuvem…")
+        worker = RecifeIPTUImportWorker(tuple(Path(path) for path in paths))
+        self._recife_import_worker = worker
+        worker.signals.finished.connect(self._finish_recife_import)
+        QThreadPool.globalInstance().start(worker)
+
+    def _finish_recife_import(self, result: object) -> None:
+        self._recife_import_worker = None
+        self._recife_import_button.setEnabled(True)
+        if not isinstance(result, dict) or not result.get("ok"):
+            message = result.get("message", "Falha de importação") if isinstance(result, dict) \
+                else "Falha ao importar os arquivos."
+            self._recife_status.setText("Falha: " + str(message))
+            QMessageBox.warning(self, "Recife — importação", str(message))
+            return
+        self._recife_status.setText(self._recife_source_status())
+        QMessageBox.information(
+            self, "Recife — cadastro local",
+            "Os CSVs foram indexados neste computador. Se o serviço cadastral "
+            "ESIG não retornar um imóvel exato, a pesquisa poderá usar o "
+            "exercício local mais recente, sem inventar SQL/IPTU.",
         )
 
     def _import_custom_file(self, source_id: str) -> None:

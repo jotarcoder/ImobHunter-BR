@@ -16,6 +16,8 @@ from imobhunter.application.address_geocoding import CachedAddressGeocoder, Geoc
 from imobhunter.domain.models import PropertyRecord, Provenance, SearchRequest, SourceStatus
 from imobhunter.sources.base import SourceAdapter
 from imobhunter.sources.sp_bertioga_local import BertiogaLocalStore
+from imobhunter.sources.pe_recife_iptu_local import RecifeIPTULocalStore
+from imobhunter.sources.rs_porto_alegre_urban import enrich_dmweb_lots
 from imobhunter.sources.sp_mogi_cadastre import mogi_catalogue as query_mogi_catalogue
 from imobhunter.sources.sp_fiscal_lookup_portals import campinas as query_campinas
 from imobhunter.sources.sp_fiscal_lookup_portals import (
@@ -226,6 +228,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         geocoder: Any | None = None,
         timeout: float = 18.0,
         bertioga_store: BertiogaLocalStore | None = None,
+        recife_store: RecifeIPTULocalStore | None = None,
     ) -> None:
         self.cache_dir = Path(
             cache_dir or (Path.home() / ".imobhunter" / "cache" / "official_municipal")
@@ -235,6 +238,7 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
         self._geocoder = geocoder
         self.timeout = timeout
         self._bertioga_store = bertioga_store
+        self._recife_store = recife_store
         self.last_errors: dict[str, str] = {}
         self.last_diagnostics: dict[str, dict[str, Any]] = {}
         self.last_geocoded: dict[str, dict[str, Any]] = {}
@@ -764,7 +768,13 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 # mislabel it as SQL/IPTU without an authoritative field definition.
                 sql = _first(properties, "sql", "inscricao_sql", "codigo_sql")
             ciu = _first(properties, "iptu_ciu")
-            registry_number = _first(properties, "matricula", "rgi")
+            # In the Porto Alegre SMF layer MATRICULA is a *staff edit ID*, not an immovable property's deed.
+            registry_number = None if is_porto_alegre else _first(properties, "matricula", "rgi")
+            if is_porto_alegre:
+                # SMF NUMBLOCO is a cross-system fiscal block key, not a numbered lot.
+                # Likewise QUARTEIRAO is not automatically a fiscal QUADRA.
+                lot = None
+                block = None
             records.append(PropertyRecord(
                 property_id=str(_first(properties, "objectid", "globalid", "chavegeo") or "") or None,
                 registry_number=str(registry_number) if registry_number not in (None, "") else None,
@@ -790,7 +800,13 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                     "service_url": layer_url,
                     "service_type": "ArcGIS REST",
                     "geometry_geojson": json.dumps(geometry, ensure_ascii=False),
-                    "source_properties": properties,
+                    "source_properties": (
+                        {key: val for key, val in properties.items()
+                         if key.casefold() in {
+                             "objectid", "id_lotes", "numbloCO".casefold(), "setor",
+                             "qtd", "quarteirao", "area", "bairro", "nome", "sqd_qda"
+                         }} if is_porto_alegre else properties
+                    ),
                     "built_area_m2": built_area,
                     "iptu_ciu": str(ciu) if ciu not in (None, "") else None,
                     "municipal_registration_number": (
@@ -809,6 +825,11 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                     "municipal_sector": (
                         str(_first(properties, "setor"))
                         if is_porto_alegre and _first(properties, "setor") not in (None, "")
+                        else None
+                    ),
+                    "municipal_quarteirao": (
+                        str(_first(properties, "quarteirao", "qtd"))
+                        if is_porto_alegre and _first(properties, "quarteirao", "qtd") not in (None, "")
                         else None
                     ),
                     "sql": str(sql) if sql not in (None, "") else None,
@@ -1171,7 +1192,19 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 self.last_errors.pop(city, None)
                 return records
             if service_key == "recife":
+                # Keep Recife's existing exact municipal ESIG parcel lookup primary.
+                # The annual CSV is an offline fallback, not a replacement for
+                # a verified cadastral polygon, lot or municipal sequential number.
                 records, diagnostic = query_recife_esig(request, self._get, self.source_id)
+                if not records:
+                    local = self._recife_store or RecifeIPTULocalStore()
+                    if local.installed():
+                        local_records, local_diag = local.search(request, self.source_id)
+                        diagnostic["local_csv"] = local_diag
+                        if local_records:
+                            diagnostic["esig_result"] = diagnostic.get("result")
+                            diagnostic["result"] = "local_csv_fallback"
+                            records = local_records
                 self.last_diagnostics[city] = diagnostic
                 if diagnostic.get("result") == "all_official_services_unavailable":
                     attempts = diagnostic.get("attempts", [])
@@ -1214,6 +1247,12 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 records = self._arcgis_records(
                     city, state, latitude, longitude, request, layer_url=PORTO_ALEGRE_ARCGIS_LAYER
                 )
+                if records:
+                    records, details_diag = enrich_dmweb_lots(records, self._get)
+                    self.last_diagnostics[city] = {
+                        **self.last_diagnostics.get(city, {}),
+                        "urban_tables": details_diag,
+                    }
             else:
                 records = self._wfs_records(
                     city, state, configured["url"], latitude, longitude, request
