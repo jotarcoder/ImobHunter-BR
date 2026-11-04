@@ -119,8 +119,12 @@ def test_receita_phone_resolves_only_exact_cnpj_and_exports(tmp_path: Path):
 
 def test_importer_upgrades_old_receita_schema_and_preserves_phone(tmp_path: Path):
     db_path = tmp_path / "old_receita.sqlite3"
+    from imobhunter.application.receita_import import SCHEMA as RECEITA_SCHEMA
+    old_schema = RECEITA_SCHEMA.replace("    phone TEXT DEFAULT '',\n", "")
+    # Recreate the entire previous table definition, only without phone.
+    assert old_schema != RECEITA_SCHEMA
     with sqlite3.connect(db_path) as db:
-        db.execute("CREATE TABLE rf_establishments (cnpj TEXT PRIMARY KEY, cnpj_base TEXT, trade_name TEXT)")
+        db.executescript(old_schema)
     archive = _official_zip(tmp_path)
     assert import_receita_archives(db_path, [archive])["establishments"] == 1
     with sqlite3.connect(db_path) as db:
