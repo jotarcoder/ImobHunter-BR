@@ -1,0 +1,130 @@
+name: Concluir migração R2 v2.1.2 após publicação Pages
+
+# Explicitly authorized one-time cutover: the new four versioned files must
+# exist before replacing the public aliases or deleting old 2.1.1 objects.
+on:
+  workflow_run:
+    workflows: ["Deploy institutional website to Cloudflare Pages"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  cutover:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 2
+      - name: Require approved v2.1.2 download migration and unchanged main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPROVED_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$APPROVED_SHA"
+          current_main="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+          test "$current_main" = "$APPROVED_SHA" || {
+            echo "::error::Main moved after Pages deployed; skip cleanup."
+            exit 1
+          }
+          grep -Fq 'href="https://pub-6bd1ab819504434691f4832d98de3cb6.r2.dev/releases/v2.1.2/ImobHunter-BR-Setup-Windows.exe"' web/index.html
+          test "$(grep -Fc 'Baixar v2.1.2 →' web/index.html)" -eq 4
+          ! grep -Fq "Baixar v2.1.1" web/index.html
+          changed="$(git diff --name-only HEAD^ HEAD)"
+          echo "$changed" | grep -Fxq 'web/index.html'
+          echo "$changed" | grep -Fxq '.github/workflows/r2-v2.1.2-cutover.yml'
+          unexpected="$(printf '%s\n' "$changed" | grep -Ev '^(web/index\.html|\.github/workflows/r2-v2\.1\.2-cutover\.yml|tests/test_landing_motion\.py|tests/test_landing_sources_matrix\.py|tests/test_r2_downloads_v212\.py|tests/test_card_hover_readability\.py|tests/test_release_2_1_2_candidate\.py|tests/test_r2_cutover_v212\.py)$' || true)"
+          test -z "$unexpected" || {
+            echo "::error::Unexpected project changes; no R2 deletion permitted."
+            exit 1
+          }
+      - name: Confirm public Pages already serves four new download URLs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 12); do
+            if curl -fsSL --retry 2 "https://imobhunter-br.pages.dev/?r2-cutover=$GITHUB_RUN_ID" \
+              | grep -Fq "releases/v2.1.2/ImobHunter-BR-Setup-Windows.exe"; then
+              echo "Pages cutover confirmed."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Pages is not serving v2.1.2, preserving old R2."
+          exit 1
+      - name: Configure official R2 credentials
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$AWS_ACCESS_KEY_ID" && test -n "$AWS_SECRET_ACCESS_KEY"
+          aws configure set aws_access_key_id "$(printf %s "$AWS_ACCESS_KEY_ID" | tr -d '\r\n')"
+          aws configure set aws_secret_access_key "$(printf %s "$AWS_SECRET_ACCESS_KEY" | tr -d '\r\n')"
+          aws configure set region auto
+      - name: Verify all four v2.1.2 objects exist before touching legacy keys
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint="https://15895c53eb86fc8d91e14e9b4456b656.r2.cloudflarestorage.com"
+          public="https://pub-6bd1ab819504434691f4832d98de3cb6.r2.dev"
+          for item in ImobHunter-BR-Setup-Windows.exe ImobHunter-BR-Linux.AppImage \
+                      ImobHunter-BR-macOS-Intel.dmg ImobHunter-BR-macOS-AppleSilicon.dmg; do
+            key="releases/v2.1.2/$item"
+            size="$(aws s3api head-object --bucket imobhunter-downloads \
+              --key "$key" --endpoint-url "$endpoint" --query ContentLength --output text)"
+            test "$size" -gt 10000000 || { echo "::error::Small/absent $key ($size)"; exit 1; }
+            curl -fIsS --retry 3 "$public/$key?cutover=$GITHUB_RUN_ID" >/dev/null
+            echo "Validated new: $key ($size bytes)"
+          done
+          aws s3api head-object --bucket imobhunter-downloads \
+            --key "releases/v2.1.2/build-manifest.txt" --endpoint-url "$endpoint" >/dev/null
+      - name: Replace four stable public aliases with v2.1.2 after verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint="https://15895c53eb86fc8d91e14e9b4456b656.r2.cloudflarestorage.com"
+          public="https://pub-6bd1ab819504434691f4832d98de3cb6.r2.dev"
+          for item in ImobHunter-BR-Setup-Windows.exe ImobHunter-BR-Linux.AppImage \
+                      ImobHunter-BR-macOS-Intel.dmg ImobHunter-BR-macOS-AppleSilicon.dmg; do
+            aws s3 cp "s3://imobhunter-downloads/releases/v2.1.2/$item" \
+              "s3://imobhunter-downloads/$item" --endpoint-url "$endpoint" \
+              --only-show-errors --metadata-directive REPLACE \
+              --content-type "application/octet-stream" \
+              --content-disposition "attachment; filename=\"$item\"" \
+              --cache-control "public, max-age=0, must-revalidate"
+            current="$(aws s3api head-object --bucket imobhunter-downloads \
+              --key "$item" --endpoint-url "$endpoint" --query ContentLength --output text)"
+            expected="$(aws s3api head-object --bucket imobhunter-downloads \
+              --key "releases/v2.1.2/$item" --endpoint-url "$endpoint" \
+              --query ContentLength --output text)"
+            test "$current" = "$expected" || { echo "::error::Alias mismatch $item"; exit 1; }
+            curl -fIsS --retry 3 "$public/$item?cutover=$GITHUB_RUN_ID" >/dev/null
+            echo "Updated public alias $item ($current bytes)"
+          done
+          aws s3 cp "s3://imobhunter-downloads/releases/v2.1.2/ImobHunter-BR-Setup-Windows.exe" \
+            "s3://imobhunter-downloads/ImobHunter-BR-Setup-Windows-2.1.2.exe" \
+            --endpoint-url "$endpoint" --only-show-errors --metadata-directive REPLACE \
+            --content-type "application/octet-stream" \
+            --content-disposition "attachment; filename=\"ImobHunter-BR-Setup-Windows-2.1.2.exe\""
+      - name: Only now delete all previous v2.1.1 R2 objects
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint="https://15895c53eb86fc8d91e14e9b4456b656.r2.cloudflarestorage.com"
+          aws s3 rm "s3://imobhunter-downloads/releases/v2.1.1/" \
+            --recursive --endpoint-url "$endpoint" --only-show-errors
+          aws s3 rm "s3://imobhunter-downloads/ImobHunter-BR-Setup-Windows-2.1.1.exe" \
+            --endpoint-url "$endpoint" --only-show-errors
+          echo "v2.1.1 deleted only after all v2.1.2 objects, stable aliases and Pages were verified."
