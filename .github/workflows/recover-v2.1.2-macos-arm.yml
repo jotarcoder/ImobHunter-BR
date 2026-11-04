@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
-          fetch-depth: 2
+          fetch-depth: 0
       - name: Gate one-time native ARM recovery against source changes
         id: verify
         shell: bash
@@ -41,8 +41,12 @@ jobs:
           git merge-base --is-ancestor 8a867e4aed5b5d7591dc397a79305c1e2f8a927e HEAD
           changed="$(git diff --name-only HEAD^ HEAD)"
           printf '%s\n' "$changed"
-          echo "$changed" | grep -Fxq ".github/workflows/recover-v2.1.2-macos-arm.yml"
-          unexpected="$(printf '%s\n' "$changed" | grep -Ev '^(\.github/workflows/recover-v2\.1\.2-macos-arm\.yml|tests/test_release_recovery_2_1_2\.py|docs/RELEASE_RECOVER_MAC_ARM_2_1_2\.md)$' || true)"
+          if ! printf '%s\n' "$changed" | grep -Fxq ".github/workflows/recover-v2.1.2-macos-arm.yml"; then
+            echo "::notice::No ARM recovery changes on this main commit; skip without a red check."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          unexpected="$(git diff --name-only 8a867e4aed5b5d7591dc397a79305c1e2f8a927e HEAD | grep -Ev '^(\.github/workflows/(recover-v2\.1\.2-macos-arm|finalize-v2\.1\.2-r2)\.yml|tests/test_release_(recovery|finalize)_2_1_2\.py|docs/RELEASE_RECOVER_MAC_ARM_2_1_2\.md)$' || true)"
           test -z "$unexpected" || {
             echo "::error::App sources changed since v2.1.2 candidates; refuse artifact mixing."
             exit 1

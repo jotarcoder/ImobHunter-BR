@@ -27,3 +27,9 @@ def test_212_r2_does_not_delete_previous_release_before_pages_switch():
     assert "aws s3api delete-object" not in content
     assert re.search(r"needs: \[gate, linux, macos-intel, macos-arm\]",content)
     assert 'test "$local_size" = "$remote_size"' in content
+
+
+def test_legacy_finalize_does_not_retrigger_on_new_main_commits():
+    content = (ROOT / ".github/workflows/finalize-v2.1.2-r2.yml").read_text()
+    assert "github.event.workflow_run.head_sha == '8a867e4aed5b5d7591dc397a79305c1e2f8a927e'" in content
+    assert "fetch-depth: 0" in content
