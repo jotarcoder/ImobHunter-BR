@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS businesses (
  revenue_estimate REAL,
  estimate_method TEXT DEFAULT '',
  source TEXT DEFAULT '',
- updated_at TEXT DEFAULT ''
+ updated_at TEXT DEFAULT '',
+ phone TEXT DEFAULT ''
 )
 """
 
@@ -96,6 +97,10 @@ class MarketIntelligenceStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as db:
             db.execute(SCHEMA)
+            # Older local SQLite databases keep their records after upgrading.
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(businesses)")}
+            if "phone" not in columns:
+                db.execute("ALTER TABLE businesses ADD COLUMN phone TEXT DEFAULT ''")
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.path)
@@ -126,6 +131,7 @@ class MarketIntelligenceStore:
                     _number(row.get("revenue_reported")), row.get("revenue_period", ""),
                     _number(row.get("revenue_estimate")), row.get("estimate_method", ""),
                     row.get("source", ""), row.get("updated_at", ""),
+                    row.get("phone", "") or row.get("telefone", ""),
                 )
                 with self._connect() as db:
                     if normalized_cnpj:
@@ -157,7 +163,8 @@ class MarketIntelligenceStore:
                                revenue_estimate=COALESCE(?,revenue_estimate),
                                estimate_method=COALESCE(NULLIF(?,''),estimate_method),
                                source=COALESCE(NULLIF(?,''),source),
-                               updated_at=COALESCE(NULLIF(?,''),updated_at)
+                               updated_at=COALESCE(NULLIF(?,''),updated_at),
+                               phone=COALESCE(NULLIF(?,''),phone)
                                WHERE id=?""",
                             (*values, existing["id"]),
                         )
@@ -165,8 +172,8 @@ class MarketIntelligenceStore:
                         db.execute(
                             """INSERT INTO businesses
                             (name,cnpj,cnae,address,city,state,latitude,longitude,revenue_reported,
-                             revenue_period,revenue_estimate,estimate_method,source,updated_at)
-                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                             revenue_period,revenue_estimate,estimate_method,source,updated_at,phone)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                             values,
                         )
                         imported += 1
@@ -188,13 +195,24 @@ class MarketIntelligenceStore:
                        WHERE name=? AND latitude=? AND longitude=? AND source LIKE 'OpenStreetMap%'""",
                     (name, lat, lon),
                 ).fetchone()
+                # Only accept an explicitly tagged full CNPJ, never infer by name or proximity.
+                raw_id = "".join(c for c in str(place.get("cnpj") or "") if c.isdigit())
+                cnpj = raw_id if len(raw_id) == 14 else ""
+                phone = str(place.get("phone") or "").strip()
                 if exists:
+                    db.execute(
+                        """UPDATE businesses SET
+                           cnpj=CASE WHEN TRIM(COALESCE(cnpj,''))='' THEN ? ELSE cnpj END,
+                           phone=CASE WHEN TRIM(COALESCE(phone,''))='' THEN ? ELSE phone END
+                           WHERE id=?""",
+                        (cnpj, phone, exists["id"]),
+                    )
                     continue
                 db.execute(
                     """INSERT INTO businesses
-                       (name,cnae,address,city,state,latitude,longitude,source,updated_at)
-                       VALUES (?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)""",
-                    (name, str(place.get("cnae") or ""), address,
+                       (name,cnpj,phone,cnae,address,city,state,latitude,longitude,source,updated_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)""",
+                    (name, cnpj, phone, str(place.get("cnae") or ""), address,
                      str(place.get("city") or ""), str(place.get("state") or ""),
                      lat, lon, source),
                 )
@@ -212,15 +230,37 @@ class MarketIntelligenceStore:
         cos_lat = max(0.01, abs(math.cos(math.radians(latitude))))
         lon_delta = min(180.0, radius_km / (111.320 * cos_lat))
         with self._connect() as db:
-            rows = db.execute(
-                """SELECT * FROM businesses
-                   WHERE latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ?""",
-                (max(-90, latitude-lat_delta), min(90, latitude+lat_delta),
-                 max(-180, longitude-lon_delta), min(180, longitude+lon_delta))
-            ).fetchall()
+            params = (max(-90, latitude-lat_delta), min(90, latitude+lat_delta),
+                      max(-180, longitude-lon_delta), min(180, longitude+lon_delta))
+            tables = {r["name"] for r in db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )}
+            has_receita_phone = (
+                "rf_establishments" in tables
+                and "phone" in {r["name"] for r in db.execute(
+                    "PRAGMA table_info(rf_establishments)"
+                )}
+            )
+            if has_receita_phone:
+                # Exact CNPJ only; never match an OSM business by name/proximity.
+                rows = db.execute(
+                    """SELECT b.*, COALESCE(NULLIF(b.phone, ''), rf.phone, '') AS resolved_phone
+                       FROM businesses b
+                       LEFT JOIN rf_establishments rf ON LENGTH(b.cnpj)=14 AND b.cnpj=rf.cnpj
+                       WHERE b.latitude BETWEEN ? AND ? AND b.longitude BETWEEN ? AND ?""",
+                    params,
+                ).fetchall()
+            else:
+                rows = db.execute(
+                    """SELECT * FROM businesses
+                       WHERE latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ?""",
+                    params,
+                ).fetchall()
         found = []
         for row in rows:
             item = dict(row)
+            if "resolved_phone" in item:
+                item["phone"] = item.pop("resolved_phone")
             if not _segment_matches(item.get("cnae"), segment):
                 continue
             distance = haversine_km(latitude, longitude, item["latitude"], item["longitude"])

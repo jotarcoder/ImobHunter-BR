@@ -25,6 +25,7 @@ MARKET_FIELDS = (
     "revenue_status",
     "source",
     "updated_at",
+    "phone",
 )
 
 
