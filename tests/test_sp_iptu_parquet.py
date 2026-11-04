@@ -9,12 +9,12 @@ import pytest
 pa = pytest.importorskip("pyarrow")
 pq = pytest.importorskip("pyarrow.parquet")
 
-from imobhunter.application.sp_iptu_parquet import (  # noqa: E402
+from imobhunter.application.sp_iptu_parquet import (
     import_sp_iptu_parquet,
     search_sp_iptu_sqlite,
 )
-from imobhunter.domain.models import SearchRequest  # noqa: E402
-from imobhunter.sources.municipal_iptu import MunicipalIPTUAdapter  # noqa: E402
+from imobhunter.domain.models import SearchRequest
+from imobhunter.sources.municipal_iptu import MunicipalIPTUAdapter
 
 
 def _sample(tmp_path: Path) -> Path:
