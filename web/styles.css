@@ -923,3 +923,33 @@ footer{display:flex;justify-content:center;align-items:center;flex-wrap:wrap;tex
   outline: 3px solid #a4f5c4;
   outline-offset: 4px;
 }
+
+
+/* Fontes documentadas: instaladas x municipais x acessos autorizados. */
+#fontes .sources-group{width:min(100%,1180px);margin:38px auto 0}
+#fontes .sources-group-heading{max-width:830px;margin:0 auto 20px}
+#fontes .sources-group-mark{display:block;margin-bottom:12px;color:var(--green);font-size:11px;font-weight:800;letter-spacing:.14em}
+#fontes .sources-group-heading h3{margin:0 0 10px;font-size:clamp(22px,2.7vw,33px);letter-spacing:-.035em;color:#eff8f4}
+#fontes .sources-group-heading p{margin:0 auto;max-width:720px;color:#a7b8c2;font-size:14px;line-height:1.6}
+#fontes .sources-group > .sourcegrid{margin-top:20px}
+#fontes .sourcegrid .source-card{min-height:188px;padding:38px 18px 23px;gap:10px}
+#fontes .sourcegrid .source-card small{max-width:33ch;color:#b2c3ca;font-size:12px;line-height:1.6}
+#fontes .sourcegrid-restricted{grid-template-columns:repeat(3,minmax(0,1fr))}
+#fontes .sourcegrid-restricted .source-card{min-height:218px}
+#fontes .source-access{display:block;max-width:100%;margin-top:auto;padding:7px 9px;border:1px solid rgba(83,192,135,.25);border-radius:9px;background:rgba(39,93,63,.12);color:#a8e6be;font-size:10px;font-weight:650;letter-spacing:.01em;line-height:1.4;transform:translateZ(12px)}
+#fontes .sources-municipal,#fontes .sources-restricted{padding-top:30px;border-top:1px solid rgba(123,167,151,.18)}
+#fontes .sources-localities{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;text-align:left}
+#fontes .sources-localities p{display:flex;align-items:flex-start;gap:16px;min-height:78px;margin:0;padding:18px;border:1px solid rgba(139,172,194,.16);border-radius:12px;background:linear-gradient(145deg,rgba(15,29,42,.84),rgba(7,15,24,.95))}
+#fontes .sources-localities strong{flex:0 0 116px;color:#b5f7ca;font-size:13px}
+#fontes .sources-localities span{color:#b0c2cc;font-size:13px;line-height:1.6}
+#fontes .sources-notice,#fontes .sources-footnote{max-width:1000px;margin:18px auto 0;padding:16px 21px;border-left:2px solid rgba(78,204,126,.48);background:rgba(29,65,46,.13);color:#b4c9c1;text-align:left;font-size:13px;line-height:1.7}
+#fontes .sources-footnote{margin-top:30px}
+@media(max-width:1000px){#fontes .sourcegrid-restricted{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){
+  #fontes .sources-group{margin-top:30px}
+  #fontes .sources-localities,#fontes .sourcegrid-restricted{grid-template-columns:minmax(0,1fr)}
+  #fontes .sources-localities p{flex-direction:column;gap:7px;padding:15px;text-align:center;align-items:center}
+  #fontes .sources-localities strong{flex:none}
+  #fontes .sourcegrid .source-card{min-height:164px}
+  #fontes .sources-notice,#fontes .sources-footnote{text-align:left}
+}
