@@ -27,7 +27,7 @@ def test_dmweb_join_by_exact_id_only_without_tax_sql():
         "sql": None, "iptu_registration_number": None,
     })
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        records, diagnostic = enrich_dmweb_lots([lot], client.get)
+        records, diagnostic = enrich_dmweb_lots([lot], lambda url, params: client.get(url, params=params))
     assert len(calls) == 3
     assert records[0].area_m2 == 125.5
     assert records[0].attributes["urban_planning_dmweb"]["sub_indice"] == "3"
