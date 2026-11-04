@@ -1192,14 +1192,19 @@ class OfficialMunicipalServicesAdapter(SourceAdapter):
                 self.last_errors.pop(city, None)
                 return records
             if service_key == "recife":
-                local = self._recife_store or RecifeIPTULocalStore()
-                if local.installed():
-                    local_records, local_diag = local.search(request, self.source_id)
-                    self.last_diagnostics[city] = {"local_csv": local_diag}
-                    if local_records:
-                        self.last_errors.pop(city, None)
-                        return local_records
+                # Keep Recife's existing exact municipal ESIG parcel lookup primary.
+                # The annual CSV is an offline fallback, not a replacement for
+                # a verified cadastral polygon, lot or municipal sequential number.
                 records, diagnostic = query_recife_esig(request, self._get, self.source_id)
+                if not records:
+                    local = self._recife_store or RecifeIPTULocalStore()
+                    if local.installed():
+                        local_records, local_diag = local.search(request, self.source_id)
+                        diagnostic["local_csv"] = local_diag
+                        if local_records:
+                            diagnostic["esig_result"] = diagnostic.get("result")
+                            diagnostic["result"] = "local_csv_fallback"
+                            records = local_records
                 self.last_diagnostics[city] = diagnostic
                 if diagnostic.get("result") == "all_official_services_unavailable":
                     attempts = diagnostic.get("attempts", [])

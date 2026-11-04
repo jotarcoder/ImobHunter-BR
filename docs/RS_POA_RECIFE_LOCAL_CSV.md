@@ -55,9 +55,10 @@ anuais com informações pessoais e fiscais.
 O aplicativo permite importar na aba **Configurações** um ou mais CSVs
 municipais autorizados. O processamento é streaming e atômico: recria índice
 local em `~/.imobhunter/recife/iptu_publico.sqlite3`; não usa nuvem, Workers,
-licenças ou R2. Em uma pesquisa com rua e número exatos, consulta o exercício
-mais recente instalado e retorna até 30 candidatos, com diagnóstico de
-ambiguidade. Não associa inscrição a imóvel a partir de nome ou número
+licenças ou R2. A busca oficial por endereço no **ESIG permanece prioritária** e conserva
+quadra, lote, sequencial e geometria quando fornecidos. Se a consulta ESIG
+não retornar imóveis, o índice local busca rua e número no exercício mais
+recente instalado e retorna até 30 candidatos, com diagnóstico de ambiguidade. Não associa inscrição a imóvel a partir de nome ou número
 de contribuinte, nem presume unicidade quando há apartamentos.
 
 **Somente campos permitidos no SQLite:** ano fiscal, logradouro, número,

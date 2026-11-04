@@ -73,17 +73,19 @@ def test_no_address_or_wrong_street_cannot_invent_sql(tmp_path):
         assert not records
 
 
-def test_real_adapter_prefers_local_index_without_any_network(tmp_path):
+def test_real_adapter_falls_back_to_local_index_when_esig_unavailable(tmp_path):
     import httpx
     from imobhunter.sources.official_municipal_services import OfficialMunicipalServicesAdapter
 
     path = write_csv(tmp_path / "recife-2026.csv", 2026)
     store = RecifeIPTULocalStore(tmp_path / "local-index")
     store.import_files([path])
-    def forbid_network(_request: httpx.Request) -> httpx.Response:
-        raise AssertionError("CSV local não deve acessar API externa")
+    requested = []
+    def offline_esig(request: httpx.Request) -> httpx.Response:
+        requested.append(request.url.path)
+        return httpx.Response(503)
 
-    with httpx.Client(transport=httpx.MockTransport(forbid_network)) as client:
+    with httpx.Client(transport=httpx.MockTransport(offline_esig)) as client:
         adapter = OfficialMunicipalServicesAdapter(
             cache_dir=tmp_path / "cache", client=client, recife_store=store,
         )
@@ -94,3 +96,6 @@ def test_real_adapter_prefers_local_index_without_any_network(tmp_path):
         assert results[0].attributes["source"] == adapter.source_id
         assert results[0].attributes["iptu_registration_number"] is None
         assert adapter.last_diagnostics["Recife"]["local_csv"]["fiscal_year"] == 2026
+        assert adapter.last_diagnostics["Recife"]["esig_result"] == "all_official_services_unavailable"
+        assert adapter.last_diagnostics["Recife"]["result"] == "local_csv_fallback"
+        assert len(requested) == 2

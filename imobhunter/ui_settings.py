@@ -809,8 +809,9 @@ class SourceSettingsDialog(QDialog):
         self._recife_status.setText(self._recife_source_status())
         QMessageBox.information(
             self, "Recife — cadastro local",
-            "Os CSVs foram indexados neste computador. A pesquisa utilizará "
-            "o exercício mais recente e distinguirá unidades sem inventar SQL/IPTU.",
+            "Os CSVs foram indexados neste computador. Se o serviço cadastral "
+            "ESIG não retornar um imóvel exato, a pesquisa poderá usar o "
+            "exercício local mais recente, sem inventar SQL/IPTU.",
         )
 
     def _import_custom_file(self, source_id: str) -> None:
