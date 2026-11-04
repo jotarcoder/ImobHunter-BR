@@ -756,7 +756,8 @@ def test_porto_alegre_uses_official_smf_polygon_layer_after_empty_dmweb(tmp_path
     assert len(requested_layers) == 3
     assert len(records) == 1
     record = records[0]
-    assert record.block == "34"
+    assert record.block is None
+    assert record.attributes["municipal_quarteirao"] == "34"
     assert record.lot is None
     assert record.area_m2 == 322.5
     assert record.attributes["municipal_sector"] == "12"
