@@ -11,7 +11,9 @@ on:
       - "imobhunter/__init__.py"
       - "imobhunter/licensing.py"
       - "data/coverage/ddd.json"
-  # Only a green main CI with a new version starts a candidate build.
+  # A version bump on green main CI automatically builds only the Windows candidate.
+# Linux and both macOS candidates require a later explicit manual action.
+# No workflow_run may publish unvalidated installers to Cloudflare R2.
   workflow_run:
     workflows: ["CI"]
     types: [completed]
@@ -229,16 +231,17 @@ jobs:
             throw "Installer version mismatch: expected=$expectedVersion; ProductVersion=$actualVersion; FileVersion=$($setupInfo.FileVersion)"
           }
           Write-Host "Installer metadata verified: ProductVersion=$actualVersion; FileVersion=$($setupInfo.FileVersion)"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ImobHunter-BR-Windows
-          path: packaging/windows/Output/ImobHunter-BR-Setup-Windows.exe
-          if-no-files-found: error
-          retention-days: 7
+      - name: Validate PyArrow reader inside the packaged Windows application
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -c "import pyarrow.parquet; print('PyArrow parquet engine import OK')"
+          $parquetBinary = Get-ChildItem -Path "dist/ImobHunter-BR" -Recurse -File |
+            Where-Object { $_.Name -match '^_parquet.*\\.pyd
 
   linux:
     needs: meta
-    if: needs.meta.outputs.should_build == 'true' && (github.event_name == 'workflow_run' || inputs.build_target == 'all' || inputs.build_target == 'linux')
+    if: needs.meta.outputs.should_build == 'true' && github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'linux')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -276,7 +279,7 @@ jobs:
 
   macos-intel:
     needs: meta
-    if: needs.meta.outputs.should_build == 'true' && (github.event_name == 'workflow_run' || inputs.build_target == 'all' || inputs.build_target == 'macos-intel')
+    if: needs.meta.outputs.should_build == 'true' && github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'macos-intel')
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
@@ -320,7 +323,573 @@ jobs:
 
   macos-arm:
     needs: meta
-    if: needs.meta.outputs.should_build == 'true' && (github.event_name == 'workflow_run' || inputs.build_target == 'all' || inputs.build_target == 'macos-arm')
+    if: needs.meta.outputs.should_build == 'true' && github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'macos-arm')
+    # A successful v2.1.0 recovery used this very same Intel-hosted universal2
+    # toolchain. Avoid macOS ARM runner queues that previously stalled builds.
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.meta.outputs.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify Intel build host with a universal2 Python 3.11 interpreter
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "x86_64"
+          python_bin="$(python -c 'import sys; print(sys.executable)')"
+          lipo -archs "$python_bin" | tr ' ' '\n' | grep -qx arm64 || {
+            echo "::error::Python interpreter has no ARM64 slice; cannot cross-build."
+            exit 1
+          }
+      - name: Install pinned universal2 toolchain and desktop dependencies
+        run: python -m pip install -e ".[desktop]" "pyinstaller==6.22.3" "pyinstaller-hooks-contrib==2026.9"
+      - name: Verify PySide6 has a native ARM64 slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          qt_extension="$(python -c 'import PySide6.QtCore; print(PySide6.QtCore.__file__)')"
+          lipo -archs "$qt_extension" | tr ' ' '\n' | grep -qx arm64 || {
+            echo "::error::Bundled Qt extension is not ARM64-compatible."
+            exit 1
+          }
+      - name: Cross-build latest main source as Apple Silicon ARM64
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m PyInstaller --clean --noconfirm --windowed --target-arch arm64 --name ImobHunter-BR \
+            --add-data "imobhunter/assets:imobhunter/assets" \
+            --add-data "data/coverage/ddd.json:data/coverage" packaging/entrypoint.py
+      - name: Verify ARM64 entrypoint, every Mach-O slice, and HTTPS certificates
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="dist/ImobHunter-BR.app"
+          binary="$app/Contents/MacOS/ImobHunter-BR"
+          test -s "$binary"
+          test "$(lipo -archs "$binary")" = "arm64" || {
+            echo "::error::Application executable is not exclusively ARM64."
+            exit 1
+          }
+          count=0
+          while IFS= read -r -d '' candidate; do
+            if file -b "$candidate" | grep -q "Mach-O"; then
+              lipo -archs "$candidate" | tr ' ' '\n' | grep -qx arm64 || {
+                echo "::error::Bundled native binary missing ARM64 slice: $candidate"
+                exit 1
+              }
+              count=$((count + 1))
+            fi
+          done < <(find "$app" -type f -print0)
+          test "$count" -gt 5
+          ca_bundle="$(find "$app" -type f -name cacert.pem -print -quit)"
+          test -n "$ca_bundle" || {
+            echo "::error::HTTPS CA certificate bundle missing from ARM64 app."
+            exit 1
+          }
+          echo "Verified $count native ARM64-compatible Mach-O files and HTTPS CA certificates."
+      - name: Package and verify Apple Silicon DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          dmg="ImobHunter-BR-macOS-AppleSilicon.dmg"
+          rm -f "$dmg"
+          for attempt in 1 2 3; do
+            if hdiutil create -volname ImobHunter-BR -srcfolder dist/ImobHunter-BR.app -format UDZO "$dmg"; then
+              hdiutil verify -quiet "$dmg"
+              test -s "$dmg"
+              shasum -a 256 "$dmg"
+              exit 0
+            fi
+            rm -f "$dmg"
+            if [ "$attempt" -lt 3 ]; then sleep 5; fi
+          done
+          echo "::error::Apple Silicon DMG could not be created or verified."
+          exit 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-macOS-AppleSilicon
+          path: ImobHunter-BR-macOS-AppleSilicon.dmg
+          if-no-files-found: error
+          retention-days: 7
+
+  candidate-manifest:
+    needs: [meta, windows, linux, macos-intel, macos-arm]
+    if: success() && needs.meta.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ImobHunter-BR-*
+          path: candidate
+          merge-multiple: true
+      - name: Verify four installers and record SHA256
+        shell: bash
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+          BUILD_REF: ${{ needs.meta.outputs.ref }}
+        run: |
+          set -euo pipefail
+          cd candidate
+          for file in ImobHunter-BR-Setup-Windows.exe ImobHunter-BR-Linux.AppImage ImobHunter-BR-macOS-Intel.dmg ImobHunter-BR-macOS-AppleSilicon.dmg; do
+            test -s "$file" || { echo "::error::Missing or empty installer: $file"; exit 1; }
+          done
+          {
+            echo "ImobHunter-BR candidate version: $VERSION"
+            echo "Source commit: $BUILD_REF"
+            echo "NOT published to R2; installers require manual acceptance."
+            sha256sum ImobHunter-BR-Setup-Windows.exe ImobHunter-BR-Linux.AppImage ImobHunter-BR-macOS-Intel.dmg ImobHunter-BR-macOS-AppleSilicon.dmg
+          } > ../build-manifest.txt
+          cat ../build-manifest.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-Checksums-v${{ needs.meta.outputs.version }}
+          path: build-manifest.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [meta, windows, linux, macos-intel, macos-arm]
+    if: success() && needs.meta.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+      - name: Remove existing assets before replacing this release version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ needs.meta.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            for asset in "ImobHunter-BR-Setup-Windows.exe" "ImobHunter-BR-Linux.AppImage" "ImobHunter-BR-macOS-Intel.dmg" "ImobHunter-BR-macOS-AppleSilicon.dmg"; do
+              if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -Fxq "$asset"; then
+                gh release delete-asset "$TAG" "$asset" --repo "$GITHUB_REPOSITORY" --yes
+                echo "Removed old release asset: $asset"
+              fi
+            done
+          fi
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ needs.meta.outputs.version }}
+          fail_on_unmatched_files: true
+          files: |
+            release/ImobHunter-BR-Windows/*
+            release/ImobHunter-BR-Linux/*
+            release/ImobHunter-BR-macOS-Intel/*
+            release/ImobHunter-BR-macOS-AppleSilicon/*
+          generate_release_notes: true
+ } |
+            Select-Object -First 1
+          if (-not $parquetBinary) {
+            throw "PyArrow native Parquet extension not found in bundled Windows application."
+          }
+          Write-Host "Bundled Parquet extension: $($parquetBinary.FullName)"
+      - name: Inspect unsigned candidate and scan with Defender before distribution
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $setupPath = "packaging/windows/Output/ImobHunter-BR-Setup-Windows.exe"
+          $sha = (Get-FileHash -Algorithm SHA256 $setupPath).Hash
+          Write-Host "Installer SHA256: $sha"
+          $sign = Get-AuthenticodeSignature -FilePath $setupPath
+          Write-Host "Authenticode: $($sign.Status)"
+          if ($sign.Status -ne "Valid") {
+            Write-Warning "Unsigned or unverified publisher; the Windows SmartScreen reputation may show warnings."
+          }
+          if (-not (Get-Command Get-MpComputerStatus -ErrorAction SilentlyContinue)) {
+            throw "Microsoft Defender not available. Cannot clear candidate."
+          }
+          $status = Get-MpComputerStatus
+          Write-Host "Defender enabled=$($status.AntivirusEnabled); real-time=$($status.RealTimeProtectionEnabled); signatures=$($status.AntivirusSignatureVersion)"
+          if (-not $status.AntivirusEnabled) {
+            throw "Microsoft Defender is disabled. Scanner result would be inconclusive."
+          }
+          try {
+            Update-MpSignature -ErrorAction Stop
+          } catch {
+            Write-Warning "Could not update signatures. Using existing definitions."
+          }
+          Start-MpScan -ScanType CustomScan -ScanPath $setupPath -ErrorAction Stop
+          $found = @(Get-MpThreatDetection -ErrorAction SilentlyContinue | Where-Object {
+            ($_.Resources -join ';') -match 'ImobHunter-BR'
+          })
+          if ($found.Count -gt 0) {
+            foreach ($item in $found) {
+              Write-Host "Detection ID: $($item.ThreatID); files: $($item.Resources -join ';')"
+            }
+            throw "Microsoft Defender detected a threat in candidate installer."
+          }
+          if (-not (Test-Path $setupPath)) {
+            throw "Installer was removed or quarantined during antivirus scan."
+          }
+          $version = (Select-String -Path pyproject.toml -Pattern '^version = "([^"]+)"
+
+  linux:
+    needs: meta
+    if: needs.meta.outputs.should_build == 'true' && github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'linux')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.meta.outputs.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e ".[desktop]" pyinstaller
+      - run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets:imobhunter/assets" --add-data "data/coverage/ddd.json:data/coverage" packaging/entrypoint.py
+      - name: Verify bundled HTTPS certificate authorities
+        run: |
+          CA_BUNDLE="$(find dist/ImobHunter-BR -type f -name cacert.pem -print -quit)"
+          test -n "$CA_BUNDLE" || { echo "::error::PyInstaller did not bundle certifi cacert.pem on Linux"; exit 1; }
+          echo "HTTPS CA bundle included: $CA_BUNDLE"
+      - name: Build AppImage
+        run: |
+          mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/scalable/apps
+          cp -r dist/ImobHunter-BR AppDir/usr/bin/
+          cp packaging/linux/AppRun AppDir/AppRun
+          cp packaging/linux/imobhunter.desktop AppDir/usr/share/applications/imobhunter.desktop
+          cp packaging/linux/imobhunter.desktop AppDir/imobhunter.desktop
+          cp imobhunter/assets/logo.svg AppDir/usr/share/icons/hicolor/scalable/apps/imobhunter.svg
+          cp imobhunter/assets/logo.svg AppDir/imobhunter.svg
+          chmod +x AppDir/AppRun
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
+          chmod +x appimagetool
+          ./appimagetool AppDir ImobHunter-BR-Linux.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-Linux
+          path: ImobHunter-BR-Linux.AppImage
+          if-no-files-found: error
+          retention-days: 7
+
+  macos-intel:
+    needs: meta
+    if: needs.meta.outputs.should_build == 'true' && github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'macos-intel')
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.meta.outputs.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e ".[desktop]" pyinstaller
+      - run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets:imobhunter/assets" --add-data "data/coverage/ddd.json:data/coverage" packaging/entrypoint.py
+      - name: Verify bundled HTTPS certificate authorities
+        run: |
+          CA_BUNDLE="$(find dist/ImobHunter-BR.app -type f -name cacert.pem -print -quit)"
+          test -n "$CA_BUNDLE" || { echo "::error::PyInstaller did not bundle certifi cacert.pem on macOS Intel"; exit 1; }
+          echo "HTTPS CA bundle included: $CA_BUNDLE"
+      - name: Package macOS Intel DMG (retry transient disk-image errors)
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f ImobHunter-BR-macOS-Intel.dmg ImobHunter-BR-macOS-Intel.tmp.dmg
+          for attempt in 1 2 3; do
+            if hdiutil create -volname ImobHunter-BR -srcfolder dist/ImobHunter-BR.app -ov -format UDZO ImobHunter-BR-macOS-Intel.tmp.dmg; then
+              mv ImobHunter-BR-macOS-Intel.tmp.dmg ImobHunter-BR-macOS-Intel.dmg
+              exit 0
+            fi
+            rm -f ImobHunter-BR-macOS-Intel.tmp.dmg
+            if [ "$attempt" -lt 3 ]; then
+              echo "hdiutil falhou na tentativa $attempt; aguardando antes de repetir..."
+              sleep 5
+            fi
+          done
+          echo "::error::Não foi possível criar o DMG Intel após 3 tentativas."
+          exit 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-macOS-Intel
+          path: ImobHunter-BR-macOS-Intel.dmg
+          if-no-files-found: error
+          retention-days: 7
+
+
+  macos-arm:
+    needs: meta
+    if: needs.meta.outputs.should_build == 'true' && github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'macos-arm')
+    # A successful v2.1.0 recovery used this very same Intel-hosted universal2
+    # toolchain. Avoid macOS ARM runner queues that previously stalled builds.
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.meta.outputs.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify Intel build host with a universal2 Python 3.11 interpreter
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "x86_64"
+          python_bin="$(python -c 'import sys; print(sys.executable)')"
+          lipo -archs "$python_bin" | tr ' ' '\n' | grep -qx arm64 || {
+            echo "::error::Python interpreter has no ARM64 slice; cannot cross-build."
+            exit 1
+          }
+      - name: Install pinned universal2 toolchain and desktop dependencies
+        run: python -m pip install -e ".[desktop]" "pyinstaller==6.22.3" "pyinstaller-hooks-contrib==2026.9"
+      - name: Verify PySide6 has a native ARM64 slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          qt_extension="$(python -c 'import PySide6.QtCore; print(PySide6.QtCore.__file__)')"
+          lipo -archs "$qt_extension" | tr ' ' '\n' | grep -qx arm64 || {
+            echo "::error::Bundled Qt extension is not ARM64-compatible."
+            exit 1
+          }
+      - name: Cross-build latest main source as Apple Silicon ARM64
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m PyInstaller --clean --noconfirm --windowed --target-arch arm64 --name ImobHunter-BR \
+            --add-data "imobhunter/assets:imobhunter/assets" \
+            --add-data "data/coverage/ddd.json:data/coverage" packaging/entrypoint.py
+      - name: Verify ARM64 entrypoint, every Mach-O slice, and HTTPS certificates
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="dist/ImobHunter-BR.app"
+          binary="$app/Contents/MacOS/ImobHunter-BR"
+          test -s "$binary"
+          test "$(lipo -archs "$binary")" = "arm64" || {
+            echo "::error::Application executable is not exclusively ARM64."
+            exit 1
+          }
+          count=0
+          while IFS= read -r -d '' candidate; do
+            if file -b "$candidate" | grep -q "Mach-O"; then
+              lipo -archs "$candidate" | tr ' ' '\n' | grep -qx arm64 || {
+                echo "::error::Bundled native binary missing ARM64 slice: $candidate"
+                exit 1
+              }
+              count=$((count + 1))
+            fi
+          done < <(find "$app" -type f -print0)
+          test "$count" -gt 5
+          ca_bundle="$(find "$app" -type f -name cacert.pem -print -quit)"
+          test -n "$ca_bundle" || {
+            echo "::error::HTTPS CA certificate bundle missing from ARM64 app."
+            exit 1
+          }
+          echo "Verified $count native ARM64-compatible Mach-O files and HTTPS CA certificates."
+      - name: Package and verify Apple Silicon DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          dmg="ImobHunter-BR-macOS-AppleSilicon.dmg"
+          rm -f "$dmg"
+          for attempt in 1 2 3; do
+            if hdiutil create -volname ImobHunter-BR -srcfolder dist/ImobHunter-BR.app -format UDZO "$dmg"; then
+              hdiutil verify -quiet "$dmg"
+              test -s "$dmg"
+              shasum -a 256 "$dmg"
+              exit 0
+            fi
+            rm -f "$dmg"
+            if [ "$attempt" -lt 3 ]; then sleep 5; fi
+          done
+          echo "::error::Apple Silicon DMG could not be created or verified."
+          exit 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-macOS-AppleSilicon
+          path: ImobHunter-BR-macOS-AppleSilicon.dmg
+          if-no-files-found: error
+          retention-days: 7
+
+  candidate-manifest:
+    needs: [meta, windows, linux, macos-intel, macos-arm]
+    if: success() && needs.meta.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ImobHunter-BR-*
+          path: candidate
+          merge-multiple: true
+      - name: Verify four installers and record SHA256
+        shell: bash
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+          BUILD_REF: ${{ needs.meta.outputs.ref }}
+        run: |
+          set -euo pipefail
+          cd candidate
+          for file in ImobHunter-BR-Setup-Windows.exe ImobHunter-BR-Linux.AppImage ImobHunter-BR-macOS-Intel.dmg ImobHunter-BR-macOS-AppleSilicon.dmg; do
+            test -s "$file" || { echo "::error::Missing or empty installer: $file"; exit 1; }
+          done
+          {
+            echo "ImobHunter-BR candidate version: $VERSION"
+            echo "Source commit: $BUILD_REF"
+            echo "NOT published to R2; installers require manual acceptance."
+            sha256sum ImobHunter-BR-Setup-Windows.exe ImobHunter-BR-Linux.AppImage ImobHunter-BR-macOS-Intel.dmg ImobHunter-BR-macOS-AppleSilicon.dmg
+          } > ../build-manifest.txt
+          cat ../build-manifest.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-Checksums-v${{ needs.meta.outputs.version }}
+          path: build-manifest.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [meta, windows, linux, macos-intel, macos-arm]
+    if: success() && needs.meta.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+      - name: Remove existing assets before replacing this release version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ needs.meta.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            for asset in "ImobHunter-BR-Setup-Windows.exe" "ImobHunter-BR-Linux.AppImage" "ImobHunter-BR-macOS-Intel.dmg" "ImobHunter-BR-macOS-AppleSilicon.dmg"; do
+              if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -Fxq "$asset"; then
+                gh release delete-asset "$TAG" "$asset" --repo "$GITHUB_REPOSITORY" --yes
+                echo "Removed old release asset: $asset"
+              fi
+            done
+          fi
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ needs.meta.outputs.version }}
+          fail_on_unmatched_files: true
+          files: |
+            release/ImobHunter-BR-Windows/*
+            release/ImobHunter-BR-Linux/*
+            release/ImobHunter-BR-macOS-Intel/*
+            release/ImobHunter-BR-macOS-AppleSilicon/*
+          generate_release_notes: true
+).Matches.Groups[1].Value
+          @(
+            "Candidate version: $version",
+            "Source commit: ${{ needs.meta.outputs.ref }}",
+            "NOT published to R2; awaiting manual Windows validation.",
+            "Runner Defender scan found no detection (not proof of universal safety).",
+            "Authenticode: $($sign.Status)",
+            "$sha  ImobHunter-BR-Setup-Windows.exe"
+          ) | Out-File -FilePath "packaging/windows/Output/build-manifest-windows.txt" -Encoding utf8
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-Windows
+          path: packaging/windows/Output/ImobHunter-BR-Setup-Windows.exe
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-Windows-QA-v${{ needs.meta.outputs.version }}
+          path: packaging/windows/Output/build-manifest-windows.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  linux:
+    needs: meta
+    if: needs.meta.outputs.should_build == 'true' && github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'linux')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.meta.outputs.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e ".[desktop]" pyinstaller
+      - run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets:imobhunter/assets" --add-data "data/coverage/ddd.json:data/coverage" packaging/entrypoint.py
+      - name: Verify bundled HTTPS certificate authorities
+        run: |
+          CA_BUNDLE="$(find dist/ImobHunter-BR -type f -name cacert.pem -print -quit)"
+          test -n "$CA_BUNDLE" || { echo "::error::PyInstaller did not bundle certifi cacert.pem on Linux"; exit 1; }
+          echo "HTTPS CA bundle included: $CA_BUNDLE"
+      - name: Build AppImage
+        run: |
+          mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/scalable/apps
+          cp -r dist/ImobHunter-BR AppDir/usr/bin/
+          cp packaging/linux/AppRun AppDir/AppRun
+          cp packaging/linux/imobhunter.desktop AppDir/usr/share/applications/imobhunter.desktop
+          cp packaging/linux/imobhunter.desktop AppDir/imobhunter.desktop
+          cp imobhunter/assets/logo.svg AppDir/usr/share/icons/hicolor/scalable/apps/imobhunter.svg
+          cp imobhunter/assets/logo.svg AppDir/imobhunter.svg
+          chmod +x AppDir/AppRun
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
+          chmod +x appimagetool
+          ./appimagetool AppDir ImobHunter-BR-Linux.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-Linux
+          path: ImobHunter-BR-Linux.AppImage
+          if-no-files-found: error
+          retention-days: 7
+
+  macos-intel:
+    needs: meta
+    if: needs.meta.outputs.should_build == 'true' && github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'macos-intel')
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.meta.outputs.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e ".[desktop]" pyinstaller
+      - run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets:imobhunter/assets" --add-data "data/coverage/ddd.json:data/coverage" packaging/entrypoint.py
+      - name: Verify bundled HTTPS certificate authorities
+        run: |
+          CA_BUNDLE="$(find dist/ImobHunter-BR.app -type f -name cacert.pem -print -quit)"
+          test -n "$CA_BUNDLE" || { echo "::error::PyInstaller did not bundle certifi cacert.pem on macOS Intel"; exit 1; }
+          echo "HTTPS CA bundle included: $CA_BUNDLE"
+      - name: Package macOS Intel DMG (retry transient disk-image errors)
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f ImobHunter-BR-macOS-Intel.dmg ImobHunter-BR-macOS-Intel.tmp.dmg
+          for attempt in 1 2 3; do
+            if hdiutil create -volname ImobHunter-BR -srcfolder dist/ImobHunter-BR.app -ov -format UDZO ImobHunter-BR-macOS-Intel.tmp.dmg; then
+              mv ImobHunter-BR-macOS-Intel.tmp.dmg ImobHunter-BR-macOS-Intel.dmg
+              exit 0
+            fi
+            rm -f ImobHunter-BR-macOS-Intel.tmp.dmg
+            if [ "$attempt" -lt 3 ]; then
+              echo "hdiutil falhou na tentativa $attempt; aguardando antes de repetir..."
+              sleep 5
+            fi
+          done
+          echo "::error::Não foi possível criar o DMG Intel após 3 tentativas."
+          exit 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-macOS-Intel
+          path: ImobHunter-BR-macOS-Intel.dmg
+          if-no-files-found: error
+          retention-days: 7
+
+
+  macos-arm:
+    needs: meta
+    if: needs.meta.outputs.should_build == 'true' && github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'macos-arm')
     # A successful v2.1.0 recovery used this very same Intel-hosted universal2
     # toolchain. Avoid macOS ARM runner queues that previously stalled builds.
     runs-on: macos-15-intel
