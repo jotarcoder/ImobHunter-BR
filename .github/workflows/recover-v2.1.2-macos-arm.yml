@@ -1,0 +1,243 @@
+name: Recuperar Apple Silicon 2.1.2 nativo e publicar R2 (Windows/Linux/Intel preservados)
+
+# One-time follow-up after the failed x86_64-only PyArrow wheel in ARM cross-build.
+# All three previously validated binaries are reused without recompilation.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  gate:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.verify.outputs.ready }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 2
+      - name: Gate one-time native ARM recovery against source changes
+        id: verify
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED"
+          current_main="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+          test "$EXPECTED" = "$current_main"
+          test "$(sed -n 's/^version = "\([^"]*\)"$/\1/p' pyproject.toml | head -1)" = "2.1.2"
+          git merge-base --is-ancestor 8a867e4aed5b5d7591dc397a79305c1e2f8a927e HEAD
+          changed="$(git diff --name-only HEAD^ HEAD)"
+          printf '%s\n' "$changed"
+          echo "$changed" | grep -Fxq ".github/workflows/recover-v2.1.2-macos-arm.yml"
+          unexpected="$(printf '%s\n' "$changed" | grep -Ev '^(\.github/workflows/recover-v2\.1\.2-macos-arm\.yml|tests/test_release_recovery_2_1_2\.py|docs/RELEASE_RECOVER_MAC_ARM_2_1_2\.md)$' || true)"
+          test -z "$unexpected" || {
+            echo "::error::App sources changed since v2.1.2 candidates; refuse artifact mixing."
+            exit 1
+          }
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+  macos-arm:
+    needs: gate
+    if: needs.gate.outputs.ready == 'true'
+    # A successful v2.1.0 recovery used this very same Intel-hosted universal2
+    # toolchain. Avoid macOS ARM runner queues that previously stalled builds.
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify native Apple Silicon host, Python and PyArrow ARM64 modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "arm64" || {
+            echo "::error::Requires an ARM64 runner for native PyArrow wheel."
+            exit 1
+          }
+          python -c 'import platform; assert platform.machine() == "arm64"'
+      - name: Install pinned ARM64 toolchain and desktop dependencies
+        run: python -m pip install -e ".[desktop]" "pyinstaller==6.22.3" "pyinstaller-hooks-contrib==2026.9"
+      - name: Ensure PySide6 and both PyArrow extensions are actually ARM64
+        shell: bash
+        run: |
+          set -euo pipefail
+          for module in PySide6.QtCore pyarrow.lib pyarrow._acero pyarrow._parquet; do
+            extension="$(MODULE="$module" python -c 'import importlib,os; print(importlib.import_module(os.environ["MODULE"]).__file__)')"
+            lipo -archs "$extension" | tr ' ' '\n' | grep -qx arm64 || {
+              echo "::error::ARM64 wheel missing for $module: $extension"
+              exit 1
+            }
+            echo "Verified ARM64: $module"
+          done
+      - name: Build from native ARM64 Python for Apple Silicon
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m PyInstaller --clean --noconfirm --windowed --target-arch arm64 --name ImobHunter-BR \
+            --add-data "imobhunter/assets:imobhunter/assets" \
+            --add-data "data/coverage/ddd.json:data/coverage" packaging/entrypoint.py
+      - name: Verify ARM64 entrypoint, every Mach-O slice, and HTTPS certificates
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="dist/ImobHunter-BR.app"
+          binary="$app/Contents/MacOS/ImobHunter-BR"
+          test -s "$binary"
+          test "$(lipo -archs "$binary")" = "arm64" || {
+            echo "::error::Application executable is not exclusively ARM64."
+            exit 1
+          }
+          count=0
+          while IFS= read -r -d '' candidate; do
+            if file -b "$candidate" | grep -q "Mach-O"; then
+              lipo -archs "$candidate" | tr ' ' '\n' | grep -qx arm64 || {
+                echo "::error::Bundled native binary missing ARM64 slice: $candidate"
+                exit 1
+              }
+              count=$((count + 1))
+            fi
+          done < <(find "$app" -type f -print0)
+          test "$count" -gt 5
+          ca_bundle="$(find "$app" -type f -name cacert.pem -print -quit)"
+          test -n "$ca_bundle" || {
+            echo "::error::HTTPS CA certificate bundle missing from ARM64 app."
+            exit 1
+          }
+          echo "Verified $count native ARM64-compatible Mach-O files and HTTPS CA certificates."
+      - name: Package and verify Apple Silicon DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          dmg="ImobHunter-BR-macOS-AppleSilicon.dmg"
+          rm -f "$dmg"
+          for attempt in 1 2 3; do
+            if hdiutil create -volname ImobHunter-BR -srcfolder dist/ImobHunter-BR.app -format UDZO "$dmg"; then
+              hdiutil verify -quiet "$dmg"
+              test -s "$dmg"
+              shasum -a 256 "$dmg"
+              exit 0
+            fi
+            rm -f "$dmg"
+            if [ "$attempt" -lt 3 ]; then sleep 5; fi
+          done
+          echo "::error::Apple Silicon DMG could not be created or verified."
+          exit 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-macOS-AppleSilicon
+          path: ImobHunter-BR-macOS-AppleSilicon.dmg
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-versioned-r2:
+    needs: [gate, macos-arm]
+    if: >-
+      needs.gate.outputs.ready == 'true' &&
+      needs.macos-arm.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Download newly built Apple Silicon artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ImobHunter-BR-macOS-AppleSilicon
+          path: candidate
+      - name: Recover already-approved Windows, Linux and macOS Intel, no rebuild
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/41898423206/jobs" --jq '[.jobs[] | select(.name=="linux" or .name=="macos-intel") | select(.conclusion=="success") | .name] | length')"
+          test "$previous" -eq 2 || { echo "::error::Prior Linux and Intel jobs not both successful."; exit 1; }
+          gh run download 41892355706 --repo "$GITHUB_REPOSITORY" \
+            --name "ImobHunter-BR-Windows" --dir candidate
+          gh run download 41898423206 --repo "$GITHUB_REPOSITORY" \
+            --name "ImobHunter-BR-Linux" --dir candidate
+          gh run download 41898423206 --repo "$GITHUB_REPOSITORY" \
+            --name "ImobHunter-BR-macOS-Intel" --dir candidate
+          echo "811db6716b8ab635beddfe30e07b07f835ddc1770e76aa987009ed04b986f537  candidate/ImobHunter-BR-Setup-Windows.exe" | sha256sum -c -
+      - name: Verify all four and record official candidate hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          for item in \
+            "ImobHunter-BR-Setup-Windows.exe" \
+            "ImobHunter-BR-Linux.AppImage" \
+            "ImobHunter-BR-macOS-Intel.dmg" \
+            "ImobHunter-BR-macOS-AppleSilicon.dmg"; do
+            test -s "candidate/$item" || { echo "::error::Missing $item"; exit 1; }
+          done
+          printf '%s\n' "ImobHunter-BR candidate: v2.1.2" \
+            "Source: ${{ github.event.workflow_run.head_sha }}" \
+            "Windows base candidate: 2c80e05022993d62eb0319220482dd03b70f5353" \
+            "Not digitally signed. Defender scan in Windows runner passed; real-time protection off." \
+            "All three native desktop artifacts built from the same application code." \
+            > candidate/build-manifest.txt
+          ( cd candidate && sha256sum \
+            "ImobHunter-BR-Setup-Windows.exe" \
+            "ImobHunter-BR-Linux.AppImage" \
+            "ImobHunter-BR-macOS-Intel.dmg" \
+            "ImobHunter-BR-macOS-AppleSilicon.dmg" ) >> candidate/build-manifest.txt
+          cat candidate/build-manifest.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-v2.1.2-verified-checksums
+          path: candidate/build-manifest.txt
+          retention-days: 14
+          if-no-files-found: error
+      - name: Configure R2 only after all platform builds have passed
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$AWS_ACCESS_KEY_ID" && test -n "$AWS_SECRET_ACCESS_KEY"
+          aws configure set aws_access_key_id "$(printf %s "$AWS_ACCESS_KEY_ID" | tr -d '\r\n')"
+          aws configure set aws_secret_access_key "$(printf %s "$AWS_SECRET_ACCESS_KEY" | tr -d '\r\n')"
+          aws configure set region auto
+      - name: Publish all four into NEW versioned directory and verify each public URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint="https://15895c53eb86fc8d91e14e9b4456b656.r2.cloudflarestorage.com"
+          public="https://pub-6bd1ab819504434691f4832d98de3cb6.r2.dev"
+          prefix="releases/v2.1.2"
+          for item in \
+            "ImobHunter-BR-Setup-Windows.exe" \
+            "ImobHunter-BR-Linux.AppImage" \
+            "ImobHunter-BR-macOS-Intel.dmg" \
+            "ImobHunter-BR-macOS-AppleSilicon.dmg"; do
+            aws s3 cp "candidate/$item" "s3://imobhunter-downloads/$prefix/$item" \
+              --endpoint-url "$endpoint" --only-show-errors \
+              --content-type "application/octet-stream" \
+              --content-disposition "attachment; filename=\"$item\"" \
+              --cache-control "public, max-age=0, must-revalidate"
+            local_size="$(stat -c %s "candidate/$item")"
+            remote_size="$(aws s3api head-object --bucket imobhunter-downloads \
+              --key "$prefix/$item" --endpoint-url "$endpoint" --query ContentLength --output text)"
+            test "$local_size" = "$remote_size" || { echo "::error::R2 size mismatch: $item"; exit 1; }
+            curl -fIsS --retry 3 "$public/$prefix/$item?verify=$GITHUB_RUN_ID" >/dev/null
+            echo "Verified: $public/$prefix/$item ($remote_size bytes)"
+          done
+          aws s3 cp "candidate/build-manifest.txt" "s3://imobhunter-downloads/$prefix/build-manifest.txt" \
+            --endpoint-url "$endpoint" --only-show-errors --content-type "text/plain"
+          echo "v2.1.2 verified in separate R2 prefix. Old v2.1.1 must remain until Pages link migration succeeds."
