@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_desktop_version_is_identical_in_all_packaging_inputs() -> None:
     metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     version = metadata["project"]["version"]
-    assert re.fullmatch(r"\\d+\\.\\d+\\.\\d+", version)
+    assert re.fullmatch(r"\d+\.\d+\.\d+", version)
     package = (ROOT / "imobhunter/__init__.py").read_text(encoding="utf-8")
     windows = (ROOT / "packaging/windows/version_info.txt").read_text(encoding="utf-8")
     inno = (ROOT / "packaging/windows/ImobHunter-BR.iss").read_text(encoding="utf-8")
