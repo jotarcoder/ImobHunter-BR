@@ -31,6 +31,8 @@ def test_automated_build_is_windows_only_with_antivirus_gate():
         assert "github.event_name == 'workflow_dispatch'" in condition
         assert "github.event_name == 'workflow_run'" not in condition
     assert "Start-MpScan -ScanType CustomScan" in windows
+    assert '$setupPath = (Resolve-Path "packaging/windows/Output/ImobHunter-BR-Setup-Windows.exe").Path' in windows
+    assert 'git diff --name-only HEAD^ HEAD -- .github/workflows/release.yml' in workflow
     assert "Get-AuthenticodeSignature" in windows
     assert "PyArrow native Parquet extension not found" in windows
     assert "NOT published to R2; awaiting manual Windows validation." in windows
