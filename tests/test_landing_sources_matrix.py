@@ -1,7 +1,7 @@
 """Institutional landing and detailed source matrix reflect existing integration contracts."""
 from html.parser import HTMLParser
 from pathlib import Path
-import tomllib
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "web"
@@ -66,8 +66,9 @@ def test_documented_municipal_coverage_has_limitations():
 def test_styles_responsive_and_installer_links_intact():
     assert "#fontes .sources-localities" in CSS
     assert "#fontes .sourcegrid-restricted" in CSS
-    version = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
-    assert version == "2.1.1"
-    assert f"ImobHunter-BR-Setup-Windows-{version}.exe" in INDEX
-    assert INDEX.count(f"Baixar v{version} →") == 4
+    published = re.search(
+        r"ImobHunter-BR-Setup-Windows-(\d+\.\d+\.\d+)\.exe", INDEX
+    )
+    assert published is not None
+    assert INDEX.count(f"Baixar v{published.group(1)} →") == 4
     assert 'id="demoSearch"' not in INDEX

@@ -11,7 +11,9 @@ on:
       - "imobhunter/__init__.py"
       - "imobhunter/licensing.py"
       - "data/coverage/ddd.json"
-  # Only a green main CI with a new version starts a candidate build.
+  # A version bump on green main CI automatically builds only the Windows candidate.
+# Linux and both macOS candidates require a later explicit manual action.
+# No workflow_run may publish unvalidated installers to Cloudflare R2.
   workflow_run:
     workflows: ["CI"]
     types: [completed]
@@ -229,16 +231,81 @@ jobs:
             throw "Installer version mismatch: expected=$expectedVersion; ProductVersion=$actualVersion; FileVersion=$($setupInfo.FileVersion)"
           }
           Write-Host "Installer metadata verified: ProductVersion=$actualVersion; FileVersion=$($setupInfo.FileVersion)"
+      - name: Validate PyArrow reader inside the packaged Windows application
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -c "import pyarrow.parquet; print('PyArrow parquet engine import OK')"
+          $parquetBinary = Get-ChildItem -Path "dist/ImobHunter-BR" -Recurse -File |
+            Where-Object { $_.Name -match '^_parquet.*\.pyd$' } |
+            Select-Object -First 1
+          if (-not $parquetBinary) {
+            throw "PyArrow native Parquet extension not found in bundled Windows application."
+          }
+          Write-Host "Bundled Parquet extension: $($parquetBinary.FullName)"
+      - name: Inspect unsigned candidate and scan with Defender before distribution
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $setupPath = "packaging/windows/Output/ImobHunter-BR-Setup-Windows.exe"
+          $sha = (Get-FileHash -Algorithm SHA256 $setupPath).Hash
+          Write-Host "Installer SHA256: $sha"
+          $sign = Get-AuthenticodeSignature -FilePath $setupPath
+          Write-Host "Authenticode: $($sign.Status)"
+          if ($sign.Status -ne "Valid") {
+            Write-Warning "Unsigned or unverified publisher; the Windows SmartScreen reputation may show warnings."
+          }
+          if (-not (Get-Command Get-MpComputerStatus -ErrorAction SilentlyContinue)) {
+            throw "Microsoft Defender not available. Cannot clear candidate."
+          }
+          $status = Get-MpComputerStatus
+          Write-Host "Defender enabled=$($status.AntivirusEnabled); real-time=$($status.RealTimeProtectionEnabled); signatures=$($status.AntivirusSignatureVersion)"
+          if (-not $status.AntivirusEnabled) {
+            throw "Microsoft Defender is disabled. Scanner result would be inconclusive."
+          }
+          try {
+            Update-MpSignature -ErrorAction Stop
+          } catch {
+            Write-Warning "Could not update signatures. Using existing definitions."
+          }
+          Start-MpScan -ScanType CustomScan -ScanPath $setupPath -ErrorAction Stop
+          $found = @(Get-MpThreatDetection -ErrorAction SilentlyContinue | Where-Object {
+            ($_.Resources -join ';') -match 'ImobHunter-BR'
+          })
+          if ($found.Count -gt 0) {
+            foreach ($item in $found) {
+              Write-Host "Detection ID: $($item.ThreatID); files: $($item.Resources -join ';')"
+            }
+            throw "Microsoft Defender detected a threat in candidate installer."
+          }
+          if (-not (Test-Path $setupPath)) {
+            throw "Installer was removed or quarantined during antivirus scan."
+          }
+          $version = (Select-String -Path pyproject.toml -Pattern '^version = "([^"]+)"$').Matches.Groups[1].Value
+          @(
+            "Candidate version: $version",
+            "Source commit: ${{ needs.meta.outputs.ref }}",
+            "NOT published to R2; awaiting manual Windows validation.",
+            "Runner Defender scan found no detection (not proof of universal safety).",
+            "Authenticode: $($sign.Status)",
+            "$sha  ImobHunter-BR-Setup-Windows.exe"
+          ) | Out-File -FilePath "packaging/windows/Output/build-manifest-windows.txt" -Encoding utf8
       - uses: actions/upload-artifact@v4
         with:
           name: ImobHunter-BR-Windows
           path: packaging/windows/Output/ImobHunter-BR-Setup-Windows.exe
           if-no-files-found: error
           retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImobHunter-BR-Windows-QA-v${{ needs.meta.outputs.version }}
+          path: packaging/windows/Output/build-manifest-windows.txt
+          if-no-files-found: error
+          retention-days: 7
 
   linux:
     needs: meta
-    if: needs.meta.outputs.should_build == 'true' && (github.event_name == 'workflow_run' || inputs.build_target == 'all' || inputs.build_target == 'linux')
+    if: needs.meta.outputs.should_build == 'true' && github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'linux')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -276,7 +343,7 @@ jobs:
 
   macos-intel:
     needs: meta
-    if: needs.meta.outputs.should_build == 'true' && (github.event_name == 'workflow_run' || inputs.build_target == 'all' || inputs.build_target == 'macos-intel')
+    if: needs.meta.outputs.should_build == 'true' && github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'macos-intel')
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
@@ -320,7 +387,7 @@ jobs:
 
   macos-arm:
     needs: meta
-    if: needs.meta.outputs.should_build == 'true' && (github.event_name == 'workflow_run' || inputs.build_target == 'all' || inputs.build_target == 'macos-arm')
+    if: needs.meta.outputs.should_build == 'true' && github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'macos-arm')
     # A successful v2.1.0 recovery used this very same Intel-hosted universal2
     # toolchain. Avoid macOS ARM runner queues that previously stalled builds.
     runs-on: macos-15-intel
