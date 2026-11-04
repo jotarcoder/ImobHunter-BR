@@ -85,7 +85,7 @@ class RecifeIPTULocalStore:
 
     def import_files(self, paths: list[Path] | tuple[Path, ...]) -> dict[int, int]:
         files = [Path(p) for p in paths]
-        if not 1 <= len(files) <= 3 or len(set(p.resolve() for p in files)) != len(files):
+        if not 1 <= len(files) <= 3 or len({p.resolve() for p in files}) != len(files):
             raise ValueError("Selecione até três CSVs anuais diferentes de Recife.")
         self.directory.mkdir(parents=True, exist_ok=True)
         fd, tmp_name = tempfile.mkstemp(prefix=".recife-", suffix=".sqlite3", dir=self.directory)
