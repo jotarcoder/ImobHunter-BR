@@ -377,17 +377,21 @@ def test_market_tabs_reflow_and_company_table_scroll_without_truncating_buttons(
         app.processEvents()
         assert window._action_grid.itemAtPosition(3, 1) is not None
         assert window._action_grid.itemAtPosition(0, 3) is None
-        for table in (window.table, window.results_table):
-            assert not table.horizontalHeader().stretchLastSection()
-            assert table.horizontalHeader().sectionResizeMode(0) == (
-                QHeaderView.ResizeMode.Interactive
-            )
-            assert table.horizontalScrollBarPolicy() == (
-                Qt.ScrollBarPolicy.ScrollBarAsNeeded
-            )
-            assert sum(table.columnWidth(i) for i in range(8)) > table.viewport().width()
-        # Switching to results must target the scroll host, not the old page.
-        window.tabs.setCurrentWidget(window.results_scroll)
+        # The map no longer has a clipped duplicate table below the heatmap.
+        assert window.results_table.columnCount() == 9
+        table = window.results_table
+        assert not table.horizontalHeader().stretchLastSection()
+        assert table.horizontalHeader().sectionResizeMode(0) == (
+            QHeaderView.ResizeMode.Interactive
+        )
+        assert table.horizontalScrollBarPolicy() == (
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        assert sum(table.columnWidth(i) for i in range(table.columnCount())) > table.viewport().width()
+        # Users can navigate from the map to the full results without
+        # having to scroll to and select the tabs at the top.
+        window.tabs.setCurrentWidget(window.search_scroll)
+        window.open_results_button.click()
         assert window.tabs.currentWidget() is window.results_scroll
     finally:
         window.close()

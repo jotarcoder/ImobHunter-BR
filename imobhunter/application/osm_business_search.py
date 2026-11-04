@@ -68,8 +68,14 @@ def fetch_osm_businesses(
         street = tags.get("addr:street", "")
         number = tags.get("addr:housenumber", "")
         address = " ".join(part for part in (street, number) if part)
+        raw_cnpj = "".join(ch for ch in str(tags.get("ref:cnpj") or tags.get("cnpj") or "") if ch.isdigit())
+        # Crowdsourced tag, not official confirmation of business identity.
+        cnpj = raw_cnpj if len(raw_cnpj) == 14 else ""
+        phone = str(tags.get("contact:phone") or tags.get("phone") or "").strip()
         places.append({
             "name": name,
+            "cnpj": cnpj,
+            "phone": phone,
             "cnae": str(business_type),
             "address": address,
             "city": str(tags.get("addr:city") or ""),

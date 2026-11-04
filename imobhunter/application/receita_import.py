@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS rf_establishments (
     state TEXT DEFAULT '',
     municipality_code TEXT DEFAULT '',
     email TEXT DEFAULT '',
+    phone TEXT DEFAULT '',
     source_file TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_rf_estab_city ON rf_establishments(state, municipality_code);
@@ -49,6 +50,18 @@ def _normalize_cnpj_base(value: str) -> str:
     # A valid CNPJ base has exactly eight digits. zfill() alone turns an empty
     # field into 00000000 and can create phantom company/establishment records.
     return digits.zfill(8) if 1 <= len(digits) <= 8 else ""
+
+
+def _public_business_phone(row: list[str]) -> str:
+    """Use only the DDD and telephone published for an establishment."""
+    for ddd_index, number_index in ((21, 22), (23, 24)):
+        if len(row) <= number_index:
+            continue
+        ddd = "".join(character for character in row[ddd_index] if character.isdigit())
+        number = "".join(character for character in row[number_index] if character.isdigit())
+        if len(ddd) == 2 and len(number) in {8, 9}:
+            return ddd + number
+    return ""
 
 
 def _read_csv_member(archive: zipfile.ZipFile, member: str):
@@ -78,6 +91,9 @@ def import_receita_archives(database_path: str | Path, archive_paths: Iterable[s
     counts = {"companies": 0, "establishments": 0}
     with sqlite3.connect(db_path) as db:
         db.executescript(SCHEMA)
+        columns = {row[1] for row in db.execute("PRAGMA table_info(rf_establishments)")}
+        if "phone" not in columns:
+            db.execute("ALTER TABLE rf_establishments ADD COLUMN phone TEXT DEFAULT ''")
         for raw_path in archive_paths:
             path = Path(raw_path)
             with zipfile.ZipFile(path) as archive:
@@ -139,36 +155,41 @@ def import_receita_archives(database_path: str | Path, archive_paths: Iterable[s
                                 row[6].strip(), row[10].strip(), row[11].strip(), row[12].strip(),
                                 row[13].strip(), row[14].strip(), row[15].strip(), row[16].strip(),
                                 row[17].strip(), row[18].strip(), row[19].strip(), row[20].strip(),
-                                row[27].strip() if len(row) > 27 else "", path.name
+                                row[27].strip() if len(row) > 27 else "",
+                                _public_business_phone(row), path.name
                             ))
                             if len(batch) >= batch_size:
                                 db.executemany("""INSERT INTO rf_establishments
                                     (cnpj,cnpj_base,branch_type,trade_name,registration_status,status_date,
                                      start_date,main_cnae,secondary_cnae,street_type,street,street_number,
-                                     complement,neighborhood,postal_code,state,municipality_code,email,source_file)
-                                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                                     complement,neighborhood,postal_code,state,municipality_code,email,phone,source_file)
+                                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                                     ON CONFLICT(cnpj) DO UPDATE SET
                                     trade_name=excluded.trade_name, registration_status=excluded.registration_status,
                                     main_cnae=excluded.main_cnae, secondary_cnae=excluded.secondary_cnae,
                                     street=excluded.street, street_number=excluded.street_number,
                                     complement=excluded.complement, neighborhood=excluded.neighborhood,
                                     postal_code=excluded.postal_code, state=excluded.state,
-                                    municipality_code=excluded.municipality_code, source_file=excluded.source_file""", batch)
+                                    municipality_code=excluded.municipality_code,
+                                    phone=COALESCE(NULLIF(excluded.phone,''),rf_establishments.phone),
+                                    source_file=excluded.source_file""", batch)
                                 counts["establishments"] += len(batch)
                                 batch.clear()
                         if batch:
                             db.executemany("""INSERT INTO rf_establishments
                                 (cnpj,cnpj_base,branch_type,trade_name,registration_status,status_date,
                                  start_date,main_cnae,secondary_cnae,street_type,street,street_number,
-                                 complement,neighborhood,postal_code,state,municipality_code,email,source_file)
-                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                                 complement,neighborhood,postal_code,state,municipality_code,email,phone,source_file)
+                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                                 ON CONFLICT(cnpj) DO UPDATE SET
                                 trade_name=excluded.trade_name, registration_status=excluded.registration_status,
                                 main_cnae=excluded.main_cnae, secondary_cnae=excluded.secondary_cnae,
                                 street=excluded.street, street_number=excluded.street_number,
                                 complement=excluded.complement, neighborhood=excluded.neighborhood,
                                 postal_code=excluded.postal_code, state=excluded.state,
-                                municipality_code=excluded.municipality_code, source_file=excluded.source_file""", batch)
+                                municipality_code=excluded.municipality_code,
+                                    phone=COALESCE(NULLIF(excluded.phone,''),rf_establishments.phone),
+                                    source_file=excluded.source_file""", batch)
                             counts["establishments"] += len(batch)
     return counts
 
@@ -201,7 +222,7 @@ def search_receita_establishments(database_path: str | Path, query: str = "",
             rows = db.execute(
                 "SELECT e.cnpj, c.legal_name, e.trade_name, e.registration_status, "
                 "e.main_cnae, e.street_type, e.street, e.street_number, e.complement, "
-                "e.neighborhood, e.postal_code, e.state, e.municipality_code, e.email, "
+                "e.neighborhood, e.postal_code, e.state, e.municipality_code, e.email, e.phone, "
                 "c.company_size, c.share_capital, e.source_file "
                 "FROM rf_establishments e LEFT JOIN rf_companies c ON c.cnpj_base=e.cnpj_base"
                 + where + " ORDER BY c.legal_name, e.cnpj LIMIT ?",
