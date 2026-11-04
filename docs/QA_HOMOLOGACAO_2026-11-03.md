@@ -77,3 +77,25 @@ Workflow `.github/workflows/qa-homologacao.yml` do PR desta auditoria. O status 
 - Inteligência/exports: `tests/test_market_intelligence.py`, `tests/test_market_export.py`, `tests/test_export.py`.
 - Licenciamento: `tests/test_licensing.py`.
 - **Não realizado:** rebuild, publicação de release, deploy em produção ou upload Cloudflare R2.
+
+
+## Adendo de QA do candidato v2.1.1 (04/11/2026)
+
+O candidato v2.1.1 inclui o código da main consolidado até o PR #174:
+GeoJSON de Bertioga, IPTU CSV local de Recife com fallback do ESIG, e
+tabelas urbanísticas relacionadas ao lote em Porto Alegre. Os arquivos
+GeoJSON/CSV municipais **não são embutidos nos instaladores**.
+
+A ordem aprovada pelo usuário para esta atualização é:
+1. Rodar a suíte de testes Python, validação de metadados de packaging
+   e **QA desktop Linux offscreen com PySide6**, em PR, sem construir instaladores.
+2. Incorporar a alteração de versão **somente após todos os checks verdes**.
+3. Gerar candidatos nativos Windows, Linux, macOS Intel e macOS ARM64 a
+   partir do **mesmo SHA na main**, com hashes SHA256 e verificação da versão.
+4. Publicar no R2 somente depois de confirmar os **quatro** artefatos
+   não vazios e compatíveis, com hashes documentados; ajustar links
+   da landing apenas depois do upload validado.
+
+Teste desktop Linux offscreen é automatizado, mas não substitui testes
+manuais de instalação/ativação nos quatro sistemas. Não copiar instaladores
+de versões anteriores, nem bases municipais brutas para GitHub/R2.
