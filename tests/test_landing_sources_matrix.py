@@ -1,53 +1,73 @@
-"""The institutional site must accurately describe built-in and conditional sources."""
+"""Institutional landing and detailed source matrix reflect existing integration contracts."""
+from html.parser import HTMLParser
 from pathlib import Path
-import re
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
-HTML = (ROOT / "web/index.html").read_text(encoding="utf-8")
-CSS = (ROOT / "web/styles.css").read_text(encoding="utf-8")
+WEB = ROOT / "web"
+INDEX = (WEB / "index.html").read_text(encoding="utf-8")
+DETAILS = (WEB / "fontes.html").read_text(encoding="utf-8")
+CSS = (WEB / "styles.css").read_text(encoding="utf-8")
 
 
-def test_sources_grouped_and_credentials_not_promised_as_unrestricted():
-    for section in ('id="fontes-incluidas"', 'id="fontes-municipais"', 'id="fontes-restritas"'):
-        assert section in HTML
+class Markup(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.ids = set()
+        self.links = []
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if a.get("id"):
+            self.ids.add(a["id"])
+        if tag == "a":
+            self.links.append(a.get("href", ""))
+
+
+def test_source_summary_has_link_and_respects_size_budget():
+    assert 'href="fontes.html"' in INDEX
+    assert (WEB / "fontes.html").is_file()
+    assert "<strong>GeoSampa</strong>" in INDEX
+    assert "<strong>OpenStreetMap</strong>" in INDEX
+    assert "Conecta gov.br depende de credenciais oficiais" in INDEX
+    assert (WEB / "index.html").stat().st_size < 22_000
+    p = Markup()
+    p.feed(DETAILS)
+    assert {"fontes", "fontes-incluidas", "fontes-municipais", "fontes-restritas"} <= p.ids
+    assert "index.html#downloads" in p.links
+
+
+def test_detailed_sources_are_separated_by_access_mode():
     for name in ("GeoSampa", "IBGE / CNEFE / SIDRA", "OpenStreetMap",
-                 "INDE e geosserviços", "ICMBio e IPHAN",
-                 "Receita Federal / CNPJ", "Geocodificação nacional",
-                 "Cadastro rural", "Fontes municipais próprias",
-                 "Conecta gov.br / CNPJ", "SINTER / CIB",
-                 "IPTU municipal restrito", "Cartórios / RI Digital"):
-        assert name in HTML
-    assert "não são liberadas por uma licença do ImobHunter" in HTML
-    assert "não basta cadastrar um link protegido" in HTML
-    assert "não contornamos autenticação" in HTML.lower()
-    assert "credenciais oficiais" in HTML
-    assert 'type="password"' not in HTML
-    assert "client_secret=" not in HTML
-    assert "authorization: bearer" not in HTML.lower()
-    assert 'id="demoSearch"' not in HTML
+                 "INDE e geosserviços", "ICMBio e IPHAN", "Receita Federal / CNPJ",
+                 "Geocodificação nacional", "Cadastro rural", "Fontes municipais próprias",
+                 "Conecta gov.br / CNPJ", "SINTER / CIB", "IPTU municipal restrito",
+                 "Cartórios / RI Digital"):
+        assert name in DETAILS
+    assert "não são liberadas por uma licença do ImobHunter" in DETAILS
+    assert "não basta cadastrar um link protegido" in DETAILS
+    assert "não contornamos autenticação" in DETAILS.lower()
+    for sensitive in ('type="password"', "client_secret=", "authorization: bearer"):
+        assert sensitive not in DETAILS.lower()
 
 
-def test_city_scope_and_offline_caveats():
+def test_documented_municipal_coverage_has_limitations():
     for city in ("São Paulo capital", "Praia Grande", "Santos", "Bertioga",
                  "Mogi das Cruzes", "Campinas", "Santo André", "Jundiaí",
                  "Belo Horizonte", "Juiz de Fora", "Rio de Janeiro capital",
                  "Brasília", "Goiânia", "Blumenau", "Joinville",
                  "São Bento do Sul", "Caxias do Sul", "Porto Alegre", "Recife"):
-        assert city in HTML
-    assert "indisponibilidade de serviços em testes" in HTML
-    assert "não com consulta fiscal automática homologada" in HTML
-    assert "Arquivos brutos não vêm nos instaladores" in HTML
-    assert "GeoSampa</strong>" in HTML
-    assert "OpenStreetMap</strong>" in HTML
+        assert city in DETAILS
+    assert "indisponibilidade de serviços em testes" in DETAILS
+    assert "não com consulta fiscal automática homologada" in DETAILS
+    assert "Arquivos brutos não vêm nos instaladores" in DETAILS
 
 
-def test_sources_remain_responsive_and_downloads_are_unchanged():
+def test_styles_responsive_and_installer_links_intact():
     assert "#fontes .sources-localities" in CSS
     assert "#fontes .sourcegrid-restricted" in CSS
-    assert "@media(max-width:700px)" in CSS
     version = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
     assert version == "2.1.1"
-    assert f"ImobHunter-BR-Setup-Windows-{version}.exe" in HTML
-    assert HTML.count(f"Baixar v{version} →") == 4
-    assert re.search(r'<section id="fontes"[^>]*>[\s\S]*?id="fontes-restritas"', HTML)
+    assert f"ImobHunter-BR-Setup-Windows-{version}.exe" in INDEX
+    assert INDEX.count(f"Baixar v{version} →") == 4
+    assert 'id="demoSearch"' not in INDEX

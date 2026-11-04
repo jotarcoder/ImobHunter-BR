@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Matriz de fontes públicas, municipais e de acesso autorizado do ImobHunter-BR.">
+  <title>Fontes e integrações | ImobHunter-BR</title>
+  <link rel="icon" href="/assets/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="source-page">
+  <nav>
+    <a class="brand" href="index.html#inicio"><span>⌾</span>ImobHunter<span>-BR</span></a>
+    <div class="navlinks">
+      <a href="index.html#plataforma">Plataforma</a>
+      <a href="index.html#downloads">Downloads</a>
+      <a href="#fontes">Fontes</a>
+      <a href="index.html#planos">Licenciamento</a>
+      <a href="index.html#privacidade">Privacidade</a>
+    </div>
+  </nav>
+  <main>
+    <section id="fontes" class="depth-section">
+      <p class="eyebrow">FONTES E TRANSPARÊNCIA</p>
+      <h2>Dados oficiais. Cada fonte com sua finalidade.</h2>
+      <p class="section-lead">O ImobHunter-BR inclui conectores públicos e opções de importação local. A disponibilidade de atributos e a consulta por endereço dependem de cada município ou órgão. Conector cadastrado não significa SQL/IPTU confirmado.</p>
+
+      <div class="sources-group" aria-labelledby="fontes-incluidas">
+        <div class="sources-group-heading">
+          <span class="sources-group-mark">01 / INCLUÍDAS</span>
+          <h3 id="fontes-incluidas">Fontes e recursos já presentes no aplicativo</h3>
+          <p>Consultas públicas, descoberta geográfica e importadores disponíveis na versão 2.1.1. Alguns precisam de configuração ou dados locais.</p>
+        </div>
+        <div class="sourcegrid">
+          <div class="source-card" data-tilt data-depth="11"><span class="source-index">01</span><strong>GeoSampa</strong><small>São Paulo capital: lotes, quadras, polígonos e SQL/inscrição quando retornados pela camada oficial.</small></div>
+          <div class="source-card" data-tilt data-depth="9"><span class="source-index">02</span><strong>Cadastros municipais</strong><small>Conectores WFS/ArcGIS por prefeitura, com atributos e geometria conforme serviço publicado; não abrangem automaticamente todo o estado.</small></div>
+          <div class="source-card" data-tilt data-depth="12"><span class="source-index">03</span><strong>IBGE / CNEFE / SIDRA</strong><small>Endereços e indicadores territoriais e estatísticos. Não fornecem SQL, matrícula nem renda individual.</small></div>
+          <div class="source-card" data-tilt data-depth="10"><span class="source-index">04</span><strong>OpenStreetMap</strong><small>Ruas, endereços, referências geográficas e localização complementar, respeitando licença e atribuição.</small></div>
+          <div class="source-card" data-tilt data-depth="8"><span class="source-index">05</span><strong>INDE e geosserviços</strong><small>Descoberta de catálogos, serviços e camadas geográficas públicas; descoberta não comprova cadastro fiscal.</small></div>
+          <div class="source-card" data-tilt data-depth="14"><span class="source-index">06</span><strong>ICMBio e IPHAN</strong><small>Contexto ambiental, conservação e patrimônio cultural, sem substituir informações cartoriais ou fiscais.</small></div>
+          <div class="source-card" data-tilt data-depth="13"><span class="source-index">07</span><strong>Receita Federal / CNPJ</strong><small>Importação autorizada de dados de empresas e enriquecimento por CNPJ; a API Conecta gov.br é opcional e autenticada.</small></div>
+          <div class="source-card" data-tilt data-depth="9"><span class="source-index">08</span><strong>Geocodificação nacional</strong><small>Localização de endereços e apoio a pesquisas por mapa e raio. Coordenadas não identificam, sozinhas, um lote fiscal.</small></div>
+          <div class="source-card" data-tilt data-depth="12"><span class="source-index">09</span><strong>Fontes municipais próprias</strong><small>Adicionar fonte por município/UF, testar WFS ou ArcGIS REST e importar arquivos CSV, XLSX, JSON e GeoJSON no computador.</small></div>
+          <div class="source-card" data-tilt data-depth="10"><span class="source-index">10</span><strong>IPTU e dados locais</strong><small>Adaptadores para arquivos municipais autorizados; Recife conta com importador local de CSV. Arquivos brutos não vêm nos instaladores.</small></div>
+          <div class="source-card" data-tilt data-depth="8"><span class="source-index">11</span><strong>Cadastro rural</strong><small>Conectores SICAR/CAR, SIGEF, SNCR/INCRA e CNIR; acesso e conteúdo dependem da fonte e de permissões.</small></div>
+          <div class="source-card" data-tilt data-depth="11"><span class="source-index">12</span><strong>Geocodificação por CNPJ</strong><small>Relaciona estabelecimentos selecionados a endereços e coordenadas disponíveis; não significa descobrir todas as empresas de um raio.</small></div>
+        </div>
+      </div>
+
+      <div class="sources-group sources-municipal" aria-labelledby="fontes-municipais">
+        <div class="sources-group-heading">
+          <span class="sources-group-mark">02 / MUNICIPAIS</span>
+          <h3 id="fontes-municipais">Municípios com conectores, camadas ou referências cadastradas</h3>
+          <p>A pesquisa usa a fonte de cada localidade. A existência de um serviço no catálogo não garante SQL/IPTU, quadra ou lote por endereço.</p>
+        </div>
+        <div class="sources-localities" aria-label="Localidades previstas no catálogo do aplicativo">
+          <p><strong>São Paulo</strong><span>São Paulo capital, Praia Grande, Santos, Bertioga, Mogi das Cruzes, Campinas, Santo André e Jundiaí</span></p>
+          <p><strong>Minas Gerais</strong><span>Belo Horizonte e Juiz de Fora</span></p>
+          <p><strong>Rio de Janeiro</strong><span>Rio de Janeiro capital</span></p>
+          <p><strong>Distrito Federal</strong><span>Brasília</span></p>
+          <p><strong>Goiás</strong><span>Goiânia</span></p>
+          <p><strong>Santa Catarina</strong><span>Blumenau, Joinville e São Bento do Sul</span></p>
+          <p><strong>Rio Grande do Sul</strong><span>Caxias do Sul e Porto Alegre</span></p>
+          <p><strong>Pernambuco</strong><span>Recife</span></p>
+        </div>
+        <p class="sources-notice">Limites conhecidos: Bertioga, Recife e Caxias do Sul tiveram indisponibilidade de serviços em testes; Santo André, Campinas e Jundiaí contam com camadas ou portais de referência, mas não com consulta fiscal automática homologada para todo endereço. Resultados cadastrais variam conforme a prefeitura.</p>
+      </div>
+
+      <div class="sources-group sources-restricted" aria-labelledby="fontes-restritas">
+        <div class="sources-group-heading">
+          <span class="sources-group-mark">03 / ACESSO AUTORIZADO</span>
+          <h3 id="fontes-restritas">Integrações condicionadas a credenciais oficiais</h3>
+          <p>Essas fontes não são liberadas por uma licença do ImobHunter. Dependem de habilitação, contrato ou credenciais fornecidas pelo órgão responsável e, em alguns casos, de desenvolvimento adicional.</p>
+        </div>
+        <div class="sourcegrid sourcegrid-restricted">
+          <div class="source-card" data-tilt data-depth="11"><span class="source-index">01</span><strong>Conecta gov.br / CNPJ</strong><small>Conector opcional para serviços Básica, Empresa e QSA. Requer client ID, secret, usuário autorizado e aprovação no serviço.</small><span class="source-access">Conector opcional · credenciais oficiais</span></div>
+          <div class="source-card" data-tilt data-depth="10"><span class="source-index">02</span><strong>SINTER / CIB</strong><small>Conector para dados autorizados por arquivo ou API configurada. Token e permissão institucional não são fornecidos pelo aplicativo.</small><span class="source-access">Conector condicionado · autorização</span></div>
+          <div class="source-card" data-tilt data-depth="9"><span class="source-index">03</span><strong>SNCR / CNIR / SIGEF</strong><small>Algumas consultas e extratos rurais exigem autenticação e perfil habilitado no serviço oficial.</small><span class="source-access">Conectores presentes · acesso variável</span></div>
+          <div class="source-card" data-tilt data-depth="12"><span class="source-index">04</span><strong>IPTU municipal restrito</strong><small>Integração por convênio, API ou exportação autorizada da prefeitura. Login em portal com CAPTCHA não é integração automática.</small><span class="source-access">Sob análise · sem acesso universal</span></div>
+          <div class="source-card" data-tilt data-depth="8"><span class="source-index">05</span><strong>Cartórios / RI Digital</strong><small>Consulta documental e matrícula dependem de canais oficiais e autorização. Não há busca nacional irrestrita por endereço já integrada.</small><span class="source-access">Possível parceria · não integrada</span></div>
+          <div class="source-card" data-tilt data-depth="11"><span class="source-index">06</span><strong>Camadas municipais privadas</strong><small>APIs restritas de GeoServer/ArcGIS podem exigir convênio, token e um adaptador específico; não basta cadastrar um link protegido.</small><span class="source-access">Sob análise · conforme município</span></div>
+        </div>
+      </div>
+      <p class="sources-footnote">Segurança: senhas, tokens e chaves de acesso nunca são solicitados nesta página ou incorporados aos instaladores. O tratamento deve ocorrer por integração autorizada e configuração protegida. Não contornamos autenticação, CAPTCHA ou restrições de acesso; nenhuma fonte garante proprietário, débito ou matrícula.</p>
+      <a class="textlink" href="index.html#privacidade">Consultar a política de fontes nesta página ↓</a>
+    </section>
+    <div class="sources-return"><a class="button primary" href="index.html#downloads">Voltar para os downloads ↗</a></div>
+  </main>
+  <footer><span>ImobHunter-BR</span><span>Inteligência imobiliária local-first</span><span>Fontes oficiais e acesso autorizado</span></footer>
+</body>
+</html>
