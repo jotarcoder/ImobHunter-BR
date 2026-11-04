@@ -71,3 +71,26 @@ def test_no_address_or_wrong_street_cannot_invent_sql(tmp_path):
     for street, num in (("Rua Inexistente", "10"), ("Avenida Norte", "99"), ("Avenida Norte", "10-A")):
         records, _ = store.search(SearchRequest(address=street, number=num, city="Recife", state="PE"))
         assert not records
+
+
+def test_real_adapter_prefers_local_index_without_any_network(tmp_path):
+    import httpx
+    from imobhunter.sources.official_municipal_services import OfficialMunicipalServicesAdapter
+
+    path = write_csv(tmp_path / "recife-2026.csv", 2026)
+    store = RecifeIPTULocalStore(tmp_path / "local-index")
+    store.import_files([path])
+    def forbid_network(_request: httpx.Request) -> httpx.Response:
+        raise AssertionError("CSV local não deve acessar API externa")
+
+    with httpx.Client(transport=httpx.MockTransport(forbid_network)) as client:
+        adapter = OfficialMunicipalServicesAdapter(
+            cache_dir=tmp_path / "cache", client=client, recife_store=store,
+        )
+        results = adapter.search(SearchRequest(
+            address="Avenida Norte", number="10", city="Recife", state="PE",
+        ))
+        assert len(results) == 2
+        assert results[0].attributes["source"] == adapter.source_id
+        assert results[0].attributes["iptu_registration_number"] is None
+        assert adapter.last_diagnostics["Recife"]["local_csv"]["fiscal_year"] == 2026
