@@ -770,14 +770,17 @@ class ReceitaBrowseDialog(QDialog):
         self.current_rows = []
         self.status = QLabel("Pesquise na base importada; os resultados ficam no PC.")
         root.addWidget(self.status)
-        self.table = QTableWidget(0, 8)
-        self.table.setHorizontalHeaderLabels(["Razão social", "Nome fantasia", "CNPJ", "Situação", "CNAE principal", "Endereço", "UF / município", "Porte"])
+        self.table = QTableWidget(0, 9)
+        self.table.setHorizontalHeaderLabels([
+            "Razão social", "Nome fantasia", "CNPJ", "Situação", "CNAE principal",
+            "Endereço", "UF / município", "Porte", "Telefone"
+        ])
         self.table.setAlternatingRowColors(True)
         self.table.horizontalHeader().setStretchLastSection(False)
         self.table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Interactive
         )
-        for column, width in enumerate((240, 210, 165, 120, 175, 310, 160, 110)):
+        for column, width in enumerate((240, 210, 165, 120, 175, 310, 160, 110, 170)):
             self.table.setColumnWidth(column, width)
         self.table.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
@@ -880,7 +883,7 @@ class ReceitaBrowseDialog(QDialog):
                 item.get("cnpj") or "", item.get("registration_status") or "",
                 item.get("main_cnae") or "", street,
                 " / ".join(part for part in [item.get("state") or "", item.get("municipality_code") or ""] if part),
-                item.get("company_size") or ""
+                item.get("company_size") or "", item.get("phone") or "—"
             ]
             for column, value in enumerate(values):
                 self.table.setItem(row_index, column, QTableWidgetItem(str(value)))
