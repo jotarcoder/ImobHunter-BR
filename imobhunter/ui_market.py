@@ -186,9 +186,17 @@ class MarketIntelligenceDialog(QDialog):
         self.status.setWordWrap(True)
         search_layout.addWidget(self.status)
 
+        map_header = QHBoxLayout()
         map_title = QLabel("Mapa de calor — concentração de estabelecimentos")
         map_title.setStyleSheet("font-size:17px;font-weight:750;padding-top:6px;")
-        search_layout.addWidget(map_title)
+        map_header.addWidget(map_title, 1)
+        self.open_results_button = QPushButton("Ver resultados →")
+        self.open_results_button.setObjectName("primary")
+        self.open_results_button.setMinimumHeight(38)
+        self.open_results_button.setToolTip("Abrir a tabela completa de empresas e as opções de exportação.")
+        self.open_results_button.clicked.connect(self._show_results)
+        map_header.addWidget(self.open_results_button)
+        search_layout.addLayout(map_header)
         try:
             from PySide6.QtWebEngineCore import QWebEnginePage
             from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -225,23 +233,8 @@ class MarketIntelligenceDialog(QDialog):
             fallback.setWordWrap(True)
             search_layout.addWidget(fallback)
 
-        self.table = QTableWidget(0, 8)
-        self.table.setMinimumHeight(220)
-        self.table.verticalHeader().setDefaultSectionSize(30)
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.setHorizontalHeaderLabels([
-            "Empresa", "CNPJ", "CNAE", "Endereço", "Distância km",
-            "Faturamento divulgado", "Faturamento estimado", "Fonte / atualização"
-        ])
-        self.table.setAlternatingRowColors(True)
-        self.table.setSortingEnabled(True)
-        self._configure_table_columns(self.table)
-        search_layout.addWidget(self.table, 1)
-        note = QLabel("Os valores de faturamento só são exibidos quando constam no arquivo importado. Estimativas devem incluir metodologia e fonte; o aplicativo não inventa valores nem consulta o seu servidor.")
-        note.setObjectName("muted")
-        note.setWordWrap(True)
-        search_layout.addWidget(note)
+        # The full-height table lives in the dedicated Results tab. The map
+        # tab no longer buries a second, clipped table under the heatmap.
         self.results = []
         self.search_scroll = QScrollArea()
         self.search_scroll.setWidgetResizable(True)
@@ -282,11 +275,12 @@ class MarketIntelligenceDialog(QDialog):
         results_actions.addWidget(save_results)
         results_layout.addLayout(results_actions)
 
-        self.results_table = QTableWidget(0, 8)
+        self.results_table = QTableWidget(0, 9)
+        self.results_table.setMinimumHeight(320)
         self.results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.results_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.results_table.setHorizontalHeaderLabels([
-            "Empresa", "CNPJ", "CNAE", "Endereço", "Distância km",
+            "Empresa", "CNPJ", "Telefone", "CNAE", "Endereço", "Distância km",
             "Faturamento divulgado", "Faturamento estimado", "Fonte / atualização"
         ])
         self.results_table.setAlternatingRowColors(True)
@@ -294,7 +288,11 @@ class MarketIntelligenceDialog(QDialog):
         self._configure_table_columns(self.results_table)
         self.results_table.verticalHeader().setDefaultSectionSize(32)
         results_layout.addWidget(self.results_table, 1)
-        results_note = QLabel("A exportação inclui os registros retornados pela pesquisa, coordenadas disponíveis, origem dos dados e campos de faturamento sem preencher valores ausentes.")
+        results_note = QLabel(
+            "CNPJ e telefone aparecem somente quando constam de uma fonte identificada. "
+            "Pontos do OpenStreetMap não possuem obrigatoriamente cadastro fiscal. "
+            "A exportação preserva os campos e as fontes sem inventar dados ausentes."
+        )
         results_note.setObjectName("muted")
         results_note.setWordWrap(True)
         results_layout.addWidget(results_note)
@@ -313,7 +311,7 @@ class MarketIntelligenceDialog(QDialog):
         header = table.horizontalHeader()
         header.setStretchLastSection(False)
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        for column, width in enumerate((210, 155, 130, 265, 125, 185, 185, 245)):
+        for column, width in enumerate((210, 155, 155, 130, 265, 125, 185, 185, 245)):
             table.setColumnWidth(column, width)
         table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
@@ -474,7 +472,10 @@ class MarketIntelligenceDialog(QDialog):
 
     def _online_search_failed(self, message: str) -> None:
         self.online_button.setEnabled(True)
-        self.status.setText("A consulta online falhou; o restante do aplicativo continua disponível.")
+        self.status.setText(
+            "Consulta online indisponível. O mapa e os registros exibidos vêm da base local; "
+            "não foram obtidos dados novos nesta tentativa."
+        )
         QMessageBox.warning(self, "Busca online de empresas", message)
 
     def _search(self) -> None:
@@ -490,8 +491,10 @@ class MarketIntelligenceDialog(QDialog):
             QMessageBox.warning(self, "Pesquisa regional", str(exc))
             return
 
-        self._populate_results_table(self.table)
         self._populate_results_table(self.results_table)
+        with_cnpj = sum(bool(str(item.get("cnpj") or "").strip()) for item in self.results)
+        with_phone = sum(bool(str(item.get("phone") or "").strip()) for item in self.results)
+        self.open_results_button.setText(f"Ver resultados ({len(self.results):,}) →".replace(",", "."))
         self._render_heatmap(lat, lon)
         reported_count = sum(item.get("revenue_reported") is not None for item in self.results)
         estimated_count = sum(item.get("revenue_estimate") is not None for item in self.results)
@@ -503,8 +506,12 @@ class MarketIntelligenceDialog(QDialog):
         self.status.setText(summary)
         self.results_status.setText(
             f"{summary} Segmento: {segment or 'todos'} · "
+            f"{with_cnpj} com CNPJ · {with_phone} com telefone · "
             f"{reported_count} com faturamento divulgado · {estimated_count} com estimativa."
         )
+        self.tabs.setCurrentWidget(self.results_scroll)
+
+    def _show_results(self) -> None:
         self.tabs.setCurrentWidget(self.results_scroll)
 
     def _populate_results_table(self, table: QTableWidget) -> None:
@@ -512,8 +519,9 @@ class MarketIntelligenceDialog(QDialog):
         table.setRowCount(len(self.results))
         for row_index, item in enumerate(self.results):
             values = [
-                item.get("name", ""), item.get("cnpj", ""), item.get("cnae", ""),
-                item.get("address", ""), f'{item["distance_km"]:.2f}',
+                item.get("name", ""), item.get("cnpj") or "—", item.get("phone") or "—",
+                item.get("cnae", ""), item.get("address", ""),
+                f'{item["distance_km"]:.2f}',
                 self._money(item.get("revenue_reported")),
                 self._money(item.get("revenue_estimate")),
                 " • ".join(
@@ -523,7 +531,7 @@ class MarketIntelligenceDialog(QDialog):
             ]
             for column, value in enumerate(values):
                 cell = QTableWidgetItem(str(value))
-                if column in (4, 5, 6):
+                if column in (5, 6, 7):
                     cell.setTextAlignment(
                         Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
                     )
