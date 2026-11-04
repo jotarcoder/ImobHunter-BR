@@ -1,4 +1,4 @@
-"""Candidate releases must not update public downloads or build four runners automatically."""
+"""Candidate version matches the published links; native jobs stay gated."""
 from pathlib import Path
 import re
 import tomllib
@@ -6,14 +6,17 @@ import tomllib
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_staged_version_does_not_change_public_r2_download_links():
+def test_published_version_download_links_match_project_version():
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     version = project["project"]["version"]
     assert re.fullmatch(r"\d+\.\d+\.\d+", version)
     index = (ROOT / "web/index.html").read_text(encoding="utf-8")
-    published = re.search(r"ImobHunter-BR-Setup-Windows-(\d+\.\d+\.\d+)\.exe", index)
+    published = re.search(
+        r"releases/v(\d+\.\d+\.\d+)/ImobHunter-BR-Setup-Windows\.exe", index
+    )
     assert published is not None
-    assert index.count(f"Baixar v{published.group(1)} →") == 4
+    assert published.group(1) == version
+    assert index.count(f"Baixar v{version} →") == 4
     assert "pyarrow>=20,<23" in project["project"]["optional-dependencies"]["desktop"]
 
 

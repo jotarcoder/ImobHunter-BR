@@ -29,4 +29,4 @@ def test_five_existing_cards_keep_labels_and_source_links():
     for label in ("Endereço e cadastro", "Matrícula com", "Registro oficial"):
         assert label in index
     assert 'href="fontes.html"' in index
-    assert "ImobHunter-BR-Setup-Windows-2.1.1.exe" in index
+    assert "releases/v2.1.2/ImobHunter-BR-Setup-Windows.exe" in index

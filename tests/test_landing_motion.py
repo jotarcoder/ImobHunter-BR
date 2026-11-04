@@ -39,12 +39,15 @@ def test_landing_is_institutional_only():
     assert "magnetic-cursor" in css
     assert "cursor.className = 'magnetic-cursor'" in motion
     assert 'href="https://ridigital.org.br/" target="_blank" rel="noopener noreferrer"' in html
-    # Site downloads remain at the last R2-published version during staging.
+    # Both a staging root-name link and a verified versioned R2 directory
+    # are supported; the visible label must agree with the published path.
     published = re.search(
-        r"ImobHunter-BR-Setup-Windows-(\d+\.\d+\.\d+)\.exe", html
+        r"(?:releases/v(\d+\.\d+\.\d+)/ImobHunter-BR-Setup-Windows\.exe|"
+        r"ImobHunter-BR-Setup-Windows-(\d+\.\d+\.\d+)\.exe)", html
     )
     assert published is not None
-    assert html.count(f"Baixar v{published.group(1)} →") == 4
+    version = published.group(1) or published.group(2)
+    assert html.count(f"Baixar v{version} →") == 4
     assert "grid-template-columns:minmax(0,1fr)" in css
     assert "Premium centered composition" in css
     assert "data-magnetic" in motion
