@@ -26,3 +26,10 @@ def test_known_binaries_reused_and_publication_is_all_or_nothing():
     assert "releases/v2.1.2" in YML
     assert "releases/v2.1.1" not in YML
     assert "aws s3 rm" not in YML
+
+
+def test_recovery_gate_handles_new_commit_and_full_ancestry():
+    assert "fetch-depth: 0" in YML
+    assert 'echo "ready=false" >> "$GITHUB_OUTPUT"' in YML
+    assert "git diff --name-only 8a867e4aed5b5d7591dc397a79305c1e2f8a927e HEAD" in YML
+    assert "finalize-v2" in YML

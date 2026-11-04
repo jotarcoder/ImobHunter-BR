@@ -1,7 +1,7 @@
 name: Finalizar ImobHunter 2.1.2 — Linux e macOS (publicar R2 somente após checks)
 
 # One-time, owner-authorized migration of downloads from v2.1.1 to v2.1.2.
-# It only fires for the green main CI of the single PR adding this workflow.
+# Archived: the only authorized CI SHA is pinned below, so later commits skip it cleanly.
 # Never publishes on generic pushes or reruns of other versions.
 on:
   workflow_run:
@@ -18,7 +18,8 @@ jobs:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main'
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_sha == '8a867e4aed5b5d7591dc397a79305c1e2f8a927e'
     runs-on: ubuntu-latest
     outputs:
       ready: ${{ steps.verify.outputs.ready }}
@@ -26,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
-          fetch-depth: 2
+          fetch-depth: 0
       - name: Require the one-time authorized release PR and unchanged application source
         id: verify
         shell: bash
