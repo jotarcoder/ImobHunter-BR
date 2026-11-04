@@ -127,6 +127,11 @@ jobs:
             if [ "$PREVIOUS_VERSION" != "$VERSION" ]; then
               SHOULD_BUILD=true
               echo "New version: $PREVIOUS_VERSION -> $VERSION"
+            elif [ "$VERSION" = "2.1.2" ] && git diff --name-only HEAD^ HEAD -- .github/workflows/release.yml | grep -Fxq ".github/workflows/release.yml"; then
+              # Targeted recovery after the Windows Defender scan failed to locate a
+              # relative path. A single main workflow fix reruns Windows only.
+              SHOULD_BUILD=true
+              echo "Recover Windows v2.1.2 QA candidate after scanning-path fix."
             else
               echo "Version unchanged ($VERSION); no native builds."
             fi
@@ -247,7 +252,8 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          $setupPath = "packaging/windows/Output/ImobHunter-BR-Setup-Windows.exe"
+          # Start-MpScan needs a fully qualified path on Windows GitHub runners.
+          $setupPath = (Resolve-Path "packaging/windows/Output/ImobHunter-BR-Setup-Windows.exe").Path
           $sha = (Get-FileHash -Algorithm SHA256 $setupPath).Hash
           Write-Host "Installer SHA256: $sha"
           $sign = Get-AuthenticodeSignature -FilePath $setupPath
