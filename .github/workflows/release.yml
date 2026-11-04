@@ -173,6 +173,7 @@ jobs:
           name: windows-app-icon
           path: imobhunter.ico
           if-no-files-found: error
+          retention-days: 7
 
   windows:
     needs: [meta, icon]
@@ -233,6 +234,7 @@ jobs:
           name: ImobHunter-BR-Windows
           path: packaging/windows/Output/ImobHunter-BR-Setup-Windows.exe
           if-no-files-found: error
+          retention-days: 7
 
   linux:
     needs: meta
@@ -270,6 +272,7 @@ jobs:
           name: ImobHunter-BR-Linux
           path: ImobHunter-BR-Linux.AppImage
           if-no-files-found: error
+          retention-days: 7
 
   macos-intel:
     needs: meta
@@ -312,6 +315,7 @@ jobs:
           name: ImobHunter-BR-macOS-Intel
           path: ImobHunter-BR-macOS-Intel.dmg
           if-no-files-found: error
+          retention-days: 7
 
 
   macos-arm:
@@ -407,6 +411,7 @@ jobs:
           name: ImobHunter-BR-macOS-AppleSilicon
           path: ImobHunter-BR-macOS-AppleSilicon.dmg
           if-no-files-found: error
+          retention-days: 7
 
   candidate-manifest:
     needs: [meta, windows, linux, macos-intel, macos-arm]
@@ -443,6 +448,7 @@ jobs:
           name: ImobHunter-BR-Checksums-v${{ needs.meta.outputs.version }}
           path: build-manifest.txt
           if-no-files-found: error
+          retention-days: 7
 
   publish:
     needs: [meta, windows, linux, macos-intel, macos-arm]
