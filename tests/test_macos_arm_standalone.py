@@ -1,6 +1,5 @@
 """Guarantee the independent Apple Silicon recovery only builds the missing DMG."""
 from pathlib import Path
-import tomllib
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,8 +39,9 @@ def test_build_waits_for_green_main_ci_and_is_one_time_only() -> None:
 
 def test_uses_identical_v2_1_0_source_as_other_three_builds() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
-    metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert metadata["project"]["version"] == "2.1.0"
+    # Historic one-time recovery is pinned to v2.1.0; a newer release
+    # must not invalidate the immutable source used by that old build.
+    assert "['project']['version'] == '2.1.0'" in workflow
     assert SOURCE_SHA in workflow
     assert OLD_RUN in workflow
     assert "pyinstaller==6.22.3" in workflow
