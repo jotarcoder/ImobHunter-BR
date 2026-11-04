@@ -173,6 +173,7 @@ jobs:
           name: windows-app-icon
           path: imobhunter.ico
           if-no-files-found: error
+          retention-days: 7
 
   windows:
     needs: [meta, icon]
@@ -233,6 +234,7 @@ jobs:
           name: ImobHunter-BR-Windows
           path: packaging/windows/Output/ImobHunter-BR-Setup-Windows.exe
           if-no-files-found: error
+          retention-days: 7
 
   linux:
     needs: meta
@@ -270,6 +272,7 @@ jobs:
           name: ImobHunter-BR-Linux
           path: ImobHunter-BR-Linux.AppImage
           if-no-files-found: error
+          retention-days: 7
 
   macos-intel:
     needs: meta
@@ -312,11 +315,15 @@ jobs:
           name: ImobHunter-BR-macOS-Intel
           path: ImobHunter-BR-macOS-Intel.dmg
           if-no-files-found: error
+          retention-days: 7
+
 
   macos-arm:
     needs: meta
     if: needs.meta.outputs.should_build == 'true' && (github.event_name == 'workflow_run' || inputs.build_target == 'all' || inputs.build_target == 'macos-arm')
-    runs-on: macos-26
+    # A successful v2.1.0 recovery used this very same Intel-hosted universal2
+    # toolchain. Avoid macOS ARM runner queues that previously stalled builds.
+    runs-on: macos-15-intel
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -325,36 +332,86 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Confirm native Apple Silicon ARM64
-        run: |
-          test "$(uname -m)" = "arm64"
-          python -c "import platform; assert platform.machine() == 'arm64', platform.machine()"
-      - run: python -m pip install -e ".[desktop]" pyinstaller
-      - run: python -m PyInstaller --noconfirm --windowed --name ImobHunter-BR --add-data "imobhunter/assets:imobhunter/assets" --add-data "data/coverage/ddd.json:data/coverage" packaging/entrypoint.py
-      - name: Verify bundled HTTPS certificate authorities
-        run: |
-          CA_BUNDLE="$(find dist/ImobHunter-BR.app -type f -name cacert.pem -print -quit)"
-          test -n "$CA_BUNDLE" || { echo "::error::PyInstaller did not bundle certifi cacert.pem on macOS Apple Silicon"; exit 1; }
-          echo "HTTPS CA bundle included: $CA_BUNDLE"
-      - name: Package Apple Silicon DMG with bounded retries
+      - name: Verify Intel build host with a universal2 Python 3.11 interpreter
         shell: bash
         run: |
           set -euo pipefail
+          test "$(uname -m)" = "x86_64"
+          python_bin="$(python -c 'import sys; print(sys.executable)')"
+          lipo -archs "$python_bin" | tr ' ' '\n' | grep -qx arm64 || {
+            echo "::error::Python interpreter has no ARM64 slice; cannot cross-build."
+            exit 1
+          }
+      - name: Install pinned universal2 toolchain and desktop dependencies
+        run: python -m pip install -e ".[desktop]" "pyinstaller==6.22.3" "pyinstaller-hooks-contrib==2026.9"
+      - name: Verify PySide6 has a native ARM64 slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          qt_extension="$(python -c 'import PySide6.QtCore; print(PySide6.QtCore.__file__)')"
+          lipo -archs "$qt_extension" | tr ' ' '\n' | grep -qx arm64 || {
+            echo "::error::Bundled Qt extension is not ARM64-compatible."
+            exit 1
+          }
+      - name: Cross-build latest main source as Apple Silicon ARM64
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m PyInstaller --clean --noconfirm --windowed --target-arch arm64 --name ImobHunter-BR \
+            --add-data "imobhunter/assets:imobhunter/assets" \
+            --add-data "data/coverage/ddd.json:data/coverage" packaging/entrypoint.py
+      - name: Verify ARM64 entrypoint, every Mach-O slice, and HTTPS certificates
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="dist/ImobHunter-BR.app"
+          binary="$app/Contents/MacOS/ImobHunter-BR"
+          test -s "$binary"
+          test "$(lipo -archs "$binary")" = "arm64" || {
+            echo "::error::Application executable is not exclusively ARM64."
+            exit 1
+          }
+          count=0
+          while IFS= read -r -d '' candidate; do
+            if file -b "$candidate" | grep -q "Mach-O"; then
+              lipo -archs "$candidate" | tr ' ' '\n' | grep -qx arm64 || {
+                echo "::error::Bundled native binary missing ARM64 slice: $candidate"
+                exit 1
+              }
+              count=$((count + 1))
+            fi
+          done < <(find "$app" -type f -print0)
+          test "$count" -gt 5
+          ca_bundle="$(find "$app" -type f -name cacert.pem -print -quit)"
+          test -n "$ca_bundle" || {
+            echo "::error::HTTPS CA certificate bundle missing from ARM64 app."
+            exit 1
+          }
+          echo "Verified $count native ARM64-compatible Mach-O files and HTTPS CA certificates."
+      - name: Package and verify Apple Silicon DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          dmg="ImobHunter-BR-macOS-AppleSilicon.dmg"
+          rm -f "$dmg"
           for attempt in 1 2 3; do
-            if hdiutil create -volname ImobHunter-BR -srcfolder dist/ImobHunter-BR.app -ov -format UDZO ImobHunter-BR-macOS-AppleSilicon.tmp.dmg; then
-              mv ImobHunter-BR-macOS-AppleSilicon.tmp.dmg ImobHunter-BR-macOS-AppleSilicon.dmg
+            if hdiutil create -volname ImobHunter-BR -srcfolder dist/ImobHunter-BR.app -format UDZO "$dmg"; then
+              hdiutil verify -quiet "$dmg"
+              test -s "$dmg"
+              shasum -a 256 "$dmg"
               exit 0
             fi
-            rm -f ImobHunter-BR-macOS-AppleSilicon.tmp.dmg
+            rm -f "$dmg"
             if [ "$attempt" -lt 3 ]; then sleep 5; fi
           done
-          echo "::error::Failed to build Apple Silicon DMG after 3 attempts."
+          echo "::error::Apple Silicon DMG could not be created or verified."
           exit 1
       - uses: actions/upload-artifact@v4
         with:
           name: ImobHunter-BR-macOS-AppleSilicon
           path: ImobHunter-BR-macOS-AppleSilicon.dmg
           if-no-files-found: error
+          retention-days: 7
 
   candidate-manifest:
     needs: [meta, windows, linux, macos-intel, macos-arm]
@@ -391,6 +448,7 @@ jobs:
           name: ImobHunter-BR-Checksums-v${{ needs.meta.outputs.version }}
           path: build-manifest.txt
           if-no-files-found: error
+          retention-days: 7
 
   publish:
     needs: [meta, windows, linux, macos-intel, macos-arm]
