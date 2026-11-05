@@ -125,6 +125,18 @@ def test_first_activation_requires_real_signed_certificate(signer):
         offline.cached_authorization(USER_ID, KEY)
 
 
+def test_legacy_online_authorization_never_grants_offline_access(signer):
+    with patch.object(offline, "activate", return_value={
+        "authorized": True, "certificate_pending": True,
+        "expires_at": "2027-10-11T00:00:00.000Z",
+    }):
+        result = offline.check_license(USER_ID, KEY)
+    assert result["mode"] == "online_legacy"
+    assert result["authorized"] is True
+    with pytest.raises(LicenseError, match="Nenhum certificado"):
+        offline.cached_authorization(USER_ID, KEY)
+
+
 def test_timeout_without_prior_certificate_denies_access_but_not_key(signer):
     with (
         patch.object(offline, "activate", side_effect=LicenseError("timeout")),
