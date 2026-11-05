@@ -16,7 +16,9 @@ import shutil
 from threading import RLock
 from urllib.parse import urlsplit
 import uuid
-from typing import Any
+from typing import Any, Callable
+
+from imobhunter.application.sp_iptu_parquet import import_sp_iptu_parquet
 
 from imobhunter.domain.identity import canonical_text
 
@@ -106,7 +108,7 @@ def _validated(source: CustomMunicipalSource) -> CustomMunicipalSource:
         r"/(?:Feature|Map)Server/\d+/?$", urlsplit(source.url).path, re.IGNORECASE
     ):
         raise ValueError("Informe a URL ArcGIS da camada, terminada em /FeatureServer/0 ou /MapServer/0.")
-    if source.file_name and not re.fullmatch(r"[0-9a-f]{32}\.(?:csv|xlsx|json|geojson)", source.file_name):
+    if source.file_name and not re.fullmatch(r"[0-9a-f]{32}\.(?:csv|xlsx|json|geojson|sqlite3)", source.file_name):
         raise ValueError("Nome de arquivo cadastral inválido.")
     return replace(source, city=source.city.strip(), state=source.state.strip().upper(),
                    name=source.name.strip(), url=source.url.strip())
@@ -239,28 +241,46 @@ class CustomMunicipalStore:
             return None
         return self.directory / "data" / item.file_name
 
-    def import_file(self, source_id: str, original: Path) -> tuple[CustomMunicipalSource, int]:
+    def import_file(self, source_id: str, original: Path, *,
+                    progress: Callable[[int], None] | None = None
+                    ) -> tuple[CustomMunicipalSource, int]:
         with self._lock:
             items = self.list()
             current = next((item for item in items if item.source_id == source_id), None)
             if current is None:
                 raise ValueError("Cadastre o município antes de importar arquivos.")
             original = Path(original)
-            rows = read_municipal_file(original)  # Validate before copying.
-            path = self.directory / "data" / f"{current.id}{original.suffix.lower()}"
-            path.parent.mkdir(parents=True, exist_ok=True)
-            temporary = path.parent / f".{uuid.uuid4().hex}.part"
-            try:
-                with original.open("rb") as source, temporary.open("wb") as target:
-                    shutil.copyfileobj(source, target)
-                os.replace(temporary, path)
-            finally:
-                temporary.unlink(missing_ok=True)
+            if original.suffix.lower() == ".parquet":
+                # Huge official São Paulo IPTU exports cannot be parsed like a
+                # 50k-row CSV. Build an indexed SQLite *locally*, in bounded batches.
+                # A Parquet export from another city requires a separately
+                # documented schema; never label it as São Paulo by assumption.
+                if current.state != "SP" or canonical_text(current.city) != "SAO PAULO":
+                    raise ValueError(
+                        "A importação Parquet de IPTU está disponível para São Paulo/SP. "
+                        "Em outros municípios, importe CSV, XLSX, JSON ou GeoJSON."
+                    )
+                path = self.directory / "data" / f"{current.id}.sqlite3"
+                _, count = import_sp_iptu_parquet(
+                    original, target=path, progress=progress,
+                )
+            else:
+                rows = read_municipal_file(original)  # Validate before copying.
+                count = len(rows)
+                path = self.directory / "data" / f"{current.id}{original.suffix.lower()}"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                temporary = path.parent / f".{uuid.uuid4().hex}.part"
+                try:
+                    with original.open("rb") as source, temporary.open("wb") as target:
+                        shutil.copyfileobj(source, target)
+                    os.replace(temporary, path)
+                finally:
+                    temporary.unlink(missing_ok=True)
             updated = replace(current, file_name=path.name)
             self._save(tuple(updated if entry.id == current.id else entry for entry in items))
             if current.file_name and current.file_name != path.name:
                 (path.parent / current.file_name).unlink(missing_ok=True)
-            return updated, len(rows)
+            return updated, count
 
     def remove(self, source_id: str) -> bool:
         with self._lock:
