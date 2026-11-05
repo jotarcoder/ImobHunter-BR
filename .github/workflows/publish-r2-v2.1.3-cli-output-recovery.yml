@@ -1,0 +1,135 @@
+name: R2 v2.1.3 recuperar PutObject com saida AWS CLI valida
+
+# Owner explicitly authorized R2 publication of the four already validated v2.1.3 artifacts.
+# One-time recovery: fix invalid AWS CLI --output none (252). Only the commit that ADDS this workflow after green main CI.
+# All binaries must originate from the SAME validated build run and exact SHA256.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  gate:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    outputs:
+      approved: ${{ steps.guard.outputs.approved }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - name: Check owner-approved single-use release gate
+        id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Subsequent main commits must skip this workflow without red checks.
+          if ! git diff --diff-filter=A --name-only HEAD^ HEAD | grep -Fxq ".github/workflows/publish-r2-v2.1.3-cli-output-recovery.yml"; then
+            echo "approved=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::The approved one-time v2.1.3 workflow was not added by this commit; skip."
+            exit 0
+          fi
+          test "$(git rev-parse HEAD)" = "$CI_SHA"
+          remote_main="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+          test "$CI_SHA" = "$remote_main" || { echo "::error::CI SHA is no longer main."; exit 1; }
+          test "$(sed -n 's/^version = "\([^"]*\)"$/\1/p' pyproject.toml | head -1)" = "2.1.3"
+          SOURCE_SHA="3b114223155b60e507e0b3a48931644ff8fc624c"
+          git merge-base --is-ancestor "$SOURCE_SHA" HEAD
+          BUILD_RUN=42046990880
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN" --jq .head_sha)" = "$SOURCE_SHA"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN" --jq .conclusion)" = "success"
+          echo "approved=true" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: gate
+    if: needs.gate.outputs.approved == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Download four original native installer artifacts from one validated run
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p packages
+          for platform in Windows Linux macOS-Intel macOS-AppleSilicon; do
+            gh run download 42046990880 --repo "$GITHUB_REPOSITORY" \
+              --name "ImobHunter-BR-$platform" --dir packages
+          done
+      - name: Verify all four files and approved SHA256 digests before uploading anything
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd packages
+          for file in ImobHunter-BR-Setup-Windows.exe ImobHunter-BR-Linux.AppImage ImobHunter-BR-macOS-Intel.dmg ImobHunter-BR-macOS-AppleSilicon.dmg; do
+            test -s "$file" || { echo "::error::Missing/empty installer: $file"; exit 1; }
+          done
+          cat > SHA256SUMS <<'EOF'
+          71663757b32f896cc7791a47e786c46c56254b593313d8bd1cec4071dcb18bc5  ImobHunter-BR-Setup-Windows.exe
+          bc80d1cf785e5a5b3f0f6257dc8be526e5e296458b5bd605bbc2c96831aea26a  ImobHunter-BR-Linux.AppImage
+          41a248b144c690af002525a7e9b954695a46aefad1dfacab6caf98a78b648abd  ImobHunter-BR-macOS-Intel.dmg
+          b3b4fa04a2f3418087deaefd2d47ba5cc63dbdb655465c02f65a1ee71316c26d  ImobHunter-BR-macOS-AppleSilicon.dmg
+          EOF
+          sha256sum --check SHA256SUMS
+      - name: Upload verified versioned installers and confirm R2 length/public attachment
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$AWS_ACCESS_KEY_ID" && test -n "$AWS_SECRET_ACCESS_KEY" || {
+            echo "::error::R2 upload credentials missing in GitHub Actions secrets."
+            exit 1
+          }
+          AWS_ACCESS_KEY_ID="$(printf %s "$AWS_ACCESS_KEY_ID" | tr -d '\r\n')"
+          AWS_SECRET_ACCESS_KEY="$(printf %s "$AWS_SECRET_ACCESS_KEY" | tr -d '\r\n')"
+          export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+          export AWS_DEFAULT_REGION=auto
+          export AWS_REQUEST_CHECKSUM_CALCULATION=when_required
+          endpoint="https://15895c53eb86fc8d91e14e9b4456b656.r2.cloudflarestorage.com"
+          base="https://pub-6bd1ab819504434691f4832d98de3cb6.r2.dev"
+          bucket="imobhunter-downloads"
+          prefix="releases/v2.1.3"
+          cd packages
+          for file in ImobHunter-BR-Setup-Windows.exe ImobHunter-BR-Linux.AppImage ImobHunter-BR-macOS-Intel.dmg ImobHunter-BR-macOS-AppleSilicon.dmg; do
+            local_size="$(stat -c %s "$file")"
+            remote_size="$(aws s3api head-object --bucket "$bucket" --key "$prefix/$file" --endpoint-url "$endpoint" --query ContentLength --output text 2>/dev/null || true)"
+            if [ "$local_size" != "$remote_size" ]; then
+              # S3 PutObject is single-request (no multipart CompleteMultipartUpload).
+              # Use a valid AWS CLI output format, and discard the JSON response.
+              aws s3api put-object --bucket "$bucket" --key "$prefix/$file" --body "$file" \
+                --endpoint-url "$endpoint" --content-type "application/octet-stream" \
+                --content-disposition "attachment; filename=\"$file\"" \
+                --cache-control "public, max-age=0, must-revalidate" --output json >/dev/null
+            else
+              echo "Already uploaded: $file ($local_size bytes); verifying public headers."
+            fi
+            remote_size="$(aws s3api head-object --bucket "$bucket" --key "$prefix/$file" --endpoint-url "$endpoint" --query ContentLength --output text)"
+            test "$local_size" = "$remote_size" || { echo "::error::R2 size mismatch: $file"; exit 1; }
+            headers="$(mktemp)"
+            curl --retry 3 --retry-delay 3 --fail --silent --show-error --location --head \
+              --dump-header "$headers" --output /dev/null "$base/$prefix/$file?verify=$GITHUB_RUN_ID"
+            if ! grep -Eiq '^content-disposition:[[:space:]]*attachment' "$headers"; then
+              echo "::error::Missing public download header: $file"
+              cat "$headers"
+              rm -f "$headers"
+              exit 1
+            fi
+            rm -f "$headers"
+            echo "VERIFIED: $base/$prefix/$file ($local_size bytes)"
+          done
+          echo "Four validated v2.1.3 installers published via single PUT. No other version or bucket was modified."
