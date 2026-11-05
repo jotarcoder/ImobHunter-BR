@@ -29,4 +29,7 @@ def test_five_existing_cards_keep_labels_and_source_links():
     for label in ("Endereço e cadastro", "Matrícula com", "Registro oficial"):
         assert label in index
     assert 'href="fontes.html"' in index
-    assert "releases/v2.1.2/ImobHunter-BR-Setup-Windows.exe" in index
+    import tomllib
+
+    version = tomllib.loads((WEB.parent / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+    assert f"releases/v{version}/ImobHunter-BR-Setup-Windows.exe" in index
