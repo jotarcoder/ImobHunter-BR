@@ -106,6 +106,7 @@ class RecifeIPTUImportWorker(QRunnable):
 
 class SPIPTUImportSignals(QObject):
     finished = Signal(object)
+    progress = Signal(int)
 
 
 class SPIPTUImportWorker(QRunnable):
@@ -118,13 +119,46 @@ class SPIPTUImportWorker(QRunnable):
 
     def run(self) -> None:
         try:
-            sqlite_path, count = import_sp_iptu_parquet(self.path)
+            sqlite_path, count = import_sp_iptu_parquet(
+                self.path, progress=lambda count: self.signals.progress.emit(count)
+            )
             self.signals.finished.emit({
                 "ok": True, "path": str(sqlite_path), "count": count,
             })
         except Exception as exc:  # noqa: BLE001 - never crash settings on corrupt Parquet.
             self.signals.finished.emit({
                 "ok": False, "message": f"{type(exc).__name__}: {str(exc)[:280]}",
+            })
+
+
+class CustomMunicipalImportSignals(QObject):
+    finished = Signal(str, object)
+    progress = Signal(str, int)
+
+
+class CustomMunicipalImportWorker(QRunnable):
+    """Index a large local file on a pool thread, never on the GUI thread."""
+
+    def __init__(self, store: CustomMunicipalStore, source_id: str, path: Path) -> None:
+        super().__init__()
+        self.store = store
+        self.source_id = source_id
+        self.path = path
+        self.signals = CustomMunicipalImportSignals()
+
+    def run(self) -> None:
+        try:
+            updated, count = self.store.import_file(
+                self.source_id, self.path,
+                progress=lambda count: self.signals.progress.emit(self.source_id, count),
+            )
+            self.signals.finished.emit(
+                self.source_id,
+                {"ok": True, "city": updated.city, "state": updated.state, "count": count},
+            )
+        except Exception as exc:  # noqa: BLE001 - report corrupt sources without crashing Qt.
+            self.signals.finished.emit(self.source_id, {
+                "ok": False, "message": f"{type(exc).__name__}: {str(exc)[:350]}",
             })
 
 
@@ -140,6 +174,8 @@ class SourceSettingsDialog(QDialog):
         self.recife_store = RecifeIPTULocalStore()
         self._recife_import_worker: RecifeIPTUImportWorker | None = None
         self._sp_iptu_worker: SPIPTUImportWorker | None = None
+        self._custom_import_workers: dict[str, CustomMunicipalImportWorker] = {}
+        self._custom_import_status: dict[str, str] = {}
         self._sp_iptu_field: QLineEdit | None = None
         self.settings = QSettings("ImobHunter", "ImobHunter-BR")
         self.path_fields: dict[str, QLineEdit] = {}
@@ -295,7 +331,8 @@ class SourceSettingsDialog(QDialog):
         custom_layout.addWidget(custom_title)
         custom_info = QLabel(
             "Adicione por município e UF, informe um link HTTPS público ou importe "
-            "CSV, Excel, JSON ou GeoJSON de sua prefeitura. Sites sem API ficam "
+            "CSV, Excel, JSON, GeoJSON ou Parquet (IPTU de São Paulo). "
+            "Sites sem API ficam "
             "somente como referência; WFS e ArcGIS são consultados por localidade."
         )
         custom_info.setObjectName("muted")
@@ -568,6 +605,12 @@ class SourceSettingsDialog(QDialog):
             worker = SPIPTUImportWorker(Path(path))
             self._sp_iptu_worker = worker
             worker.signals.finished.connect(self._sp_iptu_import_finished)
+            worker.signals.progress.connect(
+                lambda count: self._sp_iptu_status.setText(
+                    f"São Paulo IPTU — {count:,} registros indexados. "
+                    "Processando em segundo plano; não feche o aplicativo."
+                )
+            )
             QThreadPool.globalInstance().start(worker)
             return
         field.setText(path)
@@ -706,11 +749,13 @@ class SourceSettingsDialog(QDialog):
                 self._municipal_probe_buttons[source_id] = test_button
                 actions.addWidget(test_button)
             file_button = QPushButton("Importar arquivo")
+            file_button.setEnabled(source_id not in self._custom_import_workers)
             file_button.clicked.connect(
                 lambda checked=False, sid=source_id: self._import_custom_file(sid)
             )
             actions.addWidget(file_button)
             remove_button = QPushButton("Remover fonte")
+            remove_button.setEnabled(source_id not in self._custom_import_workers)
             remove_button.clicked.connect(
                 lambda checked=False, sid=source_id: self._remove_custom_source(sid)
             )
@@ -718,8 +763,12 @@ class SourceSettingsDialog(QDialog):
             box.addLayout(actions)
             stored_file = self.custom_store.local_path(source)
             status = QLabel(
-                f"Arquivo local: {stored_file.name}" if stored_file and stored_file.is_file()
-                else "Sem arquivo municipal importado."
+                self._custom_import_status.get(source_id)
+                or (
+                    f"Arquivo local indexado: {stored_file.name}"
+                    if stored_file and stored_file.is_file()
+                    else "Sem arquivo municipal importado."
+                )
             )
             status.setObjectName("muted")
             status.setWordWrap(True)
