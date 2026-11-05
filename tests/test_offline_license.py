@@ -92,9 +92,11 @@ def test_clock_rollback_blocks_until_online(signer):
 def test_confirmed_denial_blocks_offline_but_preserves_certificate(signer):
     cert = signer()
     offline._save_authorized_certificate(cert, USER_ID, KEY)
-    with patch.object(offline, "activate", side_effect=LicenseDenied("LICENSE_NOT_ACTIVE")):
-        with pytest.raises(LicenseDenied):
-            offline.check_license(USER_ID, KEY)
+    with (
+        patch.object(offline, "activate", side_effect=LicenseDenied("LICENSE_NOT_ACTIVE")),
+        pytest.raises(LicenseDenied),
+    ):
+        offline.check_license(USER_ID, KEY)
     assert offline._read_saved()["blocked"] is True
     with pytest.raises(LicenseError, match="bloqueada"):
         offline.cached_authorization(USER_ID, KEY)
@@ -114,17 +116,21 @@ def test_successful_online_validation_clears_block(signer):
 
 
 def test_first_activation_requires_real_signed_certificate(signer):
-    with patch.object(offline, "activate", return_value={"authorized": True}):
-        with pytest.raises(LicenseError, match="não enviou o certificado"):
-            offline.check_license(USER_ID, KEY)
+    with (
+        patch.object(offline, "activate", return_value={"authorized": True}),
+        pytest.raises(LicenseError, match="não enviou o certificado"),
+    ):
+        offline.check_license(USER_ID, KEY)
     with pytest.raises(LicenseError, match="Nenhum certificado"):
         offline.cached_authorization(USER_ID, KEY)
 
 
 def test_timeout_without_prior_certificate_denies_access_but_not_key(signer):
-    with patch.object(offline, "activate", side_effect=LicenseError("timeout")):
-        with pytest.raises(LicenseError, match="Sem conexão"):
-            offline.check_license(USER_ID, KEY)
+    with (
+        patch.object(offline, "activate", side_effect=LicenseError("timeout")),
+        pytest.raises(LicenseError, match="Sem conexão"),
+    ):
+        offline.check_license(USER_ID, KEY)
     assert not offline._path().exists()
 
 
