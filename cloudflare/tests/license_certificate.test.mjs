@@ -78,8 +78,19 @@ test('Worker signs a device-bound license with P-256, preserving expiry', async 
   assert.ok(DB.statements.some(x => x.sql.includes('last_seen_at')));
 });
 
-test('Worker fails closed if signer is absent, without returning unsigned authorization', async () => {
+test('Worker keeps old clients authorized while signer is absent, with no unsigned certificate', async () => {
   const response = await worker.fetch(activationRequest(), { DB: mockDb() });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.authorized, true);
+  assert.equal(body.certificate_pending, true);
+  assert.equal(body.license_certificate, undefined);
+});
+
+test('Configured but corrupt signer fails closed rather than silently downgrading', async () => {
+  const response = await worker.fetch(activationRequest(), {
+    DB: mockDb(), LICENSE_SIGNING_PRIVATE_JWK: 'invalid private key'
+  });
   assert.equal(response.status, 503);
   const body = await response.json();
   assert.equal(body.authorized, false);
