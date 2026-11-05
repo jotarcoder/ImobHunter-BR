@@ -9,6 +9,27 @@ async function audit(env, actor, action, userId, detail={}) { await env.DB.prepa
 const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"");
 const fromB64url = (s) => Uint8Array.from(atob(s.replace(/-/g,"+").replace(/_/g,"/")+"=".repeat((4-s.length%4)%4)),c=>c.charCodeAt(0));
 const enc = (s) => new TextEncoder().encode(s);
+// A license certificate is signed on successful online activation, and is
+// verifiable offline using the desktop's public P-256 key. The private JWK
+// exists ONLY as a Cloudflare Worker secret: LICENSE_SIGNING_PRIVATE_JWK.
+async function issueLicenseCertificate(env, userId, plan, expiresAt, keyHash) {
+ if(!env.LICENSE_SIGNING_PRIVATE_JWK) throw Error("Missing license signer secret");
+ const privateJwk=JSON.parse(env.LICENSE_SIGNING_PRIVATE_JWK);
+ const key=await crypto.subtle.importKey("jwk",privateJwk,
+  {name:"ECDSA",namedCurve:"P-256"},false,["sign"]);
+ const claims={
+  v:1,user_id:userId,plan,key_sha256:keyHash,
+  issued_at:Math.floor(Date.now()/1000),
+  expires_at:Math.floor(Date.parse(expiresAt)/1000)
+ };
+ if(!Number.isFinite(claims.expires_at) || claims.expires_at<=claims.issued_at)
+  throw Error("Invalid license expiry");
+ const payload=b64url(enc(JSON.stringify(claims)));
+ // Workers WebCrypto ECDSA P-256 signature is a 64-byte IEEE P1363 (r||s).
+ const signature=b64url(await crypto.subtle.sign(
+  {name:"ECDSA",hash:"SHA-256"},key,enc(payload)));
+ return {v:1,payload,signature};
+}
 async function passwordHash(password, salt) {
  const key=await crypto.subtle.importKey("raw",enc(password),"PBKDF2",false,["deriveBits"]);
  const bits=await crypto.subtle.deriveBits({name:"PBKDF2",salt,iterations:100000,hash:"SHA-256"},key,256);
@@ -63,9 +84,17 @@ export default {
    if(!row.expires_at||!Number.isFinite(Date.parse(row.expires_at))||Date.parse(row.expires_at)<=Date.now()){ await audit(env,"license_api","activation_rejected",userId,{code:"LICENSE_EXPIRED"}); return json({ok:false,authorized:false,code:"LICENSE_EXPIRED",error:"A validade desta licença terminou ou está inválida. Renove a licença no painel administrativo."},403); }
    const digest=await hashKey(key);
    if(digest!==row.key_hash){ await audit(env,"license_api","activation_rejected",userId,{code:"ACTIVATION_KEY_MISMATCH"}); return json({ok:false,authorized:false,code:"ACTIVATION_KEY_MISMATCH",error:"A chave digitada não corresponde à chave atual deste ID. No painel, use “Trocar chave”, copie a chave recém-gerada e tente novamente. A chave anterior deixa de funcionar."},403); }
+   let certificate;
+   try {
+    certificate=await issueLicenseCertificate(env,userId,row.plan,row.expires_at,digest);
+   } catch(error) {
+    console.error("License certificate signing failed",String(error));
+    return json({ok:false,authorized:false,code:"LICENSE_SIGNER_UNAVAILABLE",
+     error:"O serviço de emissão de certificados está temporariamente indisponível."},503);
+   }
    await env.DB.prepare("UPDATE licenses SET last_seen_at=? WHERE user_id=?").bind(isoNow(),userId).run();
    await audit(env,"license_api","activation_authorized",userId,{plan:row.plan});
-   return json({ok:true,authorized:true,user_id:userId,plan:row.plan,expires_at:row.expires_at,checked_at:isoNow()});
+   return json({ok:true,authorized:true,user_id:userId,plan:row.plan,expires_at:row.expires_at,checked_at:isoNow(),license_certificate:certificate});
   }
   if(path==="/api/admin/login" && request.method==="POST"){
    await ensureAdminTables(env);
