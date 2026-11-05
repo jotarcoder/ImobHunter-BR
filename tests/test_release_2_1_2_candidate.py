@@ -20,7 +20,7 @@ def test_published_version_download_links_match_project_version():
     assert "pyarrow>=20,<23" in project["project"]["optional-dependencies"]["desktop"]
 
 
-def test_automated_build_is_windows_only_with_antivirus_gate():
+def test_one_time_v213_candidate_build_requires_green_main_ci_and_antivirus_gate():
     workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     windows = workflow.split("\n  windows:\n", 1)[1].split("\n  linux:\n", 1)[0]
     assert "github.event_name == 'workflow_run'" in windows
@@ -32,10 +32,14 @@ def test_automated_build_is_windows_only_with_antivirus_gate():
         block = workflow.split(f"\n  {name}:\n", 1)[1].split(f"\n  {following}:\n", 1)[0]
         condition = next(line for line in block.splitlines() if line.strip().startswith("if:"))
         assert "github.event_name == 'workflow_dispatch'" in condition
-        assert "github.event_name == 'workflow_run'" not in condition
+        assert "(github.event_name == 'workflow_run' && needs.meta.outputs.version == '2.1.3')" in condition
     assert "Start-MpScan -ScanType CustomScan" in windows
     assert '$setupPath = (Resolve-Path "packaging/windows/Output/ImobHunter-BR-Setup-Windows.exe").Path' in windows
     assert 'git diff --name-only HEAD^ HEAD -- .github/workflows/release.yml' in workflow
+    arm = workflow.split("\n  macos-arm:\n", 1)[1].split("\n  candidate-manifest:\n", 1)[0]
+    assert "runs-on: macos-15\n" in arm
+    assert "Verify PySide6 and PyArrow native ARM64 extensions" in arm
+    assert "pyarrow._parquet" in arm
     assert "Get-AuthenticodeSignature" in windows
     assert "PyArrow native Parquet extension not found" in windows
     assert "NOT published to R2; awaiting manual Windows validation." in windows
