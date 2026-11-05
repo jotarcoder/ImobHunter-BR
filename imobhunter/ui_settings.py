@@ -106,6 +106,7 @@ class RecifeIPTUImportWorker(QRunnable):
 
 class SPIPTUImportSignals(QObject):
     finished = Signal(object)
+    progress = Signal(int)
 
 
 class SPIPTUImportWorker(QRunnable):
@@ -118,13 +119,46 @@ class SPIPTUImportWorker(QRunnable):
 
     def run(self) -> None:
         try:
-            sqlite_path, count = import_sp_iptu_parquet(self.path)
+            sqlite_path, count = import_sp_iptu_parquet(
+                self.path, progress=lambda count: self.signals.progress.emit(count)
+            )
             self.signals.finished.emit({
                 "ok": True, "path": str(sqlite_path), "count": count,
             })
         except Exception as exc:  # noqa: BLE001 - never crash settings on corrupt Parquet.
             self.signals.finished.emit({
                 "ok": False, "message": f"{type(exc).__name__}: {str(exc)[:280]}",
+            })
+
+
+class CustomMunicipalImportSignals(QObject):
+    finished = Signal(str, object)
+    progress = Signal(str, int)
+
+
+class CustomMunicipalImportWorker(QRunnable):
+    """Index a large local file on a pool thread, never on the GUI thread."""
+
+    def __init__(self, store: CustomMunicipalStore, source_id: str, path: Path) -> None:
+        super().__init__()
+        self.store = store
+        self.source_id = source_id
+        self.path = path
+        self.signals = CustomMunicipalImportSignals()
+
+    def run(self) -> None:
+        try:
+            updated, count = self.store.import_file(
+                self.source_id, self.path,
+                progress=lambda count: self.signals.progress.emit(self.source_id, count),
+            )
+            self.signals.finished.emit(
+                self.source_id,
+                {"ok": True, "city": updated.city, "state": updated.state, "count": count},
+            )
+        except Exception as exc:  # noqa: BLE001 - report corrupt sources without crashing Qt.
+            self.signals.finished.emit(self.source_id, {
+                "ok": False, "message": f"{type(exc).__name__}: {str(exc)[:350]}",
             })
 
 
@@ -140,6 +174,8 @@ class SourceSettingsDialog(QDialog):
         self.recife_store = RecifeIPTULocalStore()
         self._recife_import_worker: RecifeIPTUImportWorker | None = None
         self._sp_iptu_worker: SPIPTUImportWorker | None = None
+        self._custom_import_workers: dict[str, CustomMunicipalImportWorker] = {}
+        self._custom_import_status: dict[str, str] = {}
         self._sp_iptu_field: QLineEdit | None = None
         self.settings = QSettings("ImobHunter", "ImobHunter-BR")
         self.path_fields: dict[str, QLineEdit] = {}
@@ -295,7 +331,8 @@ class SourceSettingsDialog(QDialog):
         custom_layout.addWidget(custom_title)
         custom_info = QLabel(
             "Adicione por município e UF, informe um link HTTPS público ou importe "
-            "CSV, Excel, JSON ou GeoJSON de sua prefeitura. Sites sem API ficam "
+            "CSV, Excel, JSON, GeoJSON ou Parquet (IPTU de São Paulo). "
+            "Sites sem API ficam "
             "somente como referência; WFS e ArcGIS são consultados por localidade."
         )
         custom_info.setObjectName("muted")
@@ -568,6 +605,12 @@ class SourceSettingsDialog(QDialog):
             worker = SPIPTUImportWorker(Path(path))
             self._sp_iptu_worker = worker
             worker.signals.finished.connect(self._sp_iptu_import_finished)
+            worker.signals.progress.connect(
+                lambda count: self._sp_iptu_status.setText(
+                    f"São Paulo IPTU — {count:,} registros indexados. "
+                    "Processando em segundo plano; não feche o aplicativo."
+                )
+            )
             QThreadPool.globalInstance().start(worker)
             return
         field.setText(path)
@@ -706,11 +749,13 @@ class SourceSettingsDialog(QDialog):
                 self._municipal_probe_buttons[source_id] = test_button
                 actions.addWidget(test_button)
             file_button = QPushButton("Importar arquivo")
+            file_button.setEnabled(source_id not in self._custom_import_workers)
             file_button.clicked.connect(
                 lambda checked=False, sid=source_id: self._import_custom_file(sid)
             )
             actions.addWidget(file_button)
             remove_button = QPushButton("Remover fonte")
+            remove_button.setEnabled(source_id not in self._custom_import_workers)
             remove_button.clicked.connect(
                 lambda checked=False, sid=source_id: self._remove_custom_source(sid)
             )
@@ -718,8 +763,12 @@ class SourceSettingsDialog(QDialog):
             box.addLayout(actions)
             stored_file = self.custom_store.local_path(source)
             status = QLabel(
-                f"Arquivo local: {stored_file.name}" if stored_file and stored_file.is_file()
-                else "Sem arquivo municipal importado."
+                self._custom_import_status.get(source_id)
+                or (
+                    f"Arquivo local indexado: {stored_file.name}"
+                    if stored_file and stored_file.is_file()
+                    else "Sem arquivo municipal importado."
+                )
             )
             status.setObjectName("muted")
             status.setWordWrap(True)
@@ -760,11 +809,31 @@ class SourceSettingsDialog(QDialog):
         form.addRow("UF", state_field)
         form.addRow("Link HTTPS", url_field)
         form.addRow("Tipo de serviço", protocol)
+        file_field = QLineEdit()
+        file_field.setReadOnly(True)
+        file_field.setPlaceholderText("Selecionar arquivo local (opcional)")
+        choose_file = QPushButton("Escolher arquivo…")
+        file_row = QHBoxLayout()
+        file_row.addWidget(file_field, 1)
+        file_row.addWidget(choose_file)
+
+        def browse_municipal_file() -> None:
+            selected, _ = QFileDialog.getOpenFileName(
+                editor, "Escolher arquivo cadastral municipal", "",
+                "Arquivos municipais (*.csv *.xlsx *.json *.geojson *.parquet)",
+            )
+            if selected:
+                file_field.setText(selected)
+
+        choose_file.clicked.connect(browse_municipal_file)
+        form.addRow("Arquivo municipal", file_row)
         edit_layout.addLayout(form)
         notice = QLabel(
             "Se o link for apenas um site, ele será salvo e poderá ser testado; "
             "para consultas automáticas escolha WFS ou ArcGIS com endpoint válido. "
-            "É possível cadastrar sem link e importar arquivos locais depois."
+            "Também é possível escolher um arquivo municipal nesta janela; "
+            "o Parquet de IPTU de São Paulo será indexado em segundo plano. "
+            "Sem link e sem arquivo, você poderá importar depois."
         )
         notice.setWordWrap(True)
         edit_layout.addWidget(notice)
@@ -792,12 +861,16 @@ class SourceSettingsDialog(QDialog):
         except (ValueError, TypeError, OSError) as exc:
             QMessageBox.warning(self, "Fonte municipal", str(exc))
             return
-        self._refresh_custom_sources()
-        QMessageBox.information(
-            self, "Fonte municipal salva",
-            f"{source.name} — {source.city}/{source.state} foi adicionada. "
-            "Use Testar fonte e/ou Importar arquivo para habilitar os dados.",
-        )
+        selected_file = file_field.text().strip()
+        if selected_file:
+            self._start_custom_import(source.source_id, Path(selected_file))
+        else:
+            self._refresh_custom_sources()
+            QMessageBox.information(
+                self, "Fonte municipal salva",
+                f"{source.name} — {source.city}/{source.state} foi adicionada. "
+                "Use Testar fonte ou Importar arquivo para habilitar os dados.",
+            )
 
     def _bertioga_source_status(self) -> str:
         try:
@@ -899,6 +972,61 @@ class SourceSettingsDialog(QDialog):
             "exercício local mais recente, sem inventar SQL/IPTU.",
         )
 
+    def _start_custom_import(self, source_id: str, path: Path) -> None:
+        if source_id in self._custom_import_workers:
+            QMessageBox.information(
+                self, "Importação em andamento",
+                "Esta fonte já está sendo importada. Acompanhe o progresso na lista.",
+            )
+            return
+        worker = CustomMunicipalImportWorker(self.custom_store, source_id, path)
+        self._custom_import_workers[source_id] = worker
+        self._custom_import_status[source_id] = (
+            f"Importando {path.name} em segundo plano. "
+            "Aguarde a indexação; o arquivo original será preservado."
+        )
+        worker.signals.finished.connect(self._custom_import_finished)
+        worker.signals.progress.connect(self._custom_import_progress)
+        self._refresh_custom_sources()
+        QThreadPool.globalInstance().start(worker)
+
+    def _custom_import_progress(self, source_id: str, count: int) -> None:
+        if source_id not in self._custom_import_workers:
+            return
+        bucket = count // 100_000
+        last_bucket = getattr(self, "_custom_progress_bucket", {})
+        if bucket <= last_bucket.get(source_id, -1):
+            return
+        last_bucket[source_id] = bucket
+        self._custom_progress_bucket = last_bucket
+        self._custom_import_status[source_id] = (
+            f"IPTU: {count:,} registros indexados. "
+            "Continuando em segundo plano; não feche o aplicativo."
+        )
+        self._refresh_custom_sources()
+
+    def _custom_import_finished(self, source_id: str, result: dict) -> None:
+        self._custom_import_workers.pop(source_id, None)
+        if hasattr(self, "_custom_progress_bucket"):
+            self._custom_progress_bucket.pop(source_id, None)
+        if result.get("ok"):
+            self._custom_import_status.pop(source_id, None)
+            reload_custom_sources(self.registry, self.custom_store)
+            self._refresh_custom_sources()
+            QMessageBox.information(
+                self, "Arquivo municipal importado",
+                f"{result['count']:,} registros disponíveis em "
+                f"{result['city']}/{result['state']}. "
+                "O original foi preservado. As próximas pesquisas utilizarão os dados.",
+            )
+        else:
+            message = str(result.get("message") or "Falha desconhecida.")
+            self._custom_import_status[source_id] = (
+                "Falha na importação. Os dados anteriores foram preservados."
+            )
+            self._refresh_custom_sources()
+            QMessageBox.warning(self, "Importação municipal", message)
+
     def _import_custom_file(self, source_id: str) -> None:
         source = self.custom_store.get(source_id)
         if source is None:
@@ -906,24 +1034,17 @@ class SourceSettingsDialog(QDialog):
             return
         path, _ = QFileDialog.getOpenFileName(
             self, f"Importar dados de {source.city}/{source.state}", "",
-            "Arquivos municipais (*.csv *.xlsx *.json *.geojson)",
+            "Arquivos municipais (*.csv *.xlsx *.json *.geojson *.parquet)",
         )
-        if not path:
-            return
-        try:
-            updated, count = self.custom_store.import_file(source_id, Path(path))
-            reload_custom_sources(self.registry, self.custom_store)
-        except (ValueError, OSError, TypeError) as exc:
-            QMessageBox.warning(self, "Importação municipal", str(exc))
-            return
-        self._refresh_custom_sources()
-        QMessageBox.information(
-            self, "Arquivo importado",
-            f"{count} linhas importadas para {updated.city}/{updated.state}. "
-            "Os registros serão filtrados por endereço ou quadra/lote nas próximas pesquisas.",
-        )
+        if path:
+            self._start_custom_import(source_id, Path(path))
 
     def _remove_custom_source(self, source_id: str) -> None:
+        if source_id in self._custom_import_workers:
+            QMessageBox.warning(
+                self, "Importação em andamento", "Conclua a importação antes de remover a fonte."
+            )
+            return
         source = self.custom_store.get(source_id)
         if source is None:
             return
