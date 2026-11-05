@@ -118,7 +118,7 @@ def test_successful_online_validation_clears_block(signer):
 def test_first_activation_requires_real_signed_certificate(signer):
     with (
         patch.object(offline, "activate", return_value={"authorized": True}),
-        pytest.raises(LicenseError, match="não enviou o certificado"),
+        pytest.raises(LicenseError, match="não enviou um certificado"),
     ):
         offline.check_license(USER_ID, KEY)
     with pytest.raises(LicenseError, match="Nenhum certificado"):
