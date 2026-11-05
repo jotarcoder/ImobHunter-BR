@@ -52,7 +52,7 @@ def _read_saved() -> dict:
             raise LicenseError("Certificado salvo excede o tamanho permitido.")
         data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
-            raise ValueError("invalid certificate envelope")
+            raise TypeError("invalid certificate envelope")
         return data
     except (FileNotFoundError, OSError, ValueError, TypeError) as exc:
         raise LicenseError("Nenhum certificado offline válido foi encontrado neste dispositivo.") from exc
