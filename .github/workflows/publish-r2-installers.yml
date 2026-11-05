@@ -86,6 +86,7 @@ jobs:
           set -euo pipefail
           endpoint="https://15895c53eb86fc8d91e14e9b4456b656.r2.cloudflarestorage.com"
           public_base="https://pub-6bd1ab819504434691f4832d98de3cb6.r2.dev"
+          prefix="releases/${TAG}"
           for file in \
             "ImobHunter-BR-Setup-Windows.exe" \
             "ImobHunter-BR-Linux.AppImage" \
@@ -105,6 +106,23 @@ jobs:
             fi
             rm -f "$headers_file"
             echo "Public attachment download verified: $file"
+
+            # Match versioned links in the institutional download landing page.
+            # R2 object prefixes are created implicitly on upload; no folder needed.
+            aws s3 cp "$file" "s3://imobhunter-downloads/$prefix/$file" --endpoint-url "$endpoint" --only-show-errors \
+              --content-type "application/octet-stream" \
+              --content-disposition "attachment; filename=\"$file\"" \
+              --cache-control "public, max-age=0, must-revalidate"
+            headers_file="$(mktemp)"
+            curl --fail --silent --show-error --location --dump-header "$headers_file" --output /dev/null "$public_base/$prefix/$file?verify=$GITHUB_RUN_ID"
+            if ! grep -Eiq "^content-disposition:[[:space:]]*attachment" "$headers_file"; then
+              echo "::error::Versioned R2 download failed for $prefix/$file."
+              cat "$headers_file"
+              rm -f "$headers_file"
+              exit 1
+            fi
+            rm -f "$headers_file"
+            echo "Versioned download verified: $prefix/$file"
 
             if [ "$file" = "ImobHunter-BR-Setup-Windows.exe" ]; then
               version="${TAG#v}"

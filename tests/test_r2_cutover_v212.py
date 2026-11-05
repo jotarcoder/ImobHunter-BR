@@ -13,6 +13,9 @@ def test_no_automatic_mutating_cutover_after_pages_deployment():
 
 def test_versioned_downloads_need_no_legacy_aliases():
     html = (ROOT / "web/index.html").read_text(encoding="utf-8")
-    assert html.count('r2.dev/releases/v2.1.2/ImobHunter-BR-') == 4
+    import tomllib
+
+    version = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+    assert html.count(f"r2.dev/releases/v{version}/ImobHunter-BR-") == 4
     assert "Baixar v2.1.1" not in html
     assert "ImobHunter-BR-Setup-Windows-2.1.1.exe" not in html
