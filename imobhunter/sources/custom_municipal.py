@@ -13,6 +13,7 @@ import certifi
 import httpx
 
 from imobhunter.application.cadastral_map import parse_geometry, valid_lon_lat
+from imobhunter.application.sp_iptu_parquet import search_sp_iptu_sqlite
 from imobhunter.application.custom_municipal_sources import (
     CustomMunicipalSource, CustomMunicipalStore, read_municipal_file,
     safe_public_url,
@@ -234,7 +235,14 @@ class CustomMunicipalAdapter(SourceAdapter):
         if data_path is not None:
             if not data_path.is_file():
                 raise RuntimeError("Arquivo cadastral municipal não encontrado.")
-            for row in read_municipal_file(data_path):
+            # Large São Paulo Parquet imports are indexed once in SQLite.
+            # Never reload millions of records into memory on each search.
+            rows = (
+                search_sp_iptu_sqlite(data_path, request)
+                if data_path.suffix.lower() == ".sqlite3"
+                else read_municipal_file(data_path)
+            )
+            for row in rows:
                 record = _local_row(row, request, self.definition)
                 if record is not None:
                     records.append(record)
