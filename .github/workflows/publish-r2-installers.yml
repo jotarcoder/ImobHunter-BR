@@ -109,9 +109,9 @@ jobs:
 
             # Match versioned links in the institutional download landing page.
             # R2 object prefixes are created implicitly on upload; no folder needed.
-            aws s3 cp "$file" "s3://imobhunter-downloads/$prefix/$file" --endpoint-url "$endpoint" --only-show-errors \\
-              --content-type "application/octet-stream" \\
-              --content-disposition "attachment; filename=\\\"$file\\\"" \\
+            aws s3 cp "$file" "s3://imobhunter-downloads/$prefix/$file" --endpoint-url "$endpoint" --only-show-errors \
+              --content-type "application/octet-stream" \
+              --content-disposition "attachment; filename=\"$file\"" \
               --cache-control "public, max-age=0, must-revalidate"
             headers_file="$(mktemp)"
             curl --fail --silent --show-error --location --dump-header "$headers_file" --output /dev/null "$public_base/$prefix/$file?verify=$GITHUB_RUN_ID"
