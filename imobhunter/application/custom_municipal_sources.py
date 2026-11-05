@@ -16,7 +16,8 @@ import shutil
 from threading import RLock
 from urllib.parse import urlsplit
 import uuid
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from imobhunter.application.sp_iptu_parquet import import_sp_iptu_parquet
 
