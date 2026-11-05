@@ -6,6 +6,7 @@ Being unable to reach Cloudflare is not the same as an explicit license denial.
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import json
 import re
@@ -13,6 +14,7 @@ import time
 from pathlib import Path
 
 from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 
@@ -85,10 +87,10 @@ def verify_certificate(certificate: dict, user_id: str, activation_key: str, *,
         r = int.from_bytes(signature[:32], "big")
         s = int.from_bytes(signature[32:], "big")
         public_key.verify(
-            encode_dss_signature(r, s), payload64.encode("ascii"), ec.ECDSA(hashlib_sha256())
+            encode_dss_signature(r, s), payload64.encode("ascii"), ec.ECDSA(hashes.SHA256())
         )
         claims = json.loads(payload_bytes)
-    except (InvalidSignature, ValueError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
+    except (InvalidSignature, LicenseError, binascii.Error, ValueError, TypeError, UnicodeError) as exc:
         raise LicenseError("Assinatura digital do certificado de licença inválida.") from exc
     if not isinstance(claims, dict):
         raise LicenseError("Dados do certificado de licença inválidos.")
@@ -112,11 +114,6 @@ def verify_certificate(certificate: dict, user_id: str, activation_key: str, *,
         raise LicenseError("A licença venceu. Reconecte à internet para renovar a autorização.")
     return claims
 
-
-def hashlib_sha256():
-    # cryptography uses its own hashing API (not hashlib) for ECDSA.
-    from cryptography.hazmat.primitives import hashes
-    return hashes.SHA256()
 
 
 def cached_authorization(user_id: str, activation_key: str, *, now: int | None = None) -> dict:
@@ -152,8 +149,8 @@ def _mark_denied() -> None:
     try:
         saved = _read_saved()
         _write_saved({**saved, "blocked": True})
-    except LicenseError:
-        # No cached certificate exists; there is nothing to revoke locally.
+    except (LicenseError, OSError):
+        # No cached certificate exists or the storage device is unavailable.
         pass
 
 
