@@ -151,7 +151,11 @@ def activate(user_id: str, activation_key: str, api_url: str | None = None) -> d
                 message = f"O endpoint de ativação recusou a requisição antes de retornar JSON (Content-Type: {content_type}). Trecho: {snippet}.{suffix}"
             else:
                 message = f"O endpoint de ativação retornou HTTP {exc.code} sem corpo JSON (Content-Type: {content_type}).{suffix}"
-        raise LicenseError(f"[HTTP {exc.code} · {code}] {message}") from exc
+        error_type = LicenseDenied if exc.code in (400, 403) and code in {
+            "LICENSE_NOT_FOUND", "LICENSE_NOT_ACTIVE", "LICENSE_EXPIRED",
+            "ACTIVATION_KEY_MISMATCH", "INVALID_ACTIVATION_REQUEST",
+        } else LicenseError
+        raise error_type(f"[HTTP {exc.code} · {code}] {message}") from exc
     except URLError as exc:
         reason = exc.reason
         if isinstance(reason, ssl.SSLCertVerificationError):
@@ -183,9 +187,17 @@ def activate(user_id: str, activation_key: str, api_url: str | None = None) -> d
     if result.get("authorized") is not True:
         code = str(result.get("code") or "SEM_CODIGO")
         message = str(result.get("error") or "O servidor não autorizou a licença e não informou o motivo.")
-        raise LicenseError(f"[{code}] {message}")
+        error_type = LicenseDenied if code in {
+            "LICENSE_NOT_FOUND", "LICENSE_NOT_ACTIVE", "LICENSE_EXPIRED",
+            "ACTIVATION_KEY_MISMATCH", "INVALID_ACTIVATION_REQUEST",
+        } else LicenseError
+        raise error_type(f"[{code}] {message}")
     return result
 
 
 class LicenseError(RuntimeError):
     """Raised when the server does not authorize desktop features."""
+
+
+class LicenseDenied(LicenseError):
+    """Explicit application-level denial, NOT a network or Cloudflare edge error."""
