@@ -29,16 +29,22 @@
    como PUBLIC_KEY_HEX, no formato 04 || x || y.
 3. Nunca adicionar JWK privado, chaves de clientes ou dados pessoais no Git,
    CI, logs ou instaladores.
-4. Configurar o segredo antes de publicar o Worker novo. Caso ausente, API
-   responde HTTP 503 LICENSE_SIGNER_UNAVAILABLE; não emite certificado sem assinatura.
+4. Publicação gradual: se o segredo ainda não existir, o Worker mantém a resposta online
+   compatível com as versões anteriores, sem certificado. O desktop novo permite o
+   uso **online somente** nesse cenário; uso offline até o vencimento exige um
+   certificado assinado emitido após a configuração. Se um segredo configurado
+   for inválido, a API retorna HTTP 503, sem emitir autorização falsa.
 5. Guardar backup seguro da chave privada. Rotação exigirá política versionada
    para manter certificados antigos válidos nos desktops existentes.
 
 ## Ordem de entrega
 
 1. PR com código Worker e desktop, testes de pytest, ruff, compileall e Node.
-2. Configurar e confirmar segredo Worker; não publicar se ausente.
-3. Merge no main após validação, deploy Worker primeiro, instaladores depois.
+2. A atualização de Worker pode ir ao main sem o segredo somente em modo
+   de compatibilidade, para preservar clientes anteriores; não liberar novos
+   instaladores como licenciados offline até confirmar o segredo.
+3. Configurar e confirmar o segredo Worker, revalidar a assinatura online
+   e fazer deploy antes dos novos instaladores.
 4. Homologar Windows, Linux, macOS Intel e macOS Apple Silicon.
 5. Só publicar os quatro instaladores no R2 após homologação.
 
@@ -50,5 +56,6 @@
   recebem autorização offline.
 - Negação explícita bloqueia o uso local mesmo se a internet cair depois.
 - Renovação online assina novo certificado e remove o marcador de bloqueio.
-- Worker sem segredo de assinatura retorna HTTP 503.
+- Worker sem segredo preserva ativação online legada, sem certificado.
+- Worker com segredo inválido retorna HTTP 503 e não autoriza falsamente.
 - Nenhum teste modifica dados do D1 de produção.
