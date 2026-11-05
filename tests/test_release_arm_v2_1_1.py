@@ -1,13 +1,13 @@
-"""Native Apple Silicon packaging must follow a proven ARM64 cross-build contract."""
+"""Native Apple Silicon packaging must verify real ARM64 libraries and checksums."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_release_builds_apple_silicon_with_pinned_cross_build_and_checksum_gate():
+def test_release_builds_apple_silicon_with_native_arm64_and_checksum_gate():
     workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     arm = workflow.split("\n  macos-arm:\n", 1)[1].split("\n  candidate-manifest:\n", 1)[0]
-    assert "runs-on: macos-15-intel" in arm
+    assert "runs-on: macos-15\n" in arm\n    assert "Verify native Apple Silicon ARM64 host" in arm\n    assert "pyarrow._parquet" in arm\n    assert "Native ARM64 wheel missing" in arm
     assert "runs-on: macos-26" not in arm
     assert "ref: ${{ needs.meta.outputs.ref }}" in arm
     assert "--target-arch arm64" in arm
