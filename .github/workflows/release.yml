@@ -12,7 +12,7 @@ on:
       - "imobhunter/licensing.py"
       - "data/coverage/ddd.json"
   # A version bump on green main CI automatically builds only the Windows candidate.
-# Linux and both macOS candidates require a later explicit manual action.
+# Linux and macOS candidates remain manual except once on the approved v2.1.3 bump.
 # No workflow_run may publish unvalidated installers to Cloudflare R2.
   workflow_run:
     workflows: ["CI"]
@@ -47,8 +47,10 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Pull requests validate metadata only. The four platform builds require
-  # an explicit manual run, avoiding repeated builds and stuck runner queues.
+  # Pull requests validate metadata only. The v2.1.3 version bump is the
+  # single explicit exception: after GREEN main CI, build all 4 candidates
+  # once. No release or R2 upload occurs automatically. Future version
+  # bumps restore the normal manual-only three-platform policy.
   validate-packaging:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -311,7 +313,7 @@ jobs:
 
   linux:
     needs: meta
-    if: needs.meta.outputs.should_build == 'true' && github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'linux')
+    if: needs.meta.outputs.should_build == 'true' && ((github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'linux')) || (github.event_name == 'workflow_run' && needs.meta.outputs.version == '2.1.3'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -349,7 +351,7 @@ jobs:
 
   macos-intel:
     needs: meta
-    if: needs.meta.outputs.should_build == 'true' && github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'macos-intel')
+    if: needs.meta.outputs.should_build == 'true' && ((github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'macos-intel')) || (github.event_name == 'workflow_run' && needs.meta.outputs.version == '2.1.3'))
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
@@ -393,7 +395,7 @@ jobs:
 
   macos-arm:
     needs: meta
-    if: needs.meta.outputs.should_build == 'true' && github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'macos-arm')
+    if: needs.meta.outputs.should_build == 'true' && ((github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'macos-arm')) || (github.event_name == 'workflow_run' && needs.meta.outputs.version == '2.1.3'))
     # Build natively on ARM64 so PyArrow and PySide6 contain matching native slices.
     # Intel cross-builds cannot bundle ARM64-only Parquet extension wheels.
     runs-on: macos-15
