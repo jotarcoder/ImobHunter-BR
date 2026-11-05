@@ -29,6 +29,7 @@ def test_known_binaries_reused_and_publication_is_all_or_nothing():
 
 
 def test_recovery_gate_handles_new_commit_and_full_ancestry():
+    assert "github.event.workflow_run.head_sha == '63a50a91d8b80dfd7eff4d0f05f79f1050eb160c'" in YML
     assert "fetch-depth: 0" in YML
     assert 'echo "ready=false" >> "$GITHUB_OUTPUT"' in YML
     assert "git diff --name-only 8a867e4aed5b5d7591dc397a79305c1e2f8a927e HEAD" in YML
