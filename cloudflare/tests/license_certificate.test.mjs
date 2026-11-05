@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { webcrypto } from 'node:crypto';
 import { test } from 'node:test';
 
-globalThis.crypto = webcrypto;
+const crypto = webcrypto;
 
 // Import the actual Worker module as ESM without changing the production .js layout.
 const source = readFileSync(new URL('../worker.js', import.meta.url), 'utf8');
