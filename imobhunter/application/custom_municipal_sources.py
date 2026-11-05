@@ -244,42 +244,45 @@ class CustomMunicipalStore:
     def import_file(self, source_id: str, original: Path, *,
                     progress: Callable[[int], None] | None = None
                     ) -> tuple[CustomMunicipalSource, int]:
+        # File parsing and indexing can take minutes. Never hold the catalog lock
+        # through that work: the Qt UI must remain free to display progress.
         with self._lock:
-            items = self.list()
-            current = next((item for item in items if item.source_id == source_id), None)
+            current = self.get(source_id)
             if current is None:
                 raise ValueError("Cadastre o município antes de importar arquivos.")
-            original = Path(original)
-            if original.suffix.lower() == ".parquet":
-                # Huge official São Paulo IPTU exports cannot be parsed like a
-                # 50k-row CSV. Build an indexed SQLite *locally*, in bounded batches.
-                # A Parquet export from another city requires a separately
-                # documented schema; never label it as São Paulo by assumption.
-                if current.state != "SP" or canonical_text(current.city) != "SAO PAULO":
-                    raise ValueError(
-                        "A importação Parquet de IPTU está disponível para São Paulo/SP. "
-                        "Em outros municípios, importe CSV, XLSX, JSON ou GeoJSON."
-                    )
-                path = self.directory / "data" / f"{current.id}.sqlite3"
-                _, count = import_sp_iptu_parquet(
-                    original, target=path, progress=progress,
+        original = Path(original)
+        if original.suffix.lower() == ".parquet":
+            if current.state != "SP" or canonical_text(current.city) != "SAO PAULO":
+                raise ValueError(
+                    "A importação Parquet de IPTU está disponível para São Paulo/SP. "
+                    "Em outros municípios, importe CSV, XLSX, JSON ou GeoJSON."
                 )
-            else:
-                rows = read_municipal_file(original)  # Validate before copying.
-                count = len(rows)
-                path = self.directory / "data" / f"{current.id}{original.suffix.lower()}"
-                path.parent.mkdir(parents=True, exist_ok=True)
-                temporary = path.parent / f".{uuid.uuid4().hex}.part"
-                try:
-                    with original.open("rb") as source, temporary.open("wb") as target:
-                        shutil.copyfileobj(source, target)
-                    os.replace(temporary, path)
-                finally:
-                    temporary.unlink(missing_ok=True)
-            updated = replace(current, file_name=path.name)
+            path = self.directory / "data" / f"{current.id}.sqlite3"
+            _, count = import_sp_iptu_parquet(
+                original, target=path, progress=progress,
+            )
+        else:
+            rows = read_municipal_file(original)
+            count = len(rows)
+            path = self.directory / "data" / f"{current.id}{original.suffix.lower()}"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.parent / f".{uuid.uuid4().hex}.part"
+            try:
+                with original.open("rb") as source, temporary.open("wb") as target:
+                    shutil.copyfileobj(source, target)
+                os.replace(temporary, path)
+            finally:
+                temporary.unlink(missing_ok=True)
+        with self._lock:
+            items = self.list()
+            latest = next((entry for entry in items if entry.id == current.id), None)
+            if latest is None:
+                path.unlink(missing_ok=True)
+                raise ValueError("A fonte foi removida durante a importação.")
+            updated = replace(latest, file_name=path.name)
             self._save(tuple(updated if entry.id == current.id else entry for entry in items))
-            if current.file_name and current.file_name != path.name:
-                (path.parent / current.file_name).unlink(missing_ok=True)
+            if latest.file_name and latest.file_name != path.name:
+                (path.parent / latest.file_name).unlink(missing_ok=True)
             return updated, count
 
     def remove(self, source_id: str) -> bool:
