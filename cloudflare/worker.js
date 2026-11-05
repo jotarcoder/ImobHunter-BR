@@ -84,17 +84,23 @@ export default {
    if(!row.expires_at||!Number.isFinite(Date.parse(row.expires_at))||Date.parse(row.expires_at)<=Date.now()){ await audit(env,"license_api","activation_rejected",userId,{code:"LICENSE_EXPIRED"}); return json({ok:false,authorized:false,code:"LICENSE_EXPIRED",error:"A validade desta licença terminou ou está inválida. Renove a licença no painel administrativo."},403); }
    const digest=await hashKey(key);
    if(digest!==row.key_hash){ await audit(env,"license_api","activation_rejected",userId,{code:"ACTIVATION_KEY_MISMATCH"}); return json({ok:false,authorized:false,code:"ACTIVATION_KEY_MISMATCH",error:"A chave digitada não corresponde à chave atual deste ID. No painel, use “Trocar chave”, copie a chave recém-gerada e tente novamente. A chave anterior deixa de funcionar."},403); }
-   let certificate;
-   try {
-    certificate=await issueLicenseCertificate(env,userId,row.plan,row.expires_at,digest);
-   } catch(error) {
-    console.error("License certificate signing failed",String(error));
-    return json({ok:false,authorized:false,code:"LICENSE_SIGNER_UNAVAILABLE",
-     error:"O serviço de emissão de certificados está temporariamente indisponível."},503);
+   // Staged rollout: old desktop clients must keep activating normally while
+   // the private signing key is installed. Never produce an unsigned certificate.
+   // If a configured signer *fails*, return 503 rather than disguising a fault.
+   let certificate=null;
+   if(env.LICENSE_SIGNING_PRIVATE_JWK){
+    try {
+     certificate=await issueLicenseCertificate(env,userId,row.plan,row.expires_at,digest);
+    } catch(error) {
+     console.error("License certificate signing failed",String(error));
+     return json({ok:false,authorized:false,code:"LICENSE_SIGNER_UNAVAILABLE",
+      error:"O serviço de emissão de certificados está temporariamente indisponível."},503);
+    }
    }
    await env.DB.prepare("UPDATE licenses SET last_seen_at=? WHERE user_id=?").bind(isoNow(),userId).run();
    await audit(env,"license_api","activation_authorized",userId,{plan:row.plan});
-   return json({ok:true,authorized:true,user_id:userId,plan:row.plan,expires_at:row.expires_at,checked_at:isoNow(),license_certificate:certificate});
+   return json({ok:true,authorized:true,user_id:userId,plan:row.plan,expires_at:row.expires_at,
+    checked_at:isoNow(),...(certificate?{license_certificate:certificate}:{certificate_pending:true})});
   }
   if(path==="/api/admin/login" && request.method==="POST"){
    await ensureAdminTables(env);
