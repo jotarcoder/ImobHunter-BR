@@ -6,9 +6,13 @@
 
 1. Clique em **+ Adicionar fonte municipal**.
 2. Informe **nome da fonte, município e UF**.
-3. Informe o **link HTTPS** (se existir). Escolha o tipo ou deixe o aplicativo
-   inferir pelo link: WFS, ArcGIS REST ou website informativo.
-4. Salve. A fonte aparece na lista com **Testar fonte**, **Importar arquivo**
+3. Selecione um **arquivo local diretamente na janela de cadastro**, opcionalmente
+   informe também o **link HTTPS**. Os campos são independentes: não é preciso
+   ter uma API para importar um arquivo.
+4. Clique em **Salvar fonte**. Se houver arquivo selecionado, ele começa a ser
+   processado **em segundo plano**; a lista mostra a contagem de registros e
+   o resultado da importação. A tela não fica travada.
+5. Fontes já cadastradas continuam oferecendo **Testar fonte**, **Importar arquivo**
    e **Remover fonte**. Uma fonte sem link tem as opções de importar/remover.
 5. As próximas consultas incluem **somente** as fontes adicionadas que
    correspondem exatamente ao **município e UF** da pesquisa.
@@ -43,12 +47,25 @@ Clique em **Importar arquivo** ao lado da localidade salva. O sistema aceita:
 - CSV (separado por vírgula, ponto e vírgula ou tabulação; UTF-8 ou cp1252);
 - XLSX (Excel; somente valores calculados na primeira planilha);
 - JSON de lista, data/items/records;
-- GeoJSON FeatureCollection com propriedades e geometria WGS84.
+- GeoJSON FeatureCollection com propriedades e geometria WGS84;
+- Parquet **da base cadastral IPTU de São Paulo capital** (inclusive arquivos
+  terminados em `.parquet.parquet`). O importador gera SQLite indexado por
+  endereço/número e quadra/lote, lendo lotes de 5.000 registros em vez de
+  carregar a base completa em RAM.
 
-Cada importação é copiada para a pasta **privada do ImobHunter** e validada
-antes de substituir a cópia anterior. Limites: arquivo até **80 MB** e
-50 mil linhas. Remover fonte apaga apenas a cópia gerenciada, **nunca o
-arquivo original da prefeitura**.
+Para o Parquet de São Paulo o limite geral de 80 MB/50 mil linhas **não se
+aplica**: o arquivo permanece intacto no local original e somente o índice
+SQLite é guardado no catálogo local. O processamento pode exigir tempo e
+espaço adicional em disco. Arquivos Parquet de outras prefeituras precisam
+de um mapeamento de colunas verificado antes de serem habilitados; para as
+demais cidades, utilize CSV, XLSX, JSON ou GeoJSON.
+
+As importações comuns são copiadas para a pasta **privada do ImobHunter**
+e validadas antes de substituir a cópia anterior. Para CSV/XLSX/JSON/GeoJSON,
+os limites são arquivo até **80 MB** e **50 mil linhas**. Para Parquet de
+São Paulo, o programa cria um índice SQLite local em lotes e não copia o
+original. Remover fonte apaga apenas a cópia ou o índice gerenciado, **nunca
+o arquivo original da prefeitura**.
 
 Campos reconhecidos incluem logradouro, numero, endereco, quadra,
 lote, municipio, uf, sql, inscricao_imobiliaria, cib,
