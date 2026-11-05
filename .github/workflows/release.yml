@@ -394,9 +394,9 @@ jobs:
   macos-arm:
     needs: meta
     if: needs.meta.outputs.should_build == 'true' && github.event_name == 'workflow_dispatch' && (inputs.build_target == 'all' || inputs.build_target == 'macos-arm')
-    # A successful v2.1.0 recovery used this very same Intel-hosted universal2
-    # toolchain. Avoid macOS ARM runner queues that previously stalled builds.
-    runs-on: macos-15-intel
+    # Build natively on ARM64 so PyArrow and PySide6 contain matching native slices.
+    # Intel cross-builds cannot bundle ARM64-only Parquet extension wheels.
+    runs-on: macos-15
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -405,28 +405,27 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Verify Intel build host with a universal2 Python 3.11 interpreter
+      - name: Verify native Apple Silicon ARM64 host and Python 3.11
         shell: bash
         run: |
           set -euo pipefail
-          test "$(uname -m)" = "x86_64"
-          python_bin="$(python -c 'import sys; print(sys.executable)')"
-          lipo -archs "$python_bin" | tr ' ' '\n' | grep -qx arm64 || {
-            echo "::error::Python interpreter has no ARM64 slice; cannot cross-build."
-            exit 1
-          }
-      - name: Install pinned universal2 toolchain and desktop dependencies
+          test "$(uname -m)" = "arm64" || { echo "::error::ARM64 runner required."; exit 1; }
+          python -c 'import platform; assert platform.machine() == "arm64"'
+      - name: Install pinned native ARM64 toolchain and desktop dependencies
         run: python -m pip install -e ".[desktop]" "pyinstaller==6.22.3" "pyinstaller-hooks-contrib==2026.9"
-      - name: Verify PySide6 has a native ARM64 slice
+      - name: Verify PySide6 and PyArrow native ARM64 extensions
         shell: bash
         run: |
           set -euo pipefail
-          qt_extension="$(python -c 'import PySide6.QtCore; print(PySide6.QtCore.__file__)')"
-          lipo -archs "$qt_extension" | tr ' ' '\n' | grep -qx arm64 || {
-            echo "::error::Bundled Qt extension is not ARM64-compatible."
-            exit 1
-          }
-      - name: Cross-build latest main source as Apple Silicon ARM64
+          for module in PySide6.QtCore pyarrow.lib pyarrow._acero pyarrow._parquet; do
+            extension="$(MODULE="$module" python -c 'import importlib,os; print(importlib.import_module(os.environ["MODULE"]).__file__)')"
+            lipo -archs "$extension" | tr ' ' '\n' | grep -qx arm64 || {
+              echo "::error::Native ARM64 wheel missing for $module: $extension"
+              exit 1
+            }
+            echo "Verified native ARM64 extension: $module"
+          done
+      - name: Build Apple Silicon ARM64 natively from validated main source
         shell: bash
         run: |
           set -euo pipefail
