@@ -19,6 +19,11 @@ jobs:
       - run: python -m compileall -q imobhunter tests scripts
       - run: pytest
       - run: ruff check .
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test signed Worker license certificates
+        run: node --test cloudflare/tests/license_certificate.test.mjs
       - name: Query live municipal cadastral sources (evidence only)
         id: municipal-evidence
         continue-on-error: true
