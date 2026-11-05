@@ -2,6 +2,8 @@ name: Recuperar Apple Silicon 2.1.2 nativo e publicar R2 (Windows/Linux/Intel pr
 
 # One-time follow-up after the failed x86_64-only PyArrow wheel in ARM cross-build.
 # All three previously validated binaries are reused without recompilation.
+# Archived: only the already-approved v2.1.2 CI commit may run this gate.
+# Future release versions skip the entire workflow instead of reporting a false red.
 on:
   workflow_run:
     workflows: ["CI"]
@@ -17,7 +19,8 @@ jobs:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main'
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_sha == '63a50a91d8b80dfd7eff4d0f05f79f1050eb160c'
     runs-on: ubuntu-latest
     outputs:
       ready: ${{ steps.verify.outputs.ready }}
