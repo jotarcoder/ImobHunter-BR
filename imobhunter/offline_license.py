@@ -171,10 +171,13 @@ def check_license(user_id: str, activation_key: str) -> dict:
             ) from network_error
 
     certificate = result.get("license_certificate")
+    if certificate is None and result.get("certificate_pending") is True:
+        # Authenticated by the Worker, but no offline proof was issued yet.
+        # Allow this session ONLINE only; never treat the JSON as an offline grant.
+        return {**result, "mode": "online_legacy"}
     if not isinstance(certificate, dict):
         raise LicenseError(
-            "O servidor autorizou a chave, mas não enviou o certificado assinado. "
-            "Aguarde a configuração do serviço de licenças."
+            "O servidor autorizou a chave, mas não enviou um certificado de licença válido."
         )
     claims = _save_authorized_certificate(certificate, user_id, activation_key)
     return {**result, "mode": "online", "expires_at": claims["expires_at"]}
